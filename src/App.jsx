@@ -6,9 +6,24 @@ import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import {
   Sun, Moon, Upload, Copy, Check, FileText, Eye, Code2,
-  X, Download, Maximize2, Minimize2, Menu
+  X, Download, Maximize2, Minimize2
 } from 'lucide-react'
 
+// ── Custom icons ──────────────────────────────────────────
+const SplitEqualIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+    <rect x="1" y="2" width="6" height="12" rx="1.5" fill="currentColor" opacity="0.55"/>
+    <rect x="9" y="2" width="6" height="12" rx="1.5" fill="currentColor" opacity="0.55"/>
+  </svg>
+)
+const SplitWideIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+    <rect x="1" y="2" width="3.5" height="12" rx="1.5" fill="currentColor" opacity="0.45"/>
+    <rect x="6.5" y="2" width="8.5" height="12" rx="1.5" fill="currentColor"/>
+  </svg>
+)
+
+// ── Sample content ────────────────────────────────────────
 const SAMPLE_MD = `# Welcome to ReadMe
 
 > Paste or upload any **Markdown** file and get a beautiful, readable document instantly.
@@ -62,6 +77,7 @@ You can write \`inline code\`, **bold**, *italic*, ~~strikethrough~~, and [links
 *Made with ♥ by Sahil Gupta*
 `
 
+// ── Components ────────────────────────────────────────────
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false)
   const copy = useCallback(async () => {
@@ -74,23 +90,33 @@ function CopyButton({ text }) {
     <button
       onClick={copy}
       className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md
-        bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white
-        transition-all duration-150 cursor-pointer"
+        bg-white/10 hover:bg-white/18 text-slate-300 hover:text-white
+        transition-all duration-150 cursor-pointer select-none"
       title="Copy code"
     >
-      {copied ? <Check size={12} /> : <Copy size={12} />}
-      {copied ? 'Copied' : 'Copy'}
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+      {copied ? 'Copied!' : 'Copy'}
     </button>
   )
 }
 
 function CodeBlock({ language, code }) {
   return (
-    <div className="relative my-4 rounded-xl overflow-hidden border border-gray-700/60 shadow-md">
-      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-800 border-b border-gray-700/60">
-        <span className="text-xs font-mono font-medium text-gray-400 uppercase tracking-wider">
-          {language || 'text'}
-        </span>
+    <div className="my-5 rounded-xl overflow-hidden shadow-lg"
+      style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+      {/* Code block header */}
+      <div className="flex items-center justify-between px-4 py-2.5"
+        style={{ background: '#161c2d', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+          </div>
+          <span className="text-[11px] font-mono font-medium text-slate-400 uppercase tracking-wider ml-1">
+            {language || 'plaintext'}
+          </span>
+        </div>
         <CopyButton text={code} />
       </div>
       <SyntaxHighlighter
@@ -100,10 +126,10 @@ function CodeBlock({ language, code }) {
         customStyle={{
           margin: 0,
           borderRadius: 0,
-          fontSize: '0.875rem',
-          lineHeight: '1.7',
+          fontSize: '0.855rem',
+          lineHeight: '1.75',
           padding: '1.25rem 1.5rem',
-          background: '#0f172a',
+          background: '#0d1117',
         }}
         codeTagProps={{
           style: { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }
@@ -117,24 +143,19 @@ function CodeBlock({ language, code }) {
 
 function MarkdownRenderer({ content }) {
   const components = {
-    // In react-markdown v10, pre wraps block code. We strip pre and let code handle it.
     pre({ children }) {
       return <>{children}</>
     },
     code({ className, children, ...props }) {
       const match = /language-(\w+)/.exec(className || '')
       const codeStr = String(children).replace(/\n$/, '')
-      // Block code: has a language class OR contains newlines (unfenced block)
       const isBlock = Boolean(match) || codeStr.includes('\n')
-
-      if (isBlock) {
-        return <CodeBlock language={match?.[1]} code={codeStr} />
-      }
-      // Inline code
+      if (isBlock) return <CodeBlock language={match?.[1]} code={codeStr} />
       return (
         <code
           className="px-1.5 py-0.5 rounded text-[0.875em] font-mono font-medium
-            bg-slate-100 dark:bg-slate-800 text-rose-600 dark:text-rose-400"
+            bg-[#f0f2f8] dark:bg-[#1a1f30] text-[#c0264b] dark:text-[#f28cb0]
+            border border-[#e2e6f0] dark:border-[#252c42]"
           {...props}
         >
           {children}
@@ -147,8 +168,8 @@ function MarkdownRenderer({ content }) {
           href={href}
           target={href?.startsWith('http') ? '_blank' : undefined}
           rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
-          className="text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300
-            underline underline-offset-2 decoration-violet-300/60 hover:decoration-violet-500
+          className="text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-200
+            underline underline-offset-2 decoration-violet-300/50 hover:decoration-violet-500
             transition-colors duration-150"
           {...props}
         >
@@ -172,7 +193,7 @@ function MarkdownRenderer({ content }) {
     },
     hr() {
       return (
-        <hr className="my-8 border-none h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
+        <hr className="my-8 border-none h-px bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-600 to-transparent" />
       )
     },
     h1({ children, ...props }) {
@@ -188,17 +209,25 @@ function MarkdownRenderer({ content }) {
       return <h3 id={id} {...props}>{children}</h3>
     },
   }
-
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkBreaks]}
-      components={components}
-    >
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={components}>
       {content}
     </ReactMarkdown>
   )
 }
 
+// ── View modes ────────────────────────────────────────────
+// editor | split | focus | preview
+// editor=100%/0   split=50/50   focus=25/75   preview=0/100%
+
+const VIEW_MODES = [
+  { id: 'editor',  label: 'Editor',  Icon: Code2,          title: 'Editor only' },
+  { id: 'split',   label: 'Split',   Icon: SplitEqualIcon, title: '50 / 50 split' },
+  { id: 'focus',   label: 'Focus',   Icon: SplitWideIcon,  title: '25 / 75 — wide preview' },
+  { id: 'preview', label: 'Preview', Icon: Eye,            title: 'Preview only' },
+]
+
+// ── App ───────────────────────────────────────────────────
 export default function App() {
   const [isDark, setIsDark] = useState(() => {
     const stored = localStorage.getItem('readme-theme')
@@ -210,26 +239,21 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false)
   const [fileName, setFileName] = useState(null)
   const [mobileTab, setMobileTab] = useState('preview')
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const fileInputRef = useRef(null)
   const appRef = useRef(null)
 
-  // Apply dark class to <html> for Tailwind v4 class-based dark mode
+  // Dark mode → apply .dark to <html>
   useEffect(() => {
-    const root = document.documentElement
-    if (isDark) {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
+    document.documentElement.classList.toggle('dark', isDark)
     localStorage.setItem('readme-theme', isDark ? 'dark' : 'light')
   }, [isDark])
 
-  // Native fullscreen API
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  // Native fullscreen
   useEffect(() => {
-    const onFSChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
-    document.addEventListener('fullscreenchange', onFSChange)
-    return () => document.removeEventListener('fullscreenchange', onFSChange)
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
   }, [])
 
   const toggleFullscreen = useCallback(async () => {
@@ -288,77 +312,88 @@ export default function App() {
   const charCount = content.length
   const lineCount = content.split('\n').length
 
-  const viewButtons = [
-    { id: 'editor', label: 'Editor', icon: Code2 },
-    { id: 'split',  label: 'Split',  icon: Menu },
-    { id: 'preview',label: 'Preview',icon: Eye },
-  ]
-
-  const showEditor = view === 'editor' || view === 'split'
-  const showPreview = view === 'preview' || view === 'split'
+  // Pane widths based on view mode
+  const editorWidth  = { editor: '100%', split: '50%', focus: '25%', preview: '0%' }[view]
+  const previewWidth = { editor: '0%',  split: '50%', focus: '75%', preview: '100%' }[view]
+  const showEditor  = view !== 'preview'
+  const showPreview = view !== 'editor'
 
   return (
     <div
       ref={appRef}
-      className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden"
+      className="h-screen flex flex-col app-shell overflow-hidden"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
     >
-      {/* Drag overlay */}
+      {/* ── Drag overlay ───────────────────────────────── */}
       {isDragging && (
-        <div className="fixed inset-0 z-50 bg-violet-600/20 backdrop-blur-sm flex items-center justify-center pointer-events-none">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-12 text-center border-2 border-dashed border-violet-400">
-            <Upload className="mx-auto mb-4 text-violet-500" size={40} />
-            <p className="text-xl font-semibold text-gray-800 dark:text-gray-100">Drop your Markdown file</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">.md · .markdown · .txt</p>
+        <div className="fixed inset-0 z-50 bg-violet-500/10 backdrop-blur-sm
+          flex items-center justify-center pointer-events-none">
+          <div className="bg-white dark:bg-[#111520] rounded-2xl shadow-2xl px-14 py-12
+            text-center border-2 border-dashed border-violet-400/70">
+            <div className="w-14 h-14 rounded-xl bg-violet-100 dark:bg-violet-900/30
+              flex items-center justify-center mx-auto mb-4">
+              <Upload className="text-violet-500" size={26} />
+            </div>
+            <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+              Drop your Markdown file
+            </p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+              .md · .markdown · .txt
+            </p>
           </div>
         </div>
       )}
 
-      {/* ── Header ─────────────────────────────────────────── */}
-      <header className="shrink-0 z-40 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
+      {/* ── Header ─────────────────────────────────────── */}
+      <header className="no-print shrink-0 z-40 header-bg">
         <div className="px-4 sm:px-5 h-14 flex items-center justify-between gap-4">
 
           {/* Logo */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-sm">
+          <div className="flex items-center gap-2.5 shrink-0 select-none">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600
+              flex items-center justify-center shadow shadow-violet-500/25">
               <FileText size={14} className="text-white" />
             </div>
-            <span className="font-semibold text-gray-900 dark:text-white text-[15px] tracking-tight select-none">
+            <span className="font-semibold text-slate-800 dark:text-slate-100 text-[15px] tracking-tight">
               Read<span className="text-violet-500">Me</span>
             </span>
           </div>
 
-          {/* View switcher */}
-          <div className="hidden sm:flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-            {viewButtons.map(({ id, label, icon: Icon }) => (
+          {/* View mode switcher — desktop */}
+          <div className="hidden sm:flex items-center gap-0.5 rounded-lg p-1
+            bg-slate-100/80 dark:bg-[#151a28]
+            border border-slate-200/60 dark:border-[#1e2538]">
+            {VIEW_MODES.map(({ id, label, Icon, title }) => (
               <button
                 key={id}
                 onClick={() => setView(id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150 cursor-pointer
+                title={title}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md
+                  transition-all duration-150 cursor-pointer
                   ${view === id
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    ? 'bg-white dark:bg-[#252d42] text-slate-900 dark:text-slate-100 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                   }`}
               >
                 <Icon size={13} />
-                {label}
+                <span>{label}</span>
               </button>
             ))}
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {fileName && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1
-                bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300
-                rounded-full text-xs font-medium border border-violet-200/60 dark:border-violet-700/40">
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 mr-1
+                bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300
+                rounded-full text-xs font-medium border border-violet-200/70 dark:border-violet-800/50">
                 <FileText size={11} />
-                <span className="max-w-[140px] truncate">{fileName}</span>
+                <span className="max-w-[130px] truncate">{fileName}</span>
                 <button
                   onClick={() => { setFileName(null); setContent('') }}
-                  className="hover:text-violet-900 dark:hover:text-violet-100 cursor-pointer"
+                  className="hover:text-violet-900 dark:hover:text-violet-100 cursor-pointer ml-0.5"
                 >
                   <X size={10} />
                 </button>
@@ -375,10 +410,9 @@ export default function App() {
 
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                bg-violet-600 hover:bg-violet-700 active:bg-violet-800
-                text-white shadow-sm shadow-violet-500/25
-                transition-colors duration-150 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg
+                bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white
+                shadow shadow-violet-500/20 transition-colors duration-150 cursor-pointer"
             >
               <Upload size={13} />
               <span className="hidden sm:inline">Upload .md</span>
@@ -387,8 +421,9 @@ export default function App() {
             <button
               onClick={handleDownload}
               title="Download as .md"
-              className="p-2 rounded-lg text-gray-500 dark:text-gray-400
-                hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-150 cursor-pointer"
+              className="p-2 rounded-lg text-slate-400 dark:text-slate-500
+                hover:bg-slate-100 dark:hover:bg-[#151a28] hover:text-slate-600 dark:hover:text-slate-300
+                transition-colors duration-150 cursor-pointer"
             >
               <Download size={15} />
             </button>
@@ -396,26 +431,33 @@ export default function App() {
             <button
               onClick={toggleFullscreen}
               title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-              className="hidden sm:flex p-2 rounded-lg text-gray-500 dark:text-gray-400
-                hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-150 cursor-pointer"
+              className="hidden sm:flex p-2 rounded-lg text-slate-400 dark:text-slate-500
+                hover:bg-slate-100 dark:hover:bg-[#151a28] hover:text-slate-600 dark:hover:text-slate-300
+                transition-colors duration-150 cursor-pointer"
             >
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
 
             <button
               onClick={() => setIsDark(d => !d)}
-              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="p-2 rounded-lg text-gray-500 dark:text-gray-400
-                hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-150 cursor-pointer"
+              title={isDark ? 'Light mode' : 'Dark mode'}
+              className="p-2 rounded-lg text-slate-400 dark:text-slate-500
+                hover:bg-slate-100 dark:hover:bg-[#151a28] hover:text-slate-600 dark:hover:text-slate-300
+                transition-colors duration-150 cursor-pointer"
             >
-              {isDark ? <Sun size={15} /> : <Moon size={15} />}
+              {isDark
+                ? <Sun size={15} className="text-amber-400" />
+                : <Moon size={15} />
+              }
             </button>
           </div>
         </div>
       </header>
 
       {/* Mobile tab bar */}
-      <div className="sm:hidden shrink-0 flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+      <div className="sm:hidden no-print shrink-0 flex
+        border-b border-slate-200 dark:border-[#1a1f30]
+        bg-white dark:bg-[#0e1018]">
         {['editor', 'preview'].map(tab => (
           <button
             key={tab}
@@ -423,7 +465,7 @@ export default function App() {
             className={`flex-1 py-2.5 text-xs font-medium capitalize transition-colors cursor-pointer
               ${mobileTab === tab
                 ? 'text-violet-600 dark:text-violet-400 border-b-2 border-violet-500'
-                : 'text-gray-500 dark:text-gray-400'
+                : 'text-slate-400 dark:text-slate-500'
               }`}
           >
             {tab}
@@ -431,51 +473,47 @@ export default function App() {
         ))}
       </div>
 
-      {/* ── Main ───────────────────────────────────────────── */}
+      {/* ── Main ───────────────────────────────────────── */}
       <main className="flex-1 flex min-h-0">
 
         {/* Editor pane */}
         <div
-          className={`flex-col min-h-0
-            ${view === 'split'
-              ? 'hidden sm:flex w-1/2 border-r border-gray-200 dark:border-gray-800'
-              : view === 'editor'
-              ? 'flex w-full'
-              : 'hidden'
-            }
-            ${mobileTab === 'editor' ? '!flex sm:hidden w-full' : ''}
+          className={`flex-col min-h-0 transition-[width] duration-300 ease-in-out overflow-hidden
+            ${mobileTab === 'editor' ? '!flex sm:hidden w-full' : 'hidden sm:flex'}
           `}
+          style={{ width: editorWidth, display: !showEditor ? 'none' : undefined }}
         >
           {/* Editor toolbar */}
-          <div className="shrink-0 flex items-center justify-between px-4 py-2
-            border-b border-gray-100 dark:border-gray-800/70 bg-white dark:bg-gray-950">
-            <span className="text-[11px] text-gray-400 dark:text-gray-500 font-semibold tracking-widest uppercase">
+          <div className="no-print shrink-0 flex items-center justify-between px-4 py-2 toolbar-bg">
+            <span className="text-[10px] font-bold tracking-[0.12em] uppercase
+              text-slate-400 dark:text-slate-500">
               Markdown
             </span>
             <div className="flex items-center gap-3">
-              <span className="text-[11px] text-gray-400 dark:text-gray-500">
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 tabular-nums">
                 {lineCount} lines · {wordCount} words
               </span>
               <button
                 onClick={() => setContent('')}
-                title="Clear editor"
-                className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
+                title="Clear"
+                className="text-slate-300 dark:text-slate-600
+                  hover:text-red-400 dark:hover:text-red-400 transition-colors cursor-pointer"
               >
-                <X size={13} />
+                <X size={12} />
               </button>
             </div>
           </div>
 
-          {/* Textarea */}
-          <div className="flex-1 overflow-auto bg-white dark:bg-gray-950">
+          {/* Editor textarea */}
+          <div className="flex-1 overflow-auto editor-pattern pane-border">
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder={'# Start typing Markdown here…\n\nOr upload a .md file using the button above.'}
               spellCheck={false}
-              className="w-full h-full min-h-full p-5 resize-none outline-none text-sm leading-7
-                text-gray-700 dark:text-gray-300 bg-transparent
-                placeholder:text-gray-300 dark:placeholder:text-gray-700"
+              className="w-full h-full min-h-full p-5 sm:p-6 resize-none outline-none
+                text-[13.5px] leading-[1.8] text-slate-600 dark:text-slate-400 bg-transparent
+                placeholder:text-slate-300 dark:placeholder:text-slate-700"
               style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}
             />
           </div>
@@ -483,71 +521,71 @@ export default function App() {
 
         {/* Preview pane */}
         <div
-          className={`flex-col min-h-0 overflow-auto
-            ${view === 'split'
-              ? 'hidden sm:flex flex-1'
-              : view === 'preview'
-              ? 'flex flex-1'
-              : 'hidden'
-            }
-            ${mobileTab === 'preview' ? '!flex sm:hidden flex-1' : ''}
-            bg-white dark:bg-gray-950
+          className={`flex-col min-h-0 overflow-auto preview-surface transition-[width] duration-300 ease-in-out
+            ${mobileTab === 'preview' ? '!flex sm:hidden flex-1' : 'hidden sm:flex'}
           `}
+          style={{ width: previewWidth, display: !showPreview ? 'none' : undefined }}
         >
           {/* Preview toolbar */}
-          <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-5 sm:px-8 py-2
-            bg-white/90 dark:bg-gray-950/90 backdrop-blur-sm
-            border-b border-gray-100 dark:border-gray-800/70">
-            <span className="text-[11px] text-gray-400 dark:text-gray-500 font-semibold tracking-widest uppercase">
+          <div className="no-print shrink-0 sticky top-0 z-10 flex items-center justify-between
+            px-5 sm:px-8 py-2 toolbar-bg">
+            <span className="text-[10px] font-bold tracking-[0.12em] uppercase
+              text-slate-400 dark:text-slate-500">
               Preview
             </span>
             <div className="flex items-center gap-3">
-              <span className="text-[11px] text-gray-400 dark:text-gray-500">
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 tabular-nums">
                 {charCount.toLocaleString()} chars
               </span>
               <button
                 onClick={handleCopyAll}
                 title="Copy raw Markdown"
-                className="flex items-center gap-1 text-[11px] text-gray-400
-                  hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
+                className="flex items-center gap-1 text-[10px] font-medium
+                  text-slate-400 dark:text-slate-500
+                  hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
               >
-                <Copy size={12} />
+                <Copy size={11} />
                 <span className="hidden sm:inline">Copy MD</span>
               </button>
             </div>
           </div>
 
-          {/* Rendered markdown */}
-          <div className="flex-1 px-5 sm:px-10 md:px-16 lg:px-24 py-10">
+          {/* Rendered content */}
+          <div className="flex-1 px-5 sm:px-10 md:px-14 lg:px-20 py-10">
             {content.trim() ? (
-              <article className="prose prose-gray dark:prose-invert max-w-3xl mx-auto
+              <article className="prose max-w-[72ch] mx-auto
                 prose-headings:font-semibold prose-headings:tracking-tight
-                prose-h1:text-[2rem] prose-h1:leading-tight prose-h1:mb-4
-                prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-3 prose-h2:pb-2
-                prose-h2:border-b prose-h2:border-gray-200 dark:prose-h2:border-gray-800
-                prose-h3:text-xl prose-h3:mt-8
-                prose-p:leading-7 prose-p:text-gray-700 dark:prose-p:text-gray-300
-                prose-li:text-gray-700 dark:prose-li:text-gray-300
-                prose-strong:font-semibold prose-strong:text-gray-900 dark:prose-strong:text-gray-100
-                prose-em:text-gray-700 dark:prose-em:text-gray-300
-                prose-table:text-sm prose-th:font-semibold
+                prose-headings:text-slate-800 dark:prose-headings:text-slate-100
+                prose-h1:text-[1.9rem] prose-h1:leading-tight prose-h1:mb-5
+                prose-h2:text-[1.4rem] prose-h2:mt-10 prose-h2:mb-4
+                prose-h3:text-[1.15rem] prose-h3:mt-7 prose-h3:mb-2
+                prose-h3:text-slate-700 dark:prose-h3:text-slate-200
+                prose-p:text-slate-600 dark:prose-p:text-slate-400
+                prose-p:leading-[1.8] prose-p:text-[0.96rem]
+                prose-li:text-slate-600 dark:prose-li:text-slate-400
+                prose-li:text-[0.96rem] prose-li:leading-[1.75]
+                prose-strong:text-slate-800 dark:prose-strong:text-slate-200 prose-strong:font-600
+                prose-em:text-slate-600 dark:prose-em:text-slate-400
                 prose-blockquote:not-italic
+                prose-blockquote:text-slate-500 dark:prose-blockquote:text-slate-400
                 prose-img:rounded-xl prose-img:shadow-md
                 prose-a:no-underline
+                dark:prose-invert
               ">
                 <MarkdownRenderer content={content} />
               </article>
             ) : (
-              <div className="max-w-3xl mx-auto flex flex-col items-center justify-center min-h-80 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100
-                  dark:from-violet-900/30 dark:to-indigo-900/30 flex items-center justify-center mb-4">
+              <div className="max-w-md mx-auto flex flex-col items-center justify-center min-h-80 text-center">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br
+                  from-violet-100 to-indigo-100 dark:from-violet-900/25 dark:to-indigo-900/25
+                  flex items-center justify-center mb-5 shadow-sm">
                   <FileText className="text-violet-400" size={28} />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
-                  Nothing to preview
+                <h3 className="text-base font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  Nothing to preview yet
                 </h3>
-                <p className="text-sm text-gray-400 dark:text-gray-500 max-w-xs">
-                  Start typing Markdown in the editor, or upload a .md file using the button above.
+                <p className="text-sm text-slate-400 dark:text-slate-500 leading-relaxed">
+                  Start typing Markdown in the editor, or upload a .md file.
                 </p>
               </div>
             )}
@@ -555,17 +593,18 @@ export default function App() {
         </div>
       </main>
 
-      {/* ── Footer ─────────────────────────────────────────── */}
-      <footer className="shrink-0 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-        <div className="px-4 sm:px-5 h-9 flex items-center justify-between">
-          <span className="text-[11px] text-gray-400 dark:text-gray-600">
+      {/* ── Footer ─────────────────────────────────────── */}
+      <footer className="no-print shrink-0 border-t border-slate-200/70 dark:border-[#1a1f30]
+        bg-white/70 dark:bg-[#0e1018]/70 backdrop-blur-sm">
+        <div className="px-4 sm:px-5 h-8 flex items-center justify-between">
+          <span className="text-[10px] text-slate-400 dark:text-slate-600">
             Drop a .md file anywhere to open it
           </span>
           <a
             href="https://guptasahil.in"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] text-gray-400 dark:text-gray-600
+            className="text-[10px] text-slate-400 dark:text-slate-600
               hover:text-violet-500 dark:hover:text-violet-400 transition-colors"
           >
             guptasahil.in

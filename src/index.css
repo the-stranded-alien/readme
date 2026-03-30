@@ -7,7 +7,6 @@
 @theme {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --font-display: 'Fraunces', Georgia, serif;
 }
 
 html {
@@ -20,85 +19,179 @@ body {
   font-family: var(--font-sans);
 }
 
-/* Custom scrollbar */
+/* ── Scrollbar ─────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgb(148 163 184 / 0.35); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: rgb(148 163 184 / 0.6); }
-.dark ::-webkit-scrollbar-thumb { background: rgb(71 85 105 / 0.5); }
+::-webkit-scrollbar-thumb { background: rgb(148 163 184 / 0.3); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(148 163 184 / 0.55); }
+.dark ::-webkit-scrollbar-thumb { background: rgb(71 85 105 / 0.45); }
+.dark ::-webkit-scrollbar-thumb:hover { background: rgb(100 116 139 / 0.65); }
 
-/* Inline code in prose */
+/* ── Background patterns ───────────────────────────────── */
+
+/* Dot grid for editor pane */
+.editor-pattern {
+  background-color: #f7f8fc;
+  background-image: radial-gradient(circle, #ced4e0 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.dark .editor-pattern {
+  background-color: #0e1018;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.045) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Clean surface for reading (preview) */
+.preview-surface {
+  background-color: #ffffff;
+}
+.dark .preview-surface {
+  background-color: #111520;
+}
+
+/* App shell */
+.app-shell {
+  background-color: #eef0f7;
+}
+.dark .app-shell {
+  background-color: #090b10;
+}
+
+/* Header */
+.header-bg {
+  background-color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #e4e7f0;
+}
+.dark .header-bg {
+  background-color: rgba(13, 15, 22, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #1a1f30;
+}
+
+/* Pane border */
+.pane-border {
+  border-right: 1px solid #e4e7f0;
+}
+.dark .pane-border {
+  border-right: 1px solid #1a1f30;
+}
+
+/* Toolbar */
+.toolbar-bg {
+  background-color: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid #eceef5;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.dark .toolbar-bg {
+  background-color: rgba(13, 15, 22, 0.85);
+  border-bottom: 1px solid #1a1f30;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* ── Prose overrides ───────────────────────────────────── */
+
+/* Inline code */
 .prose :where(code):not(:where([class~="not-prose"] *)):not(pre code) {
-  background: rgb(241 245 249);
-  color: #e11d48;
+  background: #f0f2f8;
+  color: #c0264b;
   padding: 0.15em 0.4em;
   border-radius: 0.3rem;
   font-size: 0.875em;
   font-weight: 500;
   font-family: var(--font-mono);
+  border: 1px solid #e2e6f0;
 }
-
 .dark .prose :where(code):not(:where([class~="not-prose"] *)):not(pre code) {
-  background: rgb(30 41 59);
-  color: #fb7185;
+  background: #1a1f30;
+  color: #f28cb0;
+  border-color: #252c42;
 }
-
 .prose :where(code):not(:where([class~="not-prose"] *)):not(pre code)::before,
 .prose :where(code):not(:where([class~="not-prose"] *)):not(pre code)::after {
   content: none;
 }
 
-/* Pre blocks reset — syntax highlighter handles styling */
+/* Pre */
 .prose pre {
   padding: 0 !important;
   background: transparent !important;
   margin: 1.5rem 0 !important;
+  box-shadow: none !important;
 }
 
 /* Blockquote */
 .prose blockquote {
-  border-left-color: rgb(139 92 246) !important;
-  background: rgb(139 92 246 / 0.05);
+  border-left-color: #8b5cf6 !important;
+  background: rgba(139, 92, 246, 0.04);
   border-radius: 0 0.5rem 0.5rem 0;
+  padding: 0.75rem 1.25rem;
 }
 .dark .prose blockquote {
-  border-left-color: rgb(167 139 250) !important;
-  background: rgb(139 92 246 / 0.08);
+  border-left-color: #a78bfa !important;
+  background: rgba(139, 92, 246, 0.07);
 }
 
 /* Tables */
 .prose table {
   border-collapse: collapse;
   width: 100%;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px #e4e7f0;
 }
-
+.dark .prose table {
+  box-shadow: 0 0 0 1px #1a1f30;
+}
+.prose thead tr {
+  background: #f2f4fb;
+}
+.dark .prose thead tr {
+  background: #161b2a;
+}
 .prose thead th {
-  background: rgb(248 250 252);
+  font-weight: 600;
+  color: #374260;
+  padding: 0.625rem 1rem;
+  text-align: left;
 }
 .dark .prose thead th {
-  background: rgb(30 41 59);
+  color: #a8b4cc;
 }
-
+.prose tbody tr {
+  border-top: 1px solid #eceef5;
+}
+.dark .prose tbody tr {
+  border-top-color: #1a1f30;
+}
+.prose tbody td {
+  padding: 0.5rem 1rem;
+  color: #4a5268;
+}
+.dark .prose tbody td {
+  color: #8a96ae;
+}
 .prose tbody tr:hover td {
-  background: rgb(248 250 252);
+  background: #f7f8fd;
 }
 .dark .prose tbody tr:hover td {
-  background: rgb(30 41 59 / 0.5);
+  background: #141828;
 }
 
-/* Textarea */
-textarea {
-  field-sizing: content;
-  min-height: 100%;
+/* Headings */
+.prose h2 {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #eceef5;
+}
+.dark .prose h2 {
+  border-bottom-color: #1a1f30;
 }
 
-/* Resize handle */
-.resize-handle {
-  cursor: col-resize;
-  user-select: none;
-}
-
-/* Print styles */
+/* Print */
 @media print {
   .no-print { display: none !important; }
   .prose { max-width: none; }
