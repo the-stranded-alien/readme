@@ -1,10 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
-import CodeMirror from '@uiw/react-codemirror'
+import CodeMirror, { oneDark, EditorView } from '@uiw/react-codemirror'
 import { loadLanguage } from '@uiw/codemirror-extensions-langs'
-import { oneDark } from '@codemirror/theme-one-dark'
 import { githubLight } from '@uiw/codemirror-theme-github'
-import { EditorView } from '@codemirror/view'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import {
@@ -574,7 +572,11 @@ export default function App() {
   }, [content, view, mobileTab])
 
   const navigateToHeading = useCallback((id) => {
-    previewScrollRef.current?.querySelector(`#${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const el = previewScrollRef.current?.querySelector(`[id="${id}"]`)
+    if (!el) return
+    const container = previewScrollRef.current
+    const elTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top
+    container.scrollBy({ top: elTop - 20, behavior: 'smooth' })
   }, [])
 
   // Scroll-to-top in preview
@@ -837,7 +839,7 @@ export default function App() {
             {/* Scrollable content */}
             <div ref={previewScrollRef} className="flex-1 overflow-auto surface-preview relative">
               {content.trim() ? (
-                <div className="px-6 sm:px-10 md:px-14 py-10 max-w-[820px] mx-auto">
+                <div className="px-6 sm:px-10 md:px-14 lg:px-16 py-10">
                   <div className="rm-prose anim-slide-up">
                     <MarkdownRenderer content={content} />
                   </div>
