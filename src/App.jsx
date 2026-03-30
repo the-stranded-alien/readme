@@ -2,16 +2,14 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import rehypeRaw from 'rehype-raw'
 import {
   Sun, Moon, Upload, Copy, Check, FileText, Eye, Code2,
-  ChevronDown, X, Download, Maximize2, Minimize2, Menu
+  X, Download, Maximize2, Minimize2, Menu
 } from 'lucide-react'
 
-const SAMPLE_MD = `# Welcome to readme.guptasahil.in
+const SAMPLE_MD = `# Welcome to ReadMe
 
 > Paste or upload any **Markdown** file and get a beautiful, readable document instantly.
 
@@ -47,7 +45,6 @@ async function render(doc: Document): Promise<string> {
 | GFM Tables     | ✅ Done | Full GitHub spec support  |
 | Strikethrough  | ✅ Done | ~~like this~~             |
 | Task lists     | ✅ Done | See below                 |
-| Math           | 🔜 Soon | KaTeX integration planned |
 
 ## Task List
 
@@ -87,33 +84,30 @@ function CopyButton({ text }) {
   )
 }
 
-function CodeBlock({ children, className, isDark }) {
-  const match = /language-(\w+)/.exec(className || '')
-  const language = match ? match[1] : 'text'
-  const code = String(children).replace(/\n$/, '')
-
+function CodeBlock({ language, code }) {
   return (
-    <div className="relative group my-4 rounded-xl overflow-hidden border border-gray-200/60 dark:border-gray-700/60 shadow-sm">
-      <div className="flex items-center justify-between px-4 py-2.5
-        bg-gray-800 dark:bg-gray-900 border-b border-gray-700/60">
+    <div className="relative my-4 rounded-xl overflow-hidden border border-gray-700/60 shadow-md">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-800 border-b border-gray-700/60">
         <span className="text-xs font-mono font-medium text-gray-400 uppercase tracking-wider">
-          {language}
+          {language || 'text'}
         </span>
         <CopyButton text={code} />
       </div>
       <SyntaxHighlighter
         style={oneDark}
-        language={language}
+        language={language || 'text'}
         PreTag="div"
         customStyle={{
           margin: 0,
           borderRadius: 0,
           fontSize: '0.875rem',
-          lineHeight: '1.6',
+          lineHeight: '1.7',
           padding: '1.25rem 1.5rem',
-          background: isDark ? '#0f172a' : '#1e293b',
+          background: '#0f172a',
         }}
-        codeTagProps={{ style: { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" } }}
+        codeTagProps={{
+          style: { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }
+        }}
       >
         {code}
       </SyntaxHighlighter>
@@ -121,15 +115,32 @@ function CodeBlock({ children, className, isDark }) {
   )
 }
 
-function MarkdownRenderer({ content, isDark }) {
+function MarkdownRenderer({ content }) {
   const components = {
-    code({ node, inline, className, children, ...props }) {
-      if (inline) {
-        return <code className={className} {...props}>{children}</code>
-      }
-      return <CodeBlock className={className} isDark={isDark}>{children}</CodeBlock>
+    // In react-markdown v10, pre wraps block code. We strip pre and let code handle it.
+    pre({ children }) {
+      return <>{children}</>
     },
-    // Style links
+    code({ className, children, ...props }) {
+      const match = /language-(\w+)/.exec(className || '')
+      const codeStr = String(children).replace(/\n$/, '')
+      // Block code: has a language class OR contains newlines (unfenced block)
+      const isBlock = Boolean(match) || codeStr.includes('\n')
+
+      if (isBlock) {
+        return <CodeBlock language={match?.[1]} code={codeStr} />
+      }
+      // Inline code
+      return (
+        <code
+          className="px-1.5 py-0.5 rounded text-[0.875em] font-mono font-medium
+            bg-slate-100 dark:bg-slate-800 text-rose-600 dark:text-rose-400"
+          {...props}
+        >
+          {children}
+        </code>
+      )
+    },
     a({ href, children, ...props }) {
       return (
         <a
@@ -137,7 +148,7 @@ function MarkdownRenderer({ content, isDark }) {
           target={href?.startsWith('http') ? '_blank' : undefined}
           rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
           className="text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300
-            underline underline-offset-2 decoration-violet-300/50 hover:decoration-violet-500
+            underline underline-offset-2 decoration-violet-300/60 hover:decoration-violet-500
             transition-colors duration-150"
           {...props}
         >
@@ -145,7 +156,6 @@ function MarkdownRenderer({ content, isDark }) {
         </a>
       )
     },
-    // Checkboxes
     input({ type, checked, ...props }) {
       if (type === 'checkbox') {
         return (
@@ -160,11 +170,11 @@ function MarkdownRenderer({ content, isDark }) {
       }
       return <input type={type} {...props} />
     },
-    // Horizontal rule
     hr() {
-      return <hr className="my-8 border-none h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
+      return (
+        <hr className="my-8 border-none h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
+      )
     },
-    // Headings with anchor IDs
     h1({ children, ...props }) {
       const id = String(children).toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')
       return <h1 id={id} {...props}>{children}</h1>
@@ -182,7 +192,6 @@ function MarkdownRenderer({ content, isDark }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks]}
-      rehypePlugins={[rehypeRaw]}
       components={components}
     >
       {content}
@@ -192,36 +201,48 @@ function MarkdownRenderer({ content, isDark }) {
 
 export default function App() {
   const [isDark, setIsDark] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('theme')
-      if (stored) return stored === 'dark'
-      return window.matchMedia('(prefers-color-scheme: dark)').matches
-    }
-    return false
+    const stored = localStorage.getItem('readme-theme')
+    if (stored) return stored === 'dark'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
   })
   const [content, setContent] = useState(SAMPLE_MD)
-  const [view, setView] = useState('split') // 'split' | 'editor' | 'preview'
+  const [view, setView] = useState('split')
   const [isDragging, setIsDragging] = useState(false)
   const [fileName, setFileName] = useState(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [mobileTab, setMobileTab] = useState('preview') // 'editor' | 'preview'
+  const [mobileTab, setMobileTab] = useState('preview')
   const fileInputRef = useRef(null)
-  const previewRef = useRef(null)
+  const appRef = useRef(null)
 
+  // Apply dark class to <html> for Tailwind v4 class-based dark mode
   useEffect(() => {
     const root = document.documentElement
     if (isDark) {
       root.classList.add('dark')
-      localStorage.setItem('theme', 'dark')
     } else {
       root.classList.remove('dark')
-      localStorage.setItem('theme', 'light')
     }
+    localStorage.setItem('readme-theme', isDark ? 'dark' : 'light')
   }, [isDark])
+
+  // Native fullscreen API
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  useEffect(() => {
+    const onFSChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onFSChange)
+    return () => document.removeEventListener('fullscreenchange', onFSChange)
+  }, [])
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!document.fullscreenElement) {
+      await appRef.current?.requestFullscreen?.()
+    } else {
+      await document.exitFullscreen?.()
+    }
+  }, [])
 
   const handleFile = useCallback((file) => {
     if (!file) return
-    if (!file.name.endsWith('.md') && !file.name.endsWith('.markdown') && !file.name.endsWith('.txt')) {
+    if (!/\.(md|markdown|txt)$/.test(file.name)) {
       alert('Please upload a .md, .markdown, or .txt file')
       return
     }
@@ -237,8 +258,7 @@ export default function App() {
   const handleDrop = useCallback((e) => {
     e.preventDefault()
     setIsDragging(false)
-    const file = e.dataTransfer.files[0]
-    handleFile(file)
+    handleFile(e.dataTransfer.files[0])
   }, [handleFile])
 
   const handleDragOver = useCallback((e) => {
@@ -246,7 +266,9 @@ export default function App() {
     setIsDragging(true)
   }, [])
 
-  const handleDragLeave = useCallback(() => setIsDragging(false), [])
+  const handleDragLeave = useCallback((e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false)
+  }, [])
 
   const handleDownload = useCallback(() => {
     const blob = new Blob([content], { type: 'text/markdown' })
@@ -266,53 +288,57 @@ export default function App() {
   const charCount = content.length
   const lineCount = content.split('\n').length
 
+  const viewButtons = [
+    { id: 'editor', label: 'Editor', icon: Code2 },
+    { id: 'split',  label: 'Split',  icon: Menu },
+    { id: 'preview',label: 'Preview',icon: Eye },
+  ]
+
+  const showEditor = view === 'editor' || view === 'split'
+  const showPreview = view === 'preview' || view === 'split'
+
   return (
     <div
-      className={`min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950 transition-colors duration-200
-        ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}
+      ref={appRef}
+      className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
     >
       {/* Drag overlay */}
       {isDragging && (
-        <div className="fixed inset-0 z-50 bg-violet-600/20 backdrop-blur-sm flex items-center justify-center">
+        <div className="fixed inset-0 z-50 bg-violet-600/20 backdrop-blur-sm flex items-center justify-center pointer-events-none">
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-12 text-center border-2 border-dashed border-violet-400">
             <Upload className="mx-auto mb-4 text-violet-500" size={40} />
             <p className="text-xl font-semibold text-gray-800 dark:text-gray-100">Drop your Markdown file</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">.md, .markdown, or .txt</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">.md · .markdown · .txt</p>
           </div>
         </div>
       )}
 
-      {/* Header */}
-      <header className="no-print sticky top-0 z-40 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md
-        border-b border-gray-200/80 dark:border-gray-800/80">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      {/* ── Header ─────────────────────────────────────────── */}
+      <header className="shrink-0 z-40 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
+        <div className="px-4 sm:px-5 h-14 flex items-center justify-between gap-4">
+
           {/* Logo */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-sm">
               <FileText size={14} className="text-white" />
             </div>
-            <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm tracking-tight">
-              readme
-              <span className="text-violet-500">.guptasahil.in</span>
+            <span className="font-semibold text-gray-900 dark:text-white text-[15px] tracking-tight select-none">
+              Read<span className="text-violet-500">Me</span>
             </span>
           </div>
 
-          {/* View switcher — desktop */}
-          <div className="hidden sm:flex items-center gap-1 bg-gray-100 dark:bg-gray-800/70 rounded-lg p-1">
-            {[
-              { id: 'editor', label: 'Editor', icon: Code2 },
-              { id: 'split', label: 'Split', icon: Menu },
-              { id: 'preview', label: 'Preview', icon: Eye },
-            ].map(({ id, label, icon: Icon }) => (
+          {/* View switcher */}
+          <div className="hidden sm:flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+            {viewButtons.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setView(id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150 cursor-pointer
                   ${view === id
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                   }`}
               >
@@ -323,13 +349,13 @@ export default function App() {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2">
-            {/* File name badge */}
+          <div className="flex items-center gap-1.5">
             {fileName && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-violet-50 dark:bg-violet-900/20
-                text-violet-700 dark:text-violet-300 rounded-full text-xs font-medium border border-violet-200/60 dark:border-violet-700/40">
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1
+                bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300
+                rounded-full text-xs font-medium border border-violet-200/60 dark:border-violet-700/40">
                 <FileText size={11} />
-                {fileName}
+                <span className="max-w-[140px] truncate">{fileName}</span>
                 <button
                   onClick={() => { setFileName(null); setContent('') }}
                   className="hover:text-violet-900 dark:hover:text-violet-100 cursor-pointer"
@@ -350,8 +376,9 @@ export default function App() {
             <button
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                bg-violet-600 hover:bg-violet-700 text-white shadow-sm shadow-violet-500/20
-                transition-all duration-150 cursor-pointer"
+                bg-violet-600 hover:bg-violet-700 active:bg-violet-800
+                text-white shadow-sm shadow-violet-500/25
+                transition-colors duration-150 cursor-pointer"
             >
               <Upload size={13} />
               <span className="hidden sm:inline">Upload .md</span>
@@ -367,7 +394,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setIsFullscreen(f => !f)}
+              onClick={toggleFullscreen}
               title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
               className="hidden sm:flex p-2 rounded-lg text-gray-500 dark:text-gray-400
                 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-150 cursor-pointer"
@@ -377,7 +404,7 @@ export default function App() {
 
             <button
               onClick={() => setIsDark(d => !d)}
-              title={isDark ? 'Light mode' : 'Dark mode'}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               className="p-2 rounded-lg text-gray-500 dark:text-gray-400
                 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-150 cursor-pointer"
             >
@@ -388,7 +415,7 @@ export default function App() {
       </header>
 
       {/* Mobile tab bar */}
-      <div className="sm:hidden no-print flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+      <div className="sm:hidden shrink-0 flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
         {['editor', 'preview'].map(tab => (
           <button
             key={tab}
@@ -404,32 +431,35 @@ export default function App() {
         ))}
       </div>
 
-      {/* Main */}
-      <main className="flex-1 flex overflow-hidden max-w-screen-2xl mx-auto w-full">
+      {/* ── Main ───────────────────────────────────────────── */}
+      <main className="flex-1 flex min-h-0">
+
         {/* Editor pane */}
         <div
-          className={`flex flex-col
-            ${view === 'split' ? 'hidden sm:flex sm:w-1/2 border-r border-gray-200 dark:border-gray-800' : ''}
-            ${view === 'editor' ? 'flex w-full' : ''}
-            ${view === 'preview' ? 'hidden' : ''}
-            ${mobileTab === 'editor' ? 'flex sm:hidden w-full' : ''}
-            ${mobileTab === 'preview' ? 'hidden sm:flex' : ''}
+          className={`flex-col min-h-0
+            ${view === 'split'
+              ? 'hidden sm:flex w-1/2 border-r border-gray-200 dark:border-gray-800'
+              : view === 'editor'
+              ? 'flex w-full'
+              : 'hidden'
+            }
+            ${mobileTab === 'editor' ? '!flex sm:hidden w-full' : ''}
           `}
         >
           {/* Editor toolbar */}
-          <div className="no-print flex items-center justify-between px-4 py-2
-            bg-white dark:bg-gray-950 border-b border-gray-200/60 dark:border-gray-800/60">
-            <span className="text-xs text-gray-400 dark:text-gray-500 font-medium tracking-wide uppercase">
+          <div className="shrink-0 flex items-center justify-between px-4 py-2
+            border-b border-gray-100 dark:border-gray-800/70 bg-white dark:bg-gray-950">
+            <span className="text-[11px] text-gray-400 dark:text-gray-500 font-semibold tracking-widest uppercase">
               Markdown
             </span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 dark:text-gray-500">
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-gray-400 dark:text-gray-500">
                 {lineCount} lines · {wordCount} words
               </span>
               <button
                 onClick={() => setContent('')}
-                className="text-xs text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
-                title="Clear"
+                title="Clear editor"
+                className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
               >
                 <X size={13} />
               </button>
@@ -441,48 +471,45 @@ export default function App() {
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="# Start typing Markdown here…&#10;&#10;Or upload a .md file using the button above."
+              placeholder={'# Start typing Markdown here…\n\nOr upload a .md file using the button above.'}
               spellCheck={false}
-              className="w-full h-full min-h-96 p-6 resize-none outline-none font-mono text-sm
-                leading-relaxed text-gray-700 dark:text-gray-300 bg-transparent
-                placeholder:text-gray-300 dark:placeholder:text-gray-600"
+              className="w-full h-full min-h-full p-5 resize-none outline-none text-sm leading-7
+                text-gray-700 dark:text-gray-300 bg-transparent
+                placeholder:text-gray-300 dark:placeholder:text-gray-700"
               style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}
             />
           </div>
         </div>
 
-        {/* Divider — split only */}
-        {view === 'split' && (
-          <div className="hidden sm:block w-px bg-gray-200 dark:bg-gray-800 shrink-0" />
-        )}
-
         {/* Preview pane */}
         <div
-          ref={previewRef}
-          className={`flex flex-col overflow-auto
-            ${view === 'split' ? 'hidden sm:flex sm:flex-1' : ''}
-            ${view === 'preview' ? 'flex flex-1' : ''}
-            ${view === 'editor' ? 'hidden' : ''}
-            ${mobileTab === 'preview' ? 'flex sm:hidden flex-1' : ''}
-            ${mobileTab === 'editor' ? 'hidden sm:flex' : ''}
+          className={`flex-col min-h-0 overflow-auto
+            ${view === 'split'
+              ? 'hidden sm:flex flex-1'
+              : view === 'preview'
+              ? 'flex flex-1'
+              : 'hidden'
+            }
+            ${mobileTab === 'preview' ? '!flex sm:hidden flex-1' : ''}
+            bg-white dark:bg-gray-950
           `}
         >
           {/* Preview toolbar */}
-          <div className="no-print sticky top-0 flex items-center justify-between px-4 sm:px-8 py-2
+          <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-5 sm:px-8 py-2
             bg-white/90 dark:bg-gray-950/90 backdrop-blur-sm
-            border-b border-gray-200/60 dark:border-gray-800/60 z-10">
-            <span className="text-xs text-gray-400 dark:text-gray-500 font-medium tracking-wide uppercase">
+            border-b border-gray-100 dark:border-gray-800/70">
+            <span className="text-[11px] text-gray-400 dark:text-gray-500 font-semibold tracking-widest uppercase">
               Preview
             </span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 dark:text-gray-500">
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-gray-400 dark:text-gray-500">
                 {charCount.toLocaleString()} chars
               </span>
               <button
                 onClick={handleCopyAll}
                 title="Copy raw Markdown"
-                className="text-xs flex items-center gap-1 text-gray-400 hover:text-gray-700
-                  dark:hover:text-gray-200 transition-colors cursor-pointer"
+                className="flex items-center gap-1 text-[11px] text-gray-400
+                  hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
               >
                 <Copy size={12} />
                 <span className="hidden sm:inline">Copy MD</span>
@@ -490,26 +517,26 @@ export default function App() {
             </div>
           </div>
 
-          {/* Rendered content */}
-          <div className="flex-1 px-6 sm:px-12 md:px-16 lg:px-24 py-10
-            bg-white dark:bg-gray-950">
+          {/* Rendered markdown */}
+          <div className="flex-1 px-5 sm:px-10 md:px-16 lg:px-24 py-10">
             {content.trim() ? (
-              <div className="prose prose-gray dark:prose-invert max-w-3xl mx-auto
+              <article className="prose prose-gray dark:prose-invert max-w-3xl mx-auto
                 prose-headings:font-semibold prose-headings:tracking-tight
-                prose-h1:text-3xl prose-h1:mb-4
-                prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-4 prose-h2:border-b prose-h2:border-gray-200 prose-h2:dark:border-gray-800 prose-h2:pb-2
+                prose-h1:text-[2rem] prose-h1:leading-tight prose-h1:mb-4
+                prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-3 prose-h2:pb-2
+                prose-h2:border-b prose-h2:border-gray-200 dark:prose-h2:border-gray-800
                 prose-h3:text-xl prose-h3:mt-8
                 prose-p:leading-7 prose-p:text-gray-700 dark:prose-p:text-gray-300
                 prose-li:text-gray-700 dark:prose-li:text-gray-300
-                prose-strong:text-gray-900 dark:prose-strong:text-gray-100 prose-strong:font-semibold
-                prose-table:text-sm
-                prose-th:font-semibold prose-th:text-gray-900 dark:prose-th:text-gray-100
-                prose-td:text-gray-700 dark:prose-td:text-gray-300
-                prose-blockquote:text-gray-600 dark:prose-blockquote:text-gray-400 prose-blockquote:not-italic
-                prose-a:no-underline prose-img:rounded-xl prose-img:shadow-md
+                prose-strong:font-semibold prose-strong:text-gray-900 dark:prose-strong:text-gray-100
+                prose-em:text-gray-700 dark:prose-em:text-gray-300
+                prose-table:text-sm prose-th:font-semibold
+                prose-blockquote:not-italic
+                prose-img:rounded-xl prose-img:shadow-md
+                prose-a:no-underline
               ">
-                <MarkdownRenderer content={content} isDark={isDark} />
-              </div>
+                <MarkdownRenderer content={content} />
+              </article>
             ) : (
               <div className="max-w-3xl mx-auto flex flex-col items-center justify-center min-h-80 text-center">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100
@@ -528,18 +555,18 @@ export default function App() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="no-print border-t border-gray-200/60 dark:border-gray-800/60
-        bg-white/80 dark:bg-gray-950/80 backdrop-blur-sm">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 h-10 flex items-center justify-between">
-          <span className="text-xs text-gray-400 dark:text-gray-600">
+      {/* ── Footer ─────────────────────────────────────────── */}
+      <footer className="shrink-0 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+        <div className="px-4 sm:px-5 h-9 flex items-center justify-between">
+          <span className="text-[11px] text-gray-400 dark:text-gray-600">
             Drop a .md file anywhere to open it
           </span>
           <a
             href="https://guptasahil.in"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-gray-400 dark:text-gray-600 hover:text-violet-500 dark:hover:text-violet-400 transition-colors"
+            className="text-[11px] text-gray-400 dark:text-gray-600
+              hover:text-violet-500 dark:hover:text-violet-400 transition-colors"
           >
             guptasahil.in
           </a>
