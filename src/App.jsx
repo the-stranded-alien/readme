@@ -396,8 +396,8 @@ function TocSidebar({ headings, activeId, onNavigate }) {
                 <span className="toc-subdot" />
               )}
               <span className="truncate" style={{
-                fontSize: h.level === 1 ? 12 : 11,
-                fontWeight: h.level === 1 ? 600 : h.level === 2 ? 450 : 400,
+                fontSize: h.level === 1 ? 13 : h.level === 2 ? 12 : 11.5,
+                fontWeight: h.level === 1 ? 600 : h.level === 2 ? 500 : 400,
                 letterSpacing: h.level === 1 ? '-0.01em' : 'normal',
                 opacity: h.level === 3 && !isActive ? 0.75 : 1,
               }}>
@@ -811,12 +811,12 @@ export default function App() {
           </div>
 
           {/* Preview body: TOC + content */}
-          <div className="flex-1 flex min-h-0">
+          <div className="flex-1 flex min-h-0 relative">
             {/* TOC */}
             <div
               className="shrink-0 overflow-y-auto surface-toc"
               style={{
-                width: tocVisible ? 210 : 0,
+                width: tocVisible ? 230 : 0,
                 opacity: tocVisible ? 1 : 0,
                 overflow: tocVisible ? 'auto' : 'hidden',
                 transition: 'width .25s cubic-bezier(.4,0,.2,1), opacity .2s',
@@ -837,7 +837,7 @@ export default function App() {
             </div>
 
             {/* Scrollable content */}
-            <div ref={previewScrollRef} className="flex-1 overflow-auto surface-preview relative">
+            <div ref={previewScrollRef} className="flex-1 overflow-auto surface-preview">
               {content.trim() ? (
                 <div className="px-6 sm:px-10 md:px-14 lg:px-16 py-10">
                   <div className="rm-prose anim-slide-up">
@@ -863,18 +863,18 @@ export default function App() {
                   </div>
                 </div>
               )}
-
-              {/* Scroll-to-top */}
-              {showScrollTop && (
-                <button
-                  className="scroll-top-btn anim-pop-in no-print"
-                  onClick={() => previewScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
-                  title="Back to top"
-                >
-                  <ArrowUp size={15} />
-                </button>
-              )}
             </div>
+
+            {/* Scroll-to-top — outside the scroll container so it stays fixed */}
+            {showScrollTop && (
+              <button
+                className="scroll-top-btn anim-pop-in no-print"
+                onClick={() => previewScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                title="Back to top"
+              >
+                <ArrowUp size={15} />
+              </button>
+            )}
           </div>
         </div>
       </main>
