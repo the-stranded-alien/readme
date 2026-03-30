@@ -1,0 +1,102 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-display: 'Fraunces', Georgia, serif;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(148 163 184 / 0.35); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(148 163 184 / 0.6); }
+.dark ::-webkit-scrollbar-thumb { background: rgb(71 85 105 / 0.5); }
+
+/* Inline code in prose */
+.prose :where(code):not(:where([class~="not-prose"] *)):not(pre code) {
+  background: rgb(241 245 249);
+  color: #e11d48;
+  padding: 0.15em 0.4em;
+  border-radius: 0.3rem;
+  font-size: 0.875em;
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+
+.dark .prose :where(code):not(:where([class~="not-prose"] *)):not(pre code) {
+  background: rgb(30 41 59);
+  color: #fb7185;
+}
+
+.prose :where(code):not(:where([class~="not-prose"] *)):not(pre code)::before,
+.prose :where(code):not(:where([class~="not-prose"] *)):not(pre code)::after {
+  content: none;
+}
+
+/* Pre blocks reset — syntax highlighter handles styling */
+.prose pre {
+  padding: 0 !important;
+  background: transparent !important;
+  margin: 1.5rem 0 !important;
+}
+
+/* Blockquote */
+.prose blockquote {
+  border-left-color: rgb(139 92 246) !important;
+  background: rgb(139 92 246 / 0.05);
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+.dark .prose blockquote {
+  border-left-color: rgb(167 139 250) !important;
+  background: rgb(139 92 246 / 0.08);
+}
+
+/* Tables */
+.prose table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.prose thead th {
+  background: rgb(248 250 252);
+}
+.dark .prose thead th {
+  background: rgb(30 41 59);
+}
+
+.prose tbody tr:hover td {
+  background: rgb(248 250 252);
+}
+.dark .prose tbody tr:hover td {
+  background: rgb(30 41 59 / 0.5);
+}
+
+/* Textarea */
+textarea {
+  field-sizing: content;
+  min-height: 100%;
+}
+
+/* Resize handle */
+.resize-handle {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* Print styles */
+@media print {
+  .no-print { display: none !important; }
+  .prose { max-width: none; }
+}
