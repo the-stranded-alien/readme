@@ -81,45 +81,75 @@ body { margin: 0; font-family: var(--font-sans); }
 
 /* ── Color tokens ──────────────────────────────────────── */
 :root {
+  /* Surfaces */
   --bg-app:        #eef0f8;
   --bg-editor:     #f8f9ff;
   --bg-preview:    #ffffff;
-  --bg-header:     rgba(255,255,255,0.82);
-  --bg-toolbar:    rgba(248,249,255,0.9);
-  --bg-toc:        rgba(248,249,255,0.95);
-  --border:        #e3e6f3;
-  --border-strong: #d0d4e8;
-  --text-1:        #1a1f3a;
-  --text-2:        #3d4467;
-  --text-3:        #6b75a0;
-  --text-4:        #9aa1be;
-  --accent:        #7c3aed;
-  --accent-soft:   rgba(124,58,237,0.08);
-  --accent-border: rgba(124,58,237,0.25);
-  --shadow-sm:     0 1px 3px rgba(15,20,60,0.06), 0 1px 2px rgba(15,20,60,0.04);
-  --shadow-md:     0 4px 16px rgba(15,20,60,0.08), 0 1px 4px rgba(15,20,60,0.04);
-  --shadow-lg:     0 12px 40px rgba(15,20,60,0.12), 0 4px 12px rgba(15,20,60,0.06);
+  --bg-header:     rgba(255,255,255,0.85);
+  --bg-toolbar:    rgba(248,249,255,0.92);
+  --bg-toc:        rgba(246,247,253,0.97);
+  /* Borders */
+  --border:        #e2e5f0;
+  --border-strong: #cdd1e6;
+  /* Text */
+  --text-1:        #181d38;
+  --text-2:        #363c60;
+  --text-3:        #646d96;
+  --text-4:        #9ea6c4;
+  /* Accent */
+  --accent:        #6d28d9;
+  --accent-soft:   rgba(109,40,217,0.07);
+  --accent-border: rgba(109,40,217,0.2);
+  /* Code block */
+  --code-bg:            #f2f3f8;
+  --code-header-bg:     #e7e9f4;
+  --code-header-border: #d8daea;
+  --code-lang-color:    #8892b4;
+  --code-border:        #d8daea;
+  --code-ln-color:      #c0c6d8;
+  --copy-bg:            rgba(0,0,0,0.05);
+  --copy-color:         #7a82a0;
+  --copy-border:        rgba(0,0,0,0.08);
+  /* Shadows */
+  --shadow-sm:  0 1px 3px rgba(15,20,60,0.06), 0 1px 2px rgba(15,20,60,0.04);
+  --shadow-md:  0 4px 16px rgba(15,20,60,0.08), 0 1px 4px rgba(15,20,60,0.04);
+  --shadow-lg:  0 12px 40px rgba(15,20,60,0.12), 0 4px 12px rgba(15,20,60,0.06);
 }
 
 .dark {
+  /* Surfaces */
   --bg-app:        #07080f;
   --bg-editor:     #0b0d17;
   --bg-preview:    #0d0f1a;
-  --bg-header:     rgba(7,8,15,0.85);
-  --bg-toolbar:    rgba(10,12,20,0.88);
-  --bg-toc:        rgba(10,12,22,0.95);
+  --bg-header:     rgba(7,8,15,0.88);
+  --bg-toolbar:    rgba(10,12,20,0.9);
+  --bg-toc:        rgba(10,12,22,0.97);
+  /* Borders */
   --border:        #161c2e;
   --border-strong: #1e2540;
-  --text-1:        #e8eeff;
-  --text-2:        #b0bad4;
-  --text-3:        #6a7595;
-  --text-4:        #3a4260;
+  /* Text */
+  --text-1:        #e4eaff;
+  --text-2:        #a8b4d0;
+  --text-3:        #5e6a88;
+  --text-4:        #333d58;
+  /* Accent */
   --accent:        #a78bfa;
   --accent-soft:   rgba(167,139,250,0.1);
-  --accent-border: rgba(167,139,250,0.3);
-  --shadow-sm:     0 1px 3px rgba(0,0,0,0.3);
-  --shadow-md:     0 4px 16px rgba(0,0,0,0.4);
-  --shadow-lg:     0 12px 40px rgba(0,0,0,0.55);
+  --accent-border: rgba(167,139,250,0.28);
+  /* Code block */
+  --code-bg:            #0d0f1a;
+  --code-header-bg:     #12141f;
+  --code-header-border: rgba(255,255,255,0.05);
+  --code-lang-color:    #414868;
+  --code-border:        rgba(255,255,255,0.06);
+  --code-ln-color:      #2a304a;
+  --copy-bg:            rgba(255,255,255,0.06);
+  --copy-color:         #5c6480;
+  --copy-border:        rgba(255,255,255,0.06);
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.55);
 }
 
 /* ── App shell with mesh gradient ─────────────────────── */
@@ -276,19 +306,19 @@ body { margin: 0; font-family: var(--font-sans); }
 
 /* ── Code block ────────────────────────────────────────── */
 .code-wrapper {
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
   margin: 1.5rem 0;
-  border: 1px solid rgba(255,255,255,0.06);
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.04);
+  border: 1px solid var(--code-border);
+  box-shadow: var(--shadow-md);
 }
 .code-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  background: #12141f;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  background: var(--code-header-bg);
+  border-bottom: 1px solid var(--code-header-border);
 }
 .traffic-lights { display: flex; gap: 5px; align-items: center; }
 .tl { width: 11px; height: 11px; border-radius: 50%; }
@@ -301,7 +331,7 @@ body { margin: 0; font-family: var(--font-sans); }
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #4a5270;
+  color: var(--code-lang-color);
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -312,16 +342,17 @@ body { margin: 0; font-family: var(--font-sans); }
   gap: 5px;
   padding: 4px 10px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.06);
-  color: #6c7891;
+  background: var(--copy-bg);
+  color: var(--copy-color);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid var(--copy-border);
 }
-.copy-btn:hover { background: rgba(255,255,255,0.1); color: #a0aec0; }
-.copy-btn.copied { background: rgba(166,227,161,0.1); color: #a6e3a1; border-color: rgba(166,227,161,0.2); }
+.copy-btn:hover { filter: brightness(1.15); }
+.copy-btn.copied { background: rgba(64,160,43,0.1); color: #40a02b; border-color: rgba(64,160,43,0.25); }
+.dark .copy-btn.copied { background: rgba(166,227,161,0.1); color: #a6e3a1; border-color: rgba(166,227,161,0.2); }
 
 /* ── Editor textarea ───────────────────────────────────── */
 .editor-textarea {

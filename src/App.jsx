@@ -3,12 +3,25 @@ import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { codeTheme } from './codeTheme'
+import { darkTheme, lightTheme } from './codeTheme'
 import {
   Sun, Moon, Upload, Copy, Check, FileText, Eye, Code2,
   X, Download, Maximize2, Minimize2, Hash, ChevronRight,
   List, AlignLeft, PanelLeftOpen, PanelLeftClose
 } from 'lucide-react'
+
+// ── Hook: subscribe to dark/light mode from DOM ────────────────
+function useIsDark() {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      setDark(document.documentElement.classList.contains('dark'))
+    )
+    obs.observe(document.documentElement, { attributeFilter: ['class'] })
+    return () => obs.disconnect()
+  }, [])
+  return dark
+}
 
 // ── Custom SVG icons ───────────────────────────────────────────
 const SplitEqualIcon = () => (
@@ -125,6 +138,11 @@ function CopyButton({ text }) {
 
 // ── CodeBlock ──────────────────────────────────────────────────
 function CodeBlock({ language, code }) {
+  const dark = useIsDark()
+  const theme  = dark ? darkTheme  : lightTheme
+  const codeBg = dark ? '#0d0f1a' : '#f2f3f8'
+  const lnColor= dark ? '#2a304a' : '#c0c6d8'
+
   return (
     <div className="code-wrapper anim-slide-up">
       <div className="code-header" style={{ position: 'relative' }}>
@@ -137,16 +155,22 @@ function CodeBlock({ language, code }) {
         <CopyButton text={code} />
       </div>
       <SyntaxHighlighter
-        style={codeTheme}
+        style={theme}
         language={language || 'text'}
         PreTag="div"
         showLineNumbers={code.split('\n').length > 4}
-        lineNumberStyle={{ color: '#2e3454', fontSize: '11px', minWidth: '2.5em', paddingRight: '12px', userSelect: 'none' }}
+        lineNumberStyle={{
+          color: lnColor,
+          fontSize: '11px',
+          minWidth: '2.5em',
+          paddingRight: '14px',
+          userSelect: 'none',
+        }}
         customStyle={{
           margin: 0,
           padding: '20px 24px',
-          background: '#0d0f1a',
-          fontSize: '0.85rem',
+          background: codeBg,
+          fontSize: '0.855rem',
           lineHeight: '1.8',
           overflowX: 'auto',
         }}
