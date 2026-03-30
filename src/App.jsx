@@ -1,9 +1,12 @@
 import { useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import CodeMirror from '@uiw/react-codemirror'
+import { loadLanguage } from '@uiw/codemirror-extensions-langs'
+import { oneDark } from '@codemirror/theme-one-dark'
+import { githubLight } from '@uiw/codemirror-theme-github'
+import { EditorView } from '@codemirror/view'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { darkTheme, lightTheme } from './codeTheme'
 import {
   Sun, Moon, Upload, Copy, Check, FileText, Eye, Code2,
   X, Download, Maximize2, Minimize2, Hash, ChevronRight,
@@ -154,51 +157,61 @@ function applyBlockFormat(value, selStart, before) {
   }
 }
 
-// ── CopyButton ─────────────────────────────────────────────────
-function CopyButton({ text }) {
-  const [copied, setCopied] = useState(false)
-  const copy = useCallback(async () => {
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }, [text])
-  return (
-    <button onClick={copy} className={`copy-btn ${copied ? 'copied' : ''}`}>
-      {copied ? <Check size={11} /> : <Copy size={11} />}
-      {copied ? 'Copied!' : 'Copy'}
-    </button>
-  )
+// ── Language alias map ────────────────────────────────────────
+const LANG_ALIASES = {
+  js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx',
+  py: 'python', rb: 'ruby',
+  sh: 'shell', bash: 'shell', zsh: 'shell',
+  yml: 'yaml',
+  c: 'c', cc: 'cpp', h: 'cpp', hpp: 'cpp',
+  md: 'markdown',
+  rs: 'rust',
+}
+function normalizeLang(lang) {
+  const l = (lang || '').toLowerCase().trim()
+  return LANG_ALIASES[l] || l || null
 }
 
 // ── CodeBlock ──────────────────────────────────────────────────
 function CodeBlock({ rawLang, code }) {
-  const dark    = useIsDark()
+  const dark = useIsDark()
   const [wrapped, setWrapped] = useState(false)
-  const [showFade, setShowFade] = useState(false)
-  const scrollRef = useRef(null)
+  const [copied, setCopied] = useState(false)
 
   // Parse "language:filename.ext" or just "language"
   const colonIdx = (rawLang || '').indexOf(':')
   const language = colonIdx > -1 ? rawLang.slice(0, colonIdx) : (rawLang || '')
   const filename  = colonIdx > -1 ? rawLang.slice(colonIdx + 1) : null
 
-  const theme  = dark ? darkTheme  : lightTheme
-  const codeBg = dark ? '#0c0e1c'  : '#f0f1f7'
-  const lnColor= dark ? '#252b48'  : '#bcc1d8'
-
-  // Show right-fade when content overflows
-  useEffect(() => {
-    if (wrapped) { setShowFade(false); return }
-    const el = scrollRef.current?.querySelector('pre, div[class*="language"]')
-    if (!el) return
-    const check = () => setShowFade(el.scrollWidth > el.clientWidth)
-    check()
-    const obs = new ResizeObserver(check)
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [code, wrapped])
-
   const lineCount = code.split('\n').length
+
+  const langExtension = useMemo(() => {
+    const normalized = normalizeLang(language)
+    if (!normalized) return []
+    try { const l = loadLanguage(normalized); return l ? [l] : [] } catch { return [] }
+  }, [language])
+
+  // CSS-var-aware background + gutter overrides; rebuilt when layout changes
+  const bgOverride = useMemo(() => EditorView.theme({
+    '&':                        { background: 'var(--code-bg) !important' },
+    '&.cm-focused':             { outline: 'none' },
+    '.cm-gutters':              { background: 'var(--code-bg) !important', borderRight: '1px solid var(--code-header-border)' },
+    '.cm-lineNumbers .cm-gutterElement': { color: 'var(--code-ln-color)', fontSize: '11px', minWidth: '2.5em', paddingRight: '12px', userSelect: 'none' },
+    '.cm-activeLine':           { background: 'transparent !important' },
+    '.cm-activeLineGutter':     { background: 'transparent !important' },
+    '.cm-content':              { padding: lineCount > 4 ? '18px 20px 18px 4px' : '18px 22px', fontFamily: "'JetBrains Mono','Fira Code',monospace", fontSize: '.855rem', lineHeight: '1.8', whiteSpace: wrapped ? 'pre-wrap' : 'pre' },
+    '.cm-scroller':             { overflowX: wrapped ? 'hidden' : 'auto' },
+    '.cm-selectionBackground':  { background: 'transparent !important' },
+    '&.cm-editor .cm-selectionBackground': { background: 'transparent !important' },
+  }), [wrapped, lineCount])
+
+  const extensions = useMemo(() => [...langExtension, bgOverride], [langExtension, bgOverride])
+
+  const copy = useCallback(async () => {
+    await navigator.clipboard.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [code])
 
   return (
     <div className="code-wrapper anim-slide-up">
@@ -230,30 +243,37 @@ function CodeBlock({ rawLang, code }) {
               <WrapText size={12} />
             </button>
           )}
-          <CopyButton text={code} />
+          <button onClick={copy} className={`copy-btn ${copied ? 'copied' : ''}`}>
+            {copied ? <Check size={11} /> : <Copy size={11} />}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
         </div>
       </div>
 
       {/* Code body */}
-      <div className="code-body" ref={scrollRef}>
-        <SyntaxHighlighter
-          style={theme}
-          language={language || 'text'}
-          PreTag="div"
-          showLineNumbers={lineCount > 4}
-          wrapLongLines={wrapped}
-          lineNumberStyle={{ color: lnColor, fontSize: '11px', minWidth: '2.25em', paddingRight: '14px', userSelect: 'none', flexShrink: 0 }}
-          customStyle={{
-            margin: 0, borderRadius: 0,
-            padding: lineCount > 4 ? '18px 20px 18px 16px' : '18px 22px',
-            background: codeBg, fontSize: '.855rem',
-            lineHeight: '1.8', overflowX: wrapped ? 'hidden' : 'auto',
+      <div className="code-body">
+        <CodeMirror
+          value={code}
+          readOnly
+          editable={false}
+          theme={dark ? oneDark : githubLight}
+          extensions={extensions}
+          basicSetup={{
+            lineNumbers: lineCount > 4,
+            highlightActiveLine: false,
+            highlightActiveLineGutter: false,
+            foldGutter: false,
+            dropCursor: false,
+            allowMultipleSelections: false,
+            indentOnInput: false,
+            bracketMatching: false,
+            closeBrackets: false,
+            autocompletion: false,
+            crosshairCursor: false,
+            highlightSelectionMatches: false,
+            searchKeymap: false,
           }}
-          codeTagProps={{ style: { fontFamily: "'JetBrains Mono','Fira Code',monospace" } }}
-        >
-          {code}
-        </SyntaxHighlighter>
-        {showFade && !wrapped && <div className="code-fade-right" />}
+        />
       </div>
     </div>
   )
@@ -341,25 +361,54 @@ function TocSidebar({ headings, activeId, onNavigate }) {
     </div>
   )
   return (
-    <nav className="flex flex-col gap-0.5 py-2">
-      {headings.map((h, i) => (
-        <button
-          key={`${h.id}-${i}`}
-          onClick={() => onNavigate(h.id)}
-          className={`toc-item anim-slide-left ${activeId === h.id ? 'active' : ''}`}
-          style={{
-            paddingLeft: h.level === 1 ? 10 : h.level === 2 ? 18 : 28,
-            animationDelay: `${Math.min(i * 30, 180)}ms`,
-          }}
-        >
-          {h.level === 1 && <Hash size={9} style={{ opacity: .5, flexShrink: 0 }} />}
-          {h.level === 2 && <span className="toc-dot" />}
-          {h.level === 3 && <ChevronRight size={8} style={{ opacity: .35, flexShrink: 0 }} />}
-          <span className="truncate" style={{ fontSize: h.level === 1 ? 12 : 11, fontWeight: h.level === 1 ? 600 : 400 }}>
-            {h.text}
-          </span>
-        </button>
-      ))}
+    <nav className="py-2">
+      {headings.map((h, i) => {
+        const isActive = activeId === h.id
+        const depth = h.level - 1 // 0, 1, 2
+        // Each depth level adds a vertical guide at that column
+        const guides = Array.from({ length: depth })
+        return (
+          <div
+            key={`${h.id}-${i}`}
+            className="relative"
+          >
+            {/* Vertical tree guide lines for nested items */}
+            {guides.map((_, d) => (
+              <div
+                key={d}
+                className="toc-guide"
+                style={{ left: `${d * 14 + 10}px` }}
+              />
+            ))}
+            <button
+              onClick={() => onNavigate(h.id)}
+              className={`toc-item anim-slide-left ${isActive ? 'active' : ''}`}
+              style={{
+                paddingLeft: `${depth * 14 + (depth > 0 ? 22 : 8)}px`,
+                animationDelay: `${Math.min(i * 30, 180)}ms`,
+              }}
+            >
+              {h.level === 1 && (
+                <Hash size={9} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.45 }} />
+              )}
+              {h.level === 2 && (
+                <span className="toc-dot" style={{ opacity: isActive ? 1 : 0.5 }} />
+              )}
+              {h.level === 3 && (
+                <span className="toc-subdot" />
+              )}
+              <span className="truncate" style={{
+                fontSize: h.level === 1 ? 12 : 11,
+                fontWeight: h.level === 1 ? 600 : h.level === 2 ? 450 : 400,
+                letterSpacing: h.level === 1 ? '-0.01em' : 'normal',
+                opacity: h.level === 3 && !isActive ? 0.75 : 1,
+              }}>
+                {h.text}
+              </span>
+            </button>
+          </div>
+        )
+      })}
     </nav>
   )
 }
