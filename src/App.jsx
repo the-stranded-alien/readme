@@ -513,10 +513,13 @@ export default function App() {
     const s = localStorage.getItem('readme-theme')
     return s ? s === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
   })
-  const [content, setContent]       = useState(SAMPLE_MD)
+  const [content, setContent]       = useState(() => {
+    const saved = localStorage.getItem('readme-content')
+    return saved !== null ? saved : SAMPLE_MD
+  })
   const [view, setView]             = useState('split')
   const [isDragging, setIsDragging] = useState(false)
-  const [fileName, setFileName]     = useState(null)
+  const [fileName, setFileName]     = useState(() => localStorage.getItem('readme-filename') || null)
   const [mobileTab, setMobileTab]   = useState('preview')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [tocVisible, setTocVisible] = useState(true)
@@ -540,6 +543,13 @@ export default function App() {
     setIsDark(d => !d)
     setThemeKey(k => k + 1)
   }, [])
+
+  // Persist content + filename to localStorage
+  useEffect(() => { localStorage.setItem('readme-content', content) }, [content])
+  useEffect(() => {
+    if (fileName) localStorage.setItem('readme-filename', fileName)
+    else localStorage.removeItem('readme-filename')
+  }, [fileName])
 
   // Fullscreen
   useEffect(() => {
