@@ -73,50 +73,54 @@ body { margin: 0; font-family: var(--font-sans); }
 }
 
 .dark {
-  --bg-app:        #070810;
-  --bg-editor:     #0b0c18;
-  --bg-preview:    #0d0e1c;
-  --bg-header:     rgba(7,8,16,0.9);
-  --bg-toolbar:    rgba(10,11,20,0.92);
-  --bg-toc:        rgba(9,10,20,0.98);
-  --border:        #151828;
-  --border-light:  #0f1120;
-  --border-strong: #1c2038;
-  --text-1:        #e2e8ff;
-  --text-2:        #a4aece;
-  --text-3:        #575e80;
-  --text-4:        #2e3450;
+  --bg-app:        #13141f;
+  --bg-editor:     #191a2c;
+  --bg-preview:    #1c1d2f;
+  --bg-header:     rgba(19,20,31,0.92);
+  --bg-toolbar:    rgba(22,23,36,0.95);
+  --bg-toc:        rgba(20,21,34,0.98);
+  --border:        #262840;
+  --border-light:  #1e2034;
+  --border-strong: #343650;
+  --text-1:        #e8ecff;
+  --text-2:        #bcc4e4;
+  --text-3:        #6b7298;
+  --text-4:        #3e4568;
   --accent:        #a78bfa;
   --accent-2:      #818cf8;
   --accent-soft:   rgba(167,139,250,0.1);
   --accent-border: rgba(167,139,250,0.25);
-  --code-bg:            #0c0e1c;
-  --code-header-bg:     #11131e;
-  --code-header-border: rgba(255,255,255,0.04);
-  --code-lang-color:    #3d4468;
-  --code-border:        rgba(255,255,255,0.05);
-  --code-ln-color:      #252b48;
-  --copy-bg:            rgba(255,255,255,0.05);
-  --copy-color:         #555a7a;
-  --copy-border:        rgba(255,255,255,0.05);
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
-  --shadow-md: 0 4px 16px rgba(0,0,0,.4);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,.55);
-  --shadow-xl: 0 20px 60px rgba(0,0,0,.7);
+  --code-bg:            #181a2c;
+  --code-header-bg:     #1c1e30;
+  --code-header-border: rgba(255,255,255,0.07);
+  --code-lang-color:    #484e72;
+  --code-border:        rgba(255,255,255,0.08);
+  --code-ln-color:      #2e3358;
+  --copy-bg:            rgba(255,255,255,0.07);
+  --copy-color:         #606690;
+  --copy-border:        rgba(255,255,255,0.08);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.35);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.45);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.6);
+  --shadow-xl: 0 20px 60px rgba(0,0,0,.72);
 }
 
 /* ── App shell ────────────────────────────────────────────── */
 .app-shell {
   background-color: var(--bg-app);
   background-image:
-    radial-gradient(ellipse 80% 60% at 10% 0%,  rgba(109,40,217,.06) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 50% at 90% 100%,rgba(79,70,229,.05)  0%, transparent 55%);
+    radial-gradient(ellipse 80% 60% at 10% 0%,  rgba(109,40,217,.07) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 90% 100%,rgba(79,70,229,.055) 0%, transparent 55%),
+    radial-gradient(rgba(100,80,200,.045) 1.5px, transparent 1.5px);
+  background-size: auto, auto, 24px 24px;
 }
 .dark .app-shell {
   background-color: var(--bg-app);
   background-image:
-    radial-gradient(ellipse 70% 55% at 8%  5%,  rgba(109,40,217,.2) 0%, transparent 55%),
-    radial-gradient(ellipse 55% 45% at 92% 90%, rgba(79,70,229,.13) 0%, transparent 55%);
+    radial-gradient(ellipse 70% 55% at 8%  5%,  rgba(109,40,217,.32) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 45% at 92% 90%, rgba(79,70,229,.22)  0%, transparent 55%),
+    radial-gradient(rgba(140,120,255,.065) 1px, transparent 1px);
+  background-size: auto, auto, 26px 26px;
 }
 
 /* ── Grid / dot patterns ──────────────────────────────────── */
@@ -129,10 +133,21 @@ body { margin: 0; font-family: var(--font-sans); }
 
 /* ── Surface classes ──────────────────────────────────────── */
 .surface-header  { background: var(--bg-header);  border-bottom: 1px solid var(--border); }
-.surface-preview { background: var(--bg-preview); }
 .surface-toc     { background: var(--bg-toc);     border-right: 1px solid var(--border); }
 .surface-toolbar { background: var(--bg-toolbar); border-bottom: 1px solid var(--border); }
 .header-blur     { backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); }
+
+/* Preview surface — subtle dot texture in both modes */
+.surface-preview {
+  background-color: var(--bg-preview);
+  background-image: radial-gradient(rgba(90,70,180,.04) 1.5px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+.dark .surface-preview {
+  background-color: var(--bg-preview);
+  background-image: radial-gradient(rgba(140,120,255,.055) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
 
 /* ── Pill view-mode switcher ──────────────────────────────── */
 .pill-track {
