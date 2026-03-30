@@ -884,7 +884,7 @@ export default function App() {
         style={{ background: 'var(--bg-header)', borderTop: '1px solid var(--border)' }}>
         <div className="px-4 sm:px-5 h-8 flex items-center justify-between">
           <span style={{ fontSize: 10, color: 'var(--text-4)' }}>
-            Drop a .md file anywhere · Use <code style={{ fontSize: 10, background: 'var(--accent-soft)', color: 'var(--accent)', padding: '1px 5px', borderRadius: 3 }}>lang:filename.ext</code> in code fences for filenames
+            Drop a .md file anywhere to open it
           </span>
           <a href="https://guptasahil.in" target="_blank" rel="noopener noreferrer"
             style={{ fontSize: 10, color: 'var(--text-4)', textDecoration: 'none', transition: 'color .15s' }}
