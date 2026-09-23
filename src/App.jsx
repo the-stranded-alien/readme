@@ -11,6 +11,7 @@ import {
   List, AlignLeft, PanelLeftOpen, PanelLeftClose,
   Bold, Italic, Strikethrough, Link, Code, Minus,
   WrapText, ArrowUp, Heading1, Heading2, Quote,
+  FileDown, Loader2,
 } from 'lucide-react'
 
 // ── useIsDark — subscribes to <html class="dark"> ─────────────
@@ -527,6 +528,7 @@ export default function App() {
   const [showScrollTop, setShowScrollTop]     = useState(false)
   const [themeKey, setThemeKey]     = useState(0)
   const [copyAllDone, setCopyAllDone] = useState(false)
+  const [exportingPdf, setExportingPdf] = useState(false)
 
   const fileInputRef    = useRef(null)
   const appRef          = useRef(null)
@@ -619,6 +621,121 @@ export default function App() {
     a.click(); URL.revokeObjectURL(a.href)
   }, [content, fileName])
 
+  // Export the rendered preview to a paginated PDF.
+  // Each top-level markdown block (heading, paragraph, code block, table, …)
+  // is captured as its own canvas and flowed onto PDF pages, so blocks don't
+  // get sliced across a page break the way a single flat screenshot would.
+  const handleExportPdf = useCallback(async () => {
+    if (exportingPdf) return
+    const scroller = previewScrollRef.current
+    const root = scroller?.querySelector('.rm-prose')
+    if (!root || !scroller) return
+
+    setExportingPdf(true)
+    const prevScrollTop = scroller.scrollTop
+    document.documentElement.classList.add('pdf-export-active')
+
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas-pro'),
+        import('jspdf'),
+      ])
+
+      const rootVars = getComputedStyle(document.documentElement)
+      const bgColor     = rootVars.getPropertyValue('--bg-preview').trim() || (isDark ? '#1c1d2f' : '#ffffff')
+      const footerColor = isDark ? '#8b8fa8' : '#8a8fa3'
+
+      const PAGE_W = 210, PAGE_H = 297               // A4, mm
+      const MARGIN_X = 16, MARGIN_TOP = 18, MARGIN_BOTTOM = 16
+      const CONTENT_W    = PAGE_W - MARGIN_X * 2
+      const PAGE_BOTTOM  = PAGE_H - MARGIN_BOTTOM
+      const GAP = 3.2                                  // space between blocks, mm
+
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
+      const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
+      pdf.setProperties({ title: docTitle, creator: 'ReadMe' })
+
+      let cursorY = MARGIN_TOP
+      let pageIndex = 1
+      const paintPageBg = () => { pdf.setFillColor(bgColor); pdf.rect(0, 0, PAGE_W, PAGE_H, 'F') }
+      const stampFooter = () => {
+        pdf.setFontSize(8)
+        pdf.setTextColor(footerColor)
+        pdf.text(String(pageIndex), PAGE_W / 2, PAGE_H - 8, { align: 'center' })
+      }
+      const newPage = () => {
+        stampFooter()
+        pdf.addPage()
+        pageIndex += 1
+        paintPageBg()
+        cursorY = MARGIN_TOP
+      }
+      paintPageBg()
+
+      const scale = window.devicePixelRatio > 1 ? 2 : 1.6
+      const blocks = Array.from(root.children)
+
+      for (const block of blocks) {
+        // Code blocks use CodeMirror, which can virtualize off-screen lines
+        // and horizontally scroll long lines — scroll into view (so lines
+        // mount) before capturing; force-wrap is handled by the
+        // .pdf-export-active CSS override below.
+        const hasEditor = Boolean(block.querySelector?.('.cm-editor'))
+        block.scrollIntoView({ block: 'center' })
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+        if (hasEditor) await new Promise(r => setTimeout(r, 40))
+
+        const canvas = await html2canvas(block, {
+          scale, backgroundColor: bgColor, useCORS: true, logging: false,
+        })
+        if (!canvas.width || !canvas.height) continue
+
+        const imgW = CONTENT_W
+        const imgH = (canvas.height * imgW) / canvas.width
+        const isHeading = /^H[1-3]$/.test(block.tagName)
+
+        // Don't leave a heading stranded alone at the bottom of a page.
+        if (isHeading && PAGE_BOTTOM - cursorY < 26) newPage()
+
+        if (imgH > PAGE_BOTTOM - MARGIN_TOP) {
+          // Block taller than one page (long code block/table) — slice across pages.
+          let drawn = 0
+          while (drawn < imgH) {
+            if (PAGE_BOTTOM - cursorY < 10) newPage()
+            const spaceLeft = PAGE_BOTTOM - cursorY
+            const sliceMm = Math.min(spaceLeft, imgH - drawn)
+            const slicePx = Math.max(1, Math.round((sliceMm / imgH) * canvas.height))
+            const sliceCanvas = document.createElement('canvas')
+            sliceCanvas.width = canvas.width
+            sliceCanvas.height = slicePx
+            sliceCanvas.getContext('2d').drawImage(
+              canvas, 0, Math.round((drawn / imgH) * canvas.height),
+              canvas.width, slicePx, 0, 0, canvas.width, slicePx,
+            )
+            pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', MARGIN_X, cursorY, imgW, sliceMm)
+            cursorY += sliceMm
+            drawn += sliceMm
+          }
+          cursorY += GAP
+        } else {
+          if (cursorY + imgH > PAGE_BOTTOM) newPage()
+          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', MARGIN_X, cursorY, imgW, imgH)
+          cursorY += imgH + GAP
+        }
+      }
+      stampFooter()
+
+      pdf.save(`${docTitle}.pdf`)
+    } catch (err) {
+      console.error('PDF export failed', err)
+      alert('Sorry, exporting to PDF failed. Please try again.')
+    } finally {
+      document.documentElement.classList.remove('pdf-export-active')
+      scroller.scrollTop = prevScrollTop
+      setExportingPdf(false)
+    }
+  }, [exportingPdf, fileName, headings, isDark])
+
   const handleCopyAll = useCallback(async () => {
     await navigator.clipboard.writeText(content)
     setCopyAllDone(true)
@@ -693,6 +810,14 @@ export default function App() {
               <Upload size={13} /><span className="hidden sm:inline">Upload</span>
             </button>
             <button onClick={handleDownload} title="Download .md" className="btn-icon"><Download size={15} /></button>
+            <button
+              onClick={handleExportPdf}
+              title={exportingPdf ? 'Exporting PDF…' : 'Export as PDF'}
+              className="btn-icon"
+              disabled={exportingPdf || !content.trim()}
+            >
+              {exportingPdf ? <Loader2 size={15} className="spin-loader" /> : <FileDown size={15} />}
+            </button>
             <button onClick={toggleFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
               className="btn-icon hidden sm:flex">
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
