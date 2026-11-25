@@ -18,8 +18,9 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert,
+  Volume2, Pause, Play, Highlighter, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
+import Oneko, { ONEKO_SKINS } from 'oneko'
 import { readWorkspace, writeWorkspace } from './workspaceDb'
 import { analyzeDocument } from './documentAnalysis'
 import { makeDuplicateFileName } from './fileUtils'
@@ -1314,6 +1315,295 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
   )
 }
 
+const READING_PET_SKINS = ['lavender', 'classic', 'black', 'gray', 'calico', 'ginger', 'tuxedo']
+
+function ReadingPetCoatDropdown({ value, onChange }) {
+  const rootRef = useRef(null)
+  const [open, setOpen] = useState(false)
+  const selectedSkin = ONEKO_SKINS.find(skin => skin.id === value)
+
+  useEffect(() => {
+    if (!open) return undefined
+    const closeOutside = event => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false)
+    }
+    const closeOnEscape = event => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', closeOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  return (
+    <div className="reading-pet-coat" ref={rootRef}>
+      <button
+        type="button"
+        className="reading-pet-coat-trigger"
+        onClick={() => setOpen(current => !current)}
+        aria-label="Cat coat"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span>{selectedSkin?.name || 'Lavender'}</span>
+        <ChevronDown size={13} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="reading-pet-coat-menu" role="listbox" aria-label="Cat coats">
+          {READING_PET_SKINS.map(skinId => {
+            const skin = ONEKO_SKINS.find(item => item.id === skinId)
+            if (!skin) return null
+            return (
+              <button
+                key={skin.id}
+                type="button"
+                className={`reading-pet-coat-option${skin.id === value ? ' is-selected' : ''}`}
+                role="option"
+                aria-selected={skin.id === value}
+                onClick={() => { onChange(skin.id); setOpen(false) }}
+              >
+                <span>{skin.name}</span>
+                {skin.id === value && <Check size={13} aria-hidden="true" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function loadReadingPetPrefs() {
+  const defaults = { enabled: true, roaming: false, skin: 'lavender', speed: 10, scale: 1.25, catCount: 1 }
+  try {
+    const saved = JSON.parse(localStorage.getItem('readme-reading-pet') || '{}')
+    const migratedSkin = saved.version !== 3 && saved.skin === 'classic' ? 'lavender' : saved.skin
+    return {
+      ...defaults,
+      ...saved,
+      enabled: typeof saved.enabled === 'boolean' ? saved.enabled : defaults.enabled,
+      roaming: typeof saved.roaming === 'boolean' ? saved.roaming : defaults.roaming,
+      version: 3,
+      skin: READING_PET_SKINS.includes(migratedSkin) ? migratedSkin : defaults.skin,
+      speed: Number.isFinite(saved.speed) ? Math.min(18, Math.max(4, saved.speed)) : defaults.speed,
+      scale: Number.isFinite(saved.scale) ? Math.min(1.75, Math.max(.75, saved.scale)) : defaults.scale,
+      catCount: Number.isFinite(saved.catCount) ? Math.min(10, Math.max(1, Math.round(saved.catCount))) : defaults.catCount,
+    }
+  } catch {
+    return defaults
+  }
+}
+
+function ReadingPetFooter() {
+  const footerRef = useRef(null)
+  const catRefs = useRef([])
+  const widgetRef = useRef(null)
+  const [prefs, setPrefs] = useState(loadReadingPetPrefs)
+  const [footerBounds, setFooterBounds] = useState(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  useEffect(() => {
+    try { localStorage.setItem('readme-reading-pet', JSON.stringify({ ...prefs, version: 3 })) } catch { /* storage is optional */ }
+  }, [prefs])
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const rect = footerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setFooterBounds({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: window.innerWidth, height: window.innerHeight })
+    }
+    measure()
+    const observer = typeof ResizeObserver !== 'undefined' && footerRef.current
+      ? new ResizeObserver(measure)
+      : null
+    if (footerRef.current) observer?.observe(footerRef.current)
+    window.addEventListener('resize', measure)
+    document.addEventListener('fullscreenchange', measure)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+      document.removeEventListener('fullscreenchange', measure)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!settingsOpen) return undefined
+    const closeOutside = event => {
+      if (!widgetRef.current?.contains(event.target)) setSettingsOpen(false)
+    }
+    const closeOnEscape = event => {
+      if (event.key === 'Escape') setSettingsOpen(false)
+    }
+    document.addEventListener('mousedown', closeOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [settingsOpen])
+
+  useEffect(() => {
+    if (!prefs.enabled || prefs.roaming || !footerBounds) return undefined
+    const left = Math.min(footerBounds.right - 80, Math.max(40, footerBounds.left + 40))
+    const right = Math.max(left, footerBounds.right - 80)
+    const y = Math.min(footerBounds.height - 20, Math.max(20, (footerBounds.top + footerBounds.bottom) / 2))
+    let cancelled = false
+    const timers = []
+    const laneWidth = right - left
+    const segmentWidth = laneWidth / prefs.catCount
+    const laneRadius = 16 * prefs.scale
+    for (let index = 0; index < prefs.catCount; index += 1) {
+      const segmentLeft = left + segmentWidth * index
+      const segmentRight = index === prefs.catCount - 1 ? right : left + segmentWidth * (index + 1)
+      const inset = Math.min(laneRadius + 4, Math.max(0, (segmentRight - segmentLeft) / 2 - 8))
+      const targetLeft = segmentLeft + inset
+      const targetRight = Math.max(targetLeft, segmentRight - inset)
+      let walkingRight = index % 2 === 0
+      const walk = () => {
+        if (cancelled) return
+        const cat = catRefs.current[index]
+        if (!cat) {
+          timers[index] = setTimeout(walk, 300)
+          return
+        }
+        const target = { x: walkingRight ? targetRight : targetLeft, y }
+        walkingRight = !walkingRight
+        cat.goTo(target).then(() => {
+          if (!cancelled) timers[index] = setTimeout(walk, 900 + index * 110)
+        })
+      }
+      timers[index] = setTimeout(walk, 300 + index * 220)
+    }
+    return () => {
+      cancelled = true
+      timers.forEach(clearTimeout)
+    }
+  }, [prefs.enabled, prefs.roaming, prefs.speed, prefs.scale, prefs.catCount, footerBounds])
+
+  const zones = useMemo(() => {
+    if (prefs.roaming) return []
+    const laneZone = []
+    if (footerBounds) {
+      const { width, height } = footerBounds
+      const catRadius = 16 * prefs.scale * Math.SQRT2 + 1
+      const laneTop = Math.max(0, Math.min(height * .9, height - catRadius * 2 - 2))
+      laneZone.push({ id: 'pet-bottom-lane', type: 'avoid', rect: { left: 0, top: 0, right: width, bottom: laneTop } })
+    }
+    return [
+      ...laneZone,
+      { id: 'pet-settings-trigger', type: 'avoid', selector: '.reading-pet-trigger', padding: 8 },
+      ...(settingsOpen ? [{ id: 'pet-settings-popover', type: 'avoid', selector: '.reading-pet-popover', padding: 8 }] : []),
+    ]
+  }, [footerBounds, prefs.roaming, prefs.scale, settingsOpen])
+
+  const updatePref = (key, value) => setPrefs(current => ({ ...current, [key]: value }))
+  return (
+    <>
+      <footer ref={footerRef} className="reading-pet-footer no-print" aria-label="Reading companion">
+        <div className="reading-pet-widget" ref={widgetRef}>
+          <button
+            type="button"
+            className="reading-pet-trigger"
+            onClick={() => setSettingsOpen(open => !open)}
+            aria-label="Reading pet settings"
+            aria-expanded={settingsOpen}
+            aria-controls="reading-pet-settings"
+            data-tooltip="Pet Settings"
+          >
+            <Cat size={15} aria-hidden="true" />
+          </button>
+          {settingsOpen && (
+            <div className="reading-pet-popover anim-drop-in" id="reading-pet-settings" role="dialog" aria-label="Reading pet settings">
+              <div className="reading-pet-popover-heading">
+                <span>Pet settings</span>
+                <button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close pet settings"><X size={14} /></button>
+              </div>
+              <label className="reading-pet-setting">
+                <span>Coat</span>
+                <ReadingPetCoatDropdown value={prefs.skin} onChange={skin => updatePref('skin', skin)} />
+              </label>
+              <div className="reading-pet-count-row">
+                <span>Number of cats</span>
+                <div className="reading-pet-count-control" aria-label="Number of cats">
+                  <button type="button" onClick={() => updatePref('catCount', Math.max(1, prefs.catCount - 1))} disabled={prefs.catCount <= 1} aria-label="Remove a cat">
+                    <Minus size={13} />
+                  </button>
+                  <output aria-live="polite" aria-label="Cat count">{prefs.catCount}</output>
+                  <button type="button" onClick={() => updatePref('catCount', Math.min(10, prefs.catCount + 1))} disabled={prefs.catCount >= 10} aria-label="Add a cat">
+                    <Plus size={13} />
+                  </button>
+                </div>
+              </div>
+              <div className="reading-pet-popover-sliders">
+                <label className="reading-pet-setting reading-pet-range">
+                  <span>Speed <b>{prefs.speed}</b></span>
+                  <input type="range" min="4" max="18" step="1" value={prefs.speed} onChange={event => updatePref('speed', Number(event.target.value))} aria-label="Cat speed" />
+                </label>
+                <label className="reading-pet-setting reading-pet-range">
+                  <span>Size <b>{prefs.scale.toFixed(2)}×</b></span>
+                  <input type="range" min="0.75" max="1.75" step="0.25" value={prefs.scale} onChange={event => updatePref('scale', Number(event.target.value))} aria-label="Cat size" />
+                </label>
+              </div>
+              <div className="reading-pet-actions">
+                <button
+                  type="button"
+                  className="reading-pet-button reading-pet-roam"
+                  onClick={() => updatePref('roaming', !prefs.roaming)}
+                  disabled={!prefs.enabled}
+                  aria-pressed={prefs.roaming}
+                >
+                  {prefs.roaming ? <PanelBottom size={13} /> : <Footprints size={13} />}
+                  <span>{prefs.roaming ? 'Footer only' : 'Roam screen'}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`reading-pet-button reading-pet-toggle${prefs.enabled ? '' : ' is-disabled'}`}
+                  onClick={() => updatePref('enabled', !prefs.enabled)}
+                  aria-pressed={prefs.enabled}
+                >
+                  {prefs.enabled ? <span className="reading-pet-status-dot" /> : <Cat size={13} />}
+                  <span>{prefs.enabled ? 'Disable' : 'Enable'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </footer>
+      {prefs.enabled && Array.from({ length: prefs.catCount }, (_, index) => {
+        const left = 40
+        const right = Math.max(left, window.innerWidth - 80)
+        const fraction = (index + .5) / prefs.catCount
+        const initialPos = prefs.roaming
+          ? { x: window.innerWidth * (index + 1) / (prefs.catCount + 1), y: window.innerHeight * .9 }
+          : { x: left + (right - left) * fraction, y: Math.max(24, (footerBounds?.top ?? window.innerHeight - 64) + 32) }
+        return (
+          <Oneko
+            key={`${prefs.roaming ? 'pet-screen-roam' : 'pet-footer-lane'}-${index}`}
+            ref={cat => { catRefs.current[index] = cat }}
+            skin={prefs.skin}
+            speed={prefs.speed}
+            scale={prefs.scale}
+            followCursor={prefs.roaming}
+            chase={index === 0 ? 'cursor' : 'cat'}
+            freerunChance={prefs.roaming ? 0.06 : 0}
+            zones={zones}
+            zoneAttractionChance={0}
+            bubbleEnabled={false}
+            persistPosition={false}
+            initialPos={initialPos}
+            pettable
+            seasonal={false}
+            zIndex={50}
+          />
+        )
+      })}
+    </>
+  )
+}
+
 // ── App ────────────────────────────────────────────────────────
 export default function App() {
   const [theme, setTheme] = useState(() => {
@@ -2366,7 +2656,7 @@ export default function App() {
             >
               <Contrast size={15} />
             </button>
-            <button onClick={toggleTheme} data-tooltip={`Color mode: ${theme[0].toUpperCase()}${theme.slice(1)} (click to change)`} aria-label={`Color mode ${theme}. Click to switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'sepia' : isDark ? 'light' : 'dark'} mode.`} className="btn-icon" key={themeKey}>
+            <button onClick={toggleTheme} data-tooltip={`Color mode: ${theme[0].toUpperCase()}${theme.slice(1)}`} aria-label={`Color mode ${theme}. Click to switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'sepia' : isDark ? 'light' : 'dark'} mode.`} className="btn-icon" key={themeKey}>
               {ENABLE_SEPIA_THEME && theme === 'sepia'
                 ? <BookOpen size={15} className="theme-icon-enter" style={{ color: '#a16207' }} />
                 : isDark
@@ -2875,6 +3165,8 @@ export default function App() {
           </>
         )}
       </main>
+
+      <ReadingPetFooter />
 
       {cmdOpen && (
         <CommandPalette
