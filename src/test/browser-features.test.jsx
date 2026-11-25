@@ -695,6 +695,28 @@ describe('advanced browser features', () => {
     expect(within(options).getByRole('radio', { name: 'Vim' })).toBeDisabled()
   })
 
+  it('creates files from templates via the editor toolbar and the New menu', async () => {
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'New file from a template' }))
+    const toolbarMenu = await screen.findByRole('menu', { name: 'Templates' })
+    fireEvent.click(within(toolbarMenu).getByRole('menuitem', { name: /Meeting Notes/ }))
+    await waitFor(() => expect(screen.getByRole('tab', { selected: true }).getAttribute('aria-label')).toMatch(/meeting/i))
+
+    fireEvent.click(screen.getByRole('button', { name: 'New file options' }))
+    const newMenu = await screen.findByRole('menu', { name: 'New file' })
+    expect(within(newMenu).getByRole('menuitem', { name: /Blank file/ })).toBeInTheDocument()
+    fireEvent.click(within(newMenu).getByRole('menuitem', { name: /Changelog/ }))
+    await waitFor(() => expect(screen.getByRole('tab', { selected: true }).getAttribute('aria-label')).toMatch(/changelog/i))
+    expect(screen.queryByRole('menu', { name: 'New file' })).toBeNull()
+  })
+
+  it('applies the reading font weight from Reader Comfort', async () => {
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Reader comfort settings' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Medium' }))
+    expect(document.querySelector('.rm-prose').style.getPropertyValue('--rm-font-weight')).toBe('500')
+  })
+
   it('collapses and expands heading sections, individually and all at once', async () => {
     installApp()
     const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })

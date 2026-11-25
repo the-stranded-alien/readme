@@ -38,6 +38,7 @@ import ShortcutsDialog from './components/ShortcutsDialog'
 import GlobalSearch from './components/GlobalSearch'
 import HistoryDialog from './components/HistoryDialog'
 import CodeEditor from './components/CodeEditor'
+import TemplateMenu from './components/TemplateMenu'
 import { applyBackup, createBackup, readBackup } from './backup'
 import { shortcut } from './platform'
 import { buildShareUrl, readShareFromHash } from './shareLink'
@@ -743,13 +744,7 @@ const FMT_ACTIONS = [
 function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate }) {
   const [tplOpen, setTplOpen] = useState(false)
   const tplRef = useRef(null)
-
-  useEffect(() => {
-    if (!tplOpen) return
-    const onDown = (e) => { if (tplRef.current && !tplRef.current.contains(e.target)) setTplOpen(false) }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [tplOpen])
+  const closeTemplates = useCallback(() => setTplOpen(false), [])
 
   const apply = useCallback((action) => {
     const ta = textareaRef.current
@@ -795,11 +790,15 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
         )}
       </div>
 
-      <div ref={tplRef} className="relative shrink-0 ml-2">
+      <div className="relative shrink-0 ml-2">
         <button
+          ref={tplRef}
           type="button"
           onClick={() => setTplOpen(o => !o)}
-          title="New from template"
+          title="New file from a template"
+          aria-label="New file from a template"
+          aria-haspopup="menu"
+          aria-expanded={tplOpen}
           className="fmt-btn !px-2 gap-1"
           style={tplOpen ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : undefined}
         >
@@ -807,23 +806,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
           <span className="hidden lg:inline text-[10px] font-semibold">Templates</span>
         </button>
         {tplOpen && (
-          <div className="download-menu anim-drop-in" style={{ minWidth: 230 }} role="menu">
-            {MD_TEMPLATES.map(tpl => (
-              <button
-                key={tpl.id}
-                type="button"
-                role="menuitem"
-                className="download-menu-item"
-                onClick={() => { setTplOpen(false); onCreateFromTemplate(tpl) }}
-              >
-                <span className="min-w-0">
-                  <div className="font-semibold text-xs truncate">{tpl.name}</div>
-                  <div className="text-[10px] truncate opacity-70">{tpl.description}</div>
-                </span>
-                <span className="text-[10px] font-mono opacity-60 shrink-0">{tpl.fileName}</span>
-              </button>
-            ))}
-          </div>
+          <TemplateMenu anchorRef={tplRef} templates={MD_TEMPLATES} onPick={onCreateFromTemplate} onClose={closeTemplates} />
         )}
       </div>
     </div>
@@ -914,13 +897,19 @@ const READER_LINE_HEIGHTS = {
   normal:  { label: 'Normal',  value: 1.82 },
   relaxed: { label: 'Relaxed', value: 2.05 },
 }
+const READER_FONT_WEIGHTS = {
+  light:   { label: 'Light',   value: 300 },
+  regular: { label: 'Regular', value: 400 },
+  medium:  { label: 'Medium',  value: 500 },
+  bold:    { label: 'Bold',    value: 600 },
+}
 const READER_PARAGRAPH_SPACING = {
   tight:  { label: 'Tight',  value: '0.45rem' },
   normal: { label: 'Normal', value: '0.8rem' },
   airy:   { label: 'Airy',   value: '1.3rem' },
 }
 const READER_PREFS_VERSION = 2
-const DEFAULT_READER_PREFS = { fontIndex: 0, size: 'md', width: 'full', lineHeight: 'normal', paragraphSpacing: 'normal', version: READER_PREFS_VERSION }
+const DEFAULT_READER_PREFS = { fontIndex: 0, size: 'md', width: 'full', fontWeight: 'regular', lineHeight: 'normal', paragraphSpacing: 'normal', version: READER_PREFS_VERSION }
 
 function loadReaderPrefs() {
   try {
@@ -1001,6 +990,24 @@ function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityCha
               <button key={id}
                 onClick={() => onChange({ ...prefs, size: id })}
                 className={`reader-chip ${prefs.size === id ? 'active' : ''}`}
+              >
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-4)' }}>
+            Font Weight
+          </div>
+          <div className="flex gap-1.5">
+            {Object.entries(READER_FONT_WEIGHTS).map(([id, cfg]) => (
+              <button key={id} type="button"
+                onClick={() => onChange({ ...prefs, fontWeight: id })}
+                className={`reader-chip ${prefs.fontWeight === id ? 'active' : ''}`}
+                aria-pressed={prefs.fontWeight === id}
+                style={{ fontWeight: cfg.value }}
               >
                 {cfg.label}
               </button>
@@ -1119,6 +1126,35 @@ function DocumentQualityPopover({ issues, onClose, onFix, onGoToLine }) {
         </ul>
       ) : (
         <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>No missing image descriptions, broken document or heading links, empty links, or skipped heading levels found.</p>
+      )}
+    </div>
+  )
+}
+
+// Header "New" split button: blank file, or pick a template from the caret.
+function NewFileButton({ onNew, onTemplate }) {
+  const [open, setOpen] = useState(false)
+  const caretRef = useRef(null)
+  const close = useCallback(() => setOpen(false), [])
+  return (
+    <div className="split-download split-new">
+      <button type="button" onClick={onNew} data-tooltip="Create a new Markdown file" aria-label="New file" className="split-download-main">
+        <FilePlus size={14} /><span className="hidden sm:inline">New</span>
+      </button>
+      <button
+        ref={caretRef}
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        data-tooltip={open ? undefined : 'New from a template'}
+        aria-label="New file options"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="split-download-caret"
+      >
+        <ChevronDown size={13} />
+      </button>
+      {open && (
+        <TemplateMenu anchorRef={caretRef} templates={MD_TEMPLATES} onBlank={onNew} onPick={onTemplate} onClose={close} align="left" label="New file" />
       )}
     </div>
   )
@@ -3478,9 +3514,7 @@ ${fontCss}
           <div className="flex items-center gap-1 justify-self-end shrink-0">
             <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt" multiple className="hidden"
               onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
-            <button onClick={handleNewFile} data-tooltip="Create a new Markdown file" aria-label="New file" className="btn-header">
-              <FilePlus size={14} /><span className="hidden sm:inline">New</span>
-            </button>
+            <NewFileButton onNew={handleNewFile} onTemplate={handleCreateFromTemplate} />
             <button onClick={handleOpenDiskFiles} className="btn-header" data-tooltip="Open Markdown files or folders" aria-label="Open Markdown files or folders">
               <Upload size={13} /><span className="hidden sm:inline">Upload</span>
             </button>
@@ -4079,6 +4113,7 @@ ${fontCss}
                             maxWidth: 'none',
                             fontFamily: activeFont.family,
                             '--rm-line-height': READER_LINE_HEIGHTS[readerPrefs.lineHeight]?.value ?? 1.82,
+                            '--rm-font-weight': READER_FONT_WEIGHTS[readerPrefs.fontWeight]?.value ?? 400,
                             '--rm-para-space': READER_PARAGRAPH_SPACING[readerPrefs.paragraphSpacing]?.value ?? '0.8rem',
                           }}
                         >

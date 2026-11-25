@@ -1024,6 +1024,7 @@ button.file-tab-count:hover, button.file-tab-count[aria-expanded="true"] { backg
 .rm-prose {
   color: var(--text-2);
   font-size: 1rem;
+  font-weight: var(--rm-font-weight, 400);
   line-height: var(--rm-line-height, 1.82);
   max-width: 74ch;
   margin-inline: auto;
@@ -1146,7 +1147,7 @@ button.file-tab-count:hover, button.file-tab-count[aria-expanded="true"] { backg
 .callout-body { color: var(--text-2); }
 .high-contrast .callout { background: var(--bg-preview); border-width: 1.5px; border-left-width: 5px; }
 
-.rm-prose strong { color: var(--text-1); font-weight: 650; }
+.rm-prose strong { color: var(--text-1); font-weight: min(900, calc(var(--rm-font-weight, 400) + 250)); }
 .rm-prose em     { color: var(--text-2); }
 .rm-prose a {
   color: var(--accent); text-decoration: none;
@@ -1928,3 +1929,23 @@ button[data-tooltip]:not(:focus-visible)::after {
   border-radius: 12px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-lg);
 }
 .editor-options-popover .pdf-segmented button:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── Template picker (editor toolbar + header "New" menu) ─── */
+.template-menu {
+  position: fixed; z-index: 95; width: 300px; max-width: calc(100vw - 16px); max-height: min(70vh, 460px); overflow: auto;
+  padding: 6px; border-radius: 12px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-xl);
+}
+.template-menu-item {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 8px 9px; text-align: left;
+  border: 0; border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer;
+}
+.template-menu-item:hover, .template-menu-item:focus-visible { background: var(--accent-soft); outline: none; }
+.template-menu-icon {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: 8px;
+  color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border);
+}
+.template-menu-icon.is-blank { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; }
+.template-menu-text { display: grid; gap: 1px; min-width: 0; }
+.template-menu-text strong { font-size: 12.5px; font-weight: 650; color: var(--text-1); }
+.template-menu-text span { font-size: 11px; line-height: 1.4; color: var(--text-4); }
+.template-menu-heading { margin: 4px 9px 2px; padding-top: 8px; border-top: 1px solid var(--border-light); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-4); }
