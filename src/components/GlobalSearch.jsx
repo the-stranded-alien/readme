@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { CaseSensitive, FileText, Search, X } from '../icons'
+import EmptyState from './EmptyState'
 
 const MAX_PER_FILE = 50
 const MAX_TOTAL = 400
@@ -96,6 +97,9 @@ export default function GlobalSearch({ files, activeFileId, initialQuery = '', o
             : `${total}${truncated ? '+' : ''} result${total === 1 ? '' : 's'} in ${groups.length} file${groups.length === 1 ? '' : 's'}`}
         </div>
         <div className="global-search-results" id="global-search-results" ref={listRef} role="listbox" aria-label="Results">
+          {deferredQuery.trim().length >= 2 && groups.length === 0 && (
+            <EmptyState icon={Search} title="No results" text="Nothing in your open files matches. Check the spelling or try a shorter word." />
+          )}
           {groups.map((group, groupIndex) => (
             <div key={group.file.id} className="global-search-group" role="group" aria-label={group.file.name}>
               <div className={`global-search-file${group.file.id === activeFileId ? ' is-active' : ''}`}>

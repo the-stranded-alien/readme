@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, FileText, Hash, ArrowRight, LayoutTemplate, Sparkles, X } from '../icons'
+import EmptyState from './EmptyState'
 
 export default function CommandPalette({
   open,
@@ -139,9 +140,7 @@ export default function CommandPalette({
 
         <div className="max-h-[52vh] overflow-y-auto p-2">
           {items.length === 0 ? (
-            <div className="py-10 text-center text-xs" style={{ color: 'var(--text-4)' }}>
-              No matching files, headings, or commands
-            </div>
+            <EmptyState icon={Search} title="No matches" text="No files, headings or commands match. Try fewer words." />
           ) : (
             items.map((item, idx) => {
               const ItemIcon = item.icon

@@ -2,7 +2,7 @@ import { createContext, createElement, useContext, useState, useCallback, useRef
 import { createPortal, flushSync } from 'react-dom'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { gruvboxLight, materialOceanic, nord, okaidia, oneDark, oneLight, solarizedlight, synthwave84 } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import remarkMath from 'remark-math'
@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from './icons'
 import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
@@ -44,6 +44,7 @@ import TemplateMenu from './components/TemplateMenu'
 import StorageDialog from './components/StorageDialog'
 import SettingsDialog, { FolderSyncCard, ThemePicker } from './components/SettingsDialog'
 import HelpDialog from './components/HelpDialog'
+import EmptyState from './components/EmptyState'
 import { MARK_COLORS, rehypeMarks } from './rehypeMarks'
 import { CONTENT_FILTERS, applyContentFilter, clearContentFilter, filterLabel } from './contentFilter'
 import { ALL_THEME_CLASSES, THEME_IDS, availableThemes, nextTheme, themeById, themeClasses } from './themes'
@@ -260,6 +261,18 @@ const vibrantLightCodeTheme = {
 // Lite mode: plain code blocks and diagrams as code (less memory and CPU).
 const LiteContext = createContext(false)
 
+// Code colours follow the app theme (Monokai code in the Monokai theme, and so on).
+const CodeThemeContext = createContext(null)
+function codeStyleFor(themeId, dark) {
+  if (themeId === 'monokai') return okaidia
+  if (themeId === 'nord') return nord
+  if (themeId === 'solarized') return solarizedlight
+  if (themeId === 'ocean') return materialOceanic
+  if (themeId === 'sun') return gruvboxLight
+  if (themeId?.startsWith('neon')) return synthwave84
+  return dark ? oneDark : vibrantLightCodeTheme
+}
+
 function DiagramBlock({ code, dark }) {
   const lite = useContext(LiteContext)
   if (lite) return <CodeBlock rawLang="mermaid" code={code} dark={dark} />
@@ -268,6 +281,7 @@ function DiagramBlock({ code, dark }) {
 
 function CodeBlock({ rawLang, code, dark }) {
   const lite = useContext(LiteContext)
+  const codeTheme = useContext(CodeThemeContext)
   const [wrapped, setWrapped] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -332,7 +346,7 @@ function CodeBlock({ rawLang, code, dark }) {
           tabIndex={0}
           aria-label={`Code${language ? `: ${language}` : ''}`}
           language={prismLang}
-          style={dark ? oneDark : vibrantLightCodeTheme}
+          style={codeStyleFor(codeTheme, dark)}
           showLineNumbers={lineCount > 4}
           wrapLongLines={wrapped}
           customStyle={{
@@ -493,7 +507,7 @@ function SectionHeading({ as, iconSize, node, children, ...rest }) {
       {extras && (
         <span className="heading-tools no-print">
           {extras.canSummarize && !properties.dataEmpty && (
-            <button type="button" className="heading-tool" onClick={() => extras.summarizeSection(key)}
+            <button type="button" className={`heading-tool${extras.summaries?.[key]?.status === 'loading' ? ' is-busy' : ''}`} onClick={() => extras.summarizeSection(key)}
               aria-label={`Summarize ${text}`} title="Summarize this section">
               <ScrollText size={13} />
             </button>
@@ -529,7 +543,7 @@ function Blockquote({ node, children }) {
   return (
     <div className={`callout callout-${type}`} role="note" aria-label={node.properties.dataCalloutTitle}>
       <div className="callout-title">
-        <Icon size={16} aria-hidden="true" />
+        <Icon size={18} aria-hidden="true" />
         <span>{node.properties.dataCalloutTitle}</span>
       </div>
       <div className="callout-body">{children}</div>
@@ -610,6 +624,69 @@ function MarkdownRenderer({ content, dark }) {
 }
 
 // ── TOCSidebar ─────────────────────────────────────────────────
+// ── Header "View" menu: secondary display options in one place ─
+function HeaderViewMenu({ items }) {
+  const [position, setPosition] = useState(null)
+  const buttonRef = useRef(null)
+  const menuRef = useRef(null)
+  const close = useCallback(() => setPosition(null), [])
+  useEffect(() => {
+    if (!position) return undefined
+    menuRef.current?.querySelector('button')?.focus()
+    const onDown = event => { if (!menuRef.current?.contains(event.target) && !buttonRef.current?.contains(event.target)) close() }
+    const onKey = event => {
+      if (event.key === 'Escape') { event.preventDefault(); close(); buttonRef.current?.focus() }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const buttons = [...(menuRef.current?.querySelectorAll('button') ?? [])]
+        const index = buttons.indexOf(document.activeElement)
+        buttons[(index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus()
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [position, close])
+  const active = items.some(item => item.checked)
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={`btn-icon${active ? ' is-active' : ''}`}
+        data-tooltip="View options"
+        aria-label="View options"
+        aria-haspopup="menu"
+        aria-expanded={Boolean(position)}
+        onClick={event => {
+          const rect = event.currentTarget.getBoundingClientRect()
+          const width = 340
+          setPosition(current => (current ? null : { top: rect.bottom + 8, left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)), width }))
+        }}
+      >
+        <SlidersHorizontal size={15} />
+      </button>
+      {position && createPortal(
+        <div ref={menuRef} className="view-menu anim-pop-in no-print" role="menu" aria-label="View options" style={{ top: position.top, left: position.left, width: position.width }}>
+          <div className="view-menu-title" aria-hidden="true">View options</div>
+          {items.map(item => (
+            <button key={item.id} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} data-id={item.id}
+              aria-checked={item.checked === undefined ? undefined : item.checked}
+              className={`view-menu-item${item.checked ? ' is-on' : ''}`}
+              onClick={() => { item.run(); if (!item.keepOpen && item.checked === undefined) close() }}>
+              <span className="view-menu-icon"><item.icon size={15} /></span>
+              <span className="view-menu-label">{item.label}</span>
+              {item.hint && <span className="view-menu-hint">{item.hint}</span>}
+              {item.checked !== undefined && <span className="view-menu-switch" aria-hidden="true" />}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
 function filterMenuPosition(anchor) {
   const rect = anchor.getBoundingClientRect()
   const width = 220
@@ -687,6 +764,7 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
     })
   }, [])
 
+  const activeIndex = headings.findIndex(h => h.id === activeId)
   const allCollapsed = parentKeys.length > 0 && parentKeys.every(k => collapsed.has(k))
   const toggleAll = useCallback(() => {
     setCollapsed(allCollapsed ? new Set() : new Set(parentKeys))
@@ -703,9 +781,7 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
           </span>
         </div>
       </div>
-      <div className="py-8 text-center" style={{ color: 'var(--text-4)', fontSize: 11 }}>
-        No headings found
-      </div>
+      <EmptyState compact icon={Hash} title="No headings yet" text="Add # headings to build the contents." />
     </div>
   )
 
@@ -749,6 +825,7 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
       <nav className="py-1">
         {visibleItems.map(({ h, i, key, hasChildren, isCollapsed }) => {
           const isActive = activeId === h.id
+          const isRead = activeIndex >= 0 && i < activeIndex
           const isBookmarked = bookmarks.has(h.id)
           const depth = onlyBookmarked ? 0 : h.level - 1 // 0, 1, 2
           const guides = Array.from({ length: depth })
@@ -763,7 +840,7 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
                 />
               ))}
               <div
-                className={`toc-item anim-slide-left ${isActive ? 'active' : ''}${isBookmarked ? ' is-bookmarked' : ''}`}
+                className={`toc-item anim-slide-left ${isActive ? 'active' : ''}${isBookmarked ? ' is-bookmarked' : ''}${isRead ? ' is-read' : ''}`}
                 style={{
                   paddingLeft: `${depth * 14 + (depth > 0 ? 18 : 6)}px`,
                   animationDelay: `${Math.min(i * 25, 160)}ms`,
@@ -930,6 +1007,14 @@ const FMT_ACTIONS = [
   { label: 'Divider',   Icon: Minus,       mode: 'insert', text: '\n---\n' },
 ]
 
+// The toolbar shows FMT_ACTIONS as labelled groups (split at each null).
+const FMT_GROUP_LABELS = ['Headings', 'Text style', 'Insert', 'Blocks', 'Code and layout']
+const FMT_GROUPS = FMT_ACTIONS.reduce((groups, action) => {
+  if (action === null) groups.push({ label: FMT_GROUP_LABELS[groups.length] ?? `Group ${groups.length + 1}`, actions: [] })
+  else groups[groups.length - 1].actions.push(action)
+  return groups
+}, [{ label: FMT_GROUP_LABELS[0], actions: [] }])
+
 // Hover/focus labels for the editor toolbar. The toolbar scrolls sideways,
 // which would clip CSS tooltips, so the label is drawn in a portal.
 function useToolbarTooltip() {
@@ -989,7 +1074,7 @@ function HighlightPicker({ position, onPick, onClose }) {
   )
 }
 
-function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme, aiHidden }) {
+function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme, aiHidden, aiBusy = false }) {
   const [tplOpen, setTplOpen] = useState(false)
   const tplRef = useRef(null)
   const closeTemplates = useCallback(() => setTplOpen(false), [])
@@ -1035,10 +1120,9 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
       {tooltip}
       <div className="fmt-scroll" role="toolbar" aria-label="Formatting" onScroll={tipHandlers.onScroll}
         onWheel={event => { if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY }}>
-        {FMT_ACTIONS.map((action, i) =>
-          action === null
-            ? <div key={`sep-${i}`} className="fmt-divider" />
-            : action === 'highlight' ? (
+        {FMT_GROUPS.map(group => (
+          <div key={group.label} className="fmt-group" role="group" aria-label={group.label}>
+            {group.actions.map(action => (action === 'highlight' ? (
               <button key="highlight" type="button" className="fmt-btn fmt-btn-highlight" data-tip="Highlight (choose a colour)" aria-label="Highlight"
                 aria-haspopup="menu" aria-expanded={Boolean(highlightMenu)}
                 onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setHighlightMenu(menu => (menu ? null : { top: rect.bottom + 6, left: Math.max(8, rect.left - 40) })) }}>
@@ -1055,8 +1139,9 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
               >
                 <action.Icon size={13} />
               </button>
-            )
-        )}
+            )))}
+          </div>
+        ))}
         {highlightMenu && (
           <HighlightPicker position={highlightMenu} onClose={closeHighlightMenu}
             onPick={color => { setHighlightMenu(null); apply({ mode: 'wrap', before: color === 'yellow' ? '==' : `=={${color}}`, after: '==' }) }} />
@@ -1065,9 +1150,8 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
 
       <div className="relative shrink-0 ml-2 flex items-center gap-0.5">
         {onWriteReadme && (
-          <button type="button" onClick={onWriteReadme} data-tip={aiHidden ? 'Write a README' : 'Write a README with AI'} aria-label={aiHidden ? 'Write a README' : 'Write a README with AI'} className="fmt-btn fmt-btn-ai !px-2 gap-1">
-            <Sparkles size={12} />
-            <span className="hidden lg:inline text-[10px] font-semibold">Write README</span>
+          <button type="button" onClick={onWriteReadme} data-tip={aiHidden ? 'Write a README' : 'Write a README with AI'} aria-label={aiHidden ? 'Write a README' : 'Write a README with AI'} className={`fmt-btn fmt-btn-ai${aiBusy ? ' is-busy' : ''}`}>
+            <Sparkles size={13} />
           </button>
         )}
         {onFindReplace && (
@@ -1083,11 +1167,10 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
           aria-label="New file from a template"
           aria-haspopup="menu"
           aria-expanded={tplOpen}
-          className="fmt-btn !px-2 gap-1"
+          className="fmt-btn"
           style={tplOpen ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : undefined}
         >
-          <LayoutTemplate size={12} />
-          <span className="hidden lg:inline text-[10px] font-semibold">Templates</span>
+          <LayoutTemplate size={13} />
         </button>
         {tplOpen && (
           <TemplateMenu anchorRef={tplRef} templates={templates} onPick={onCreateFromTemplate} onWriteReadme={onWriteReadme} onManage={onManageTemplates} onClose={closeTemplates} />
@@ -1444,6 +1527,49 @@ function NewFileButton({ onNew, onTemplate, templates = MD_TEMPLATES, onManageTe
   )
 }
 
+// ── Upload split button: open files, or import from a URL ─────
+function UploadMenuButton({ onOpen, onImportUrl }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return undefined
+    const onDown = event => { if (ref.current && !ref.current.contains(event.target)) setOpen(false) }
+    const onKey = event => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey) }
+  }, [open])
+  return (
+    <div ref={ref} className="split-download">
+      <button type="button" onClick={onOpen} className="split-download-main" data-tooltip="Open Markdown files or folders" aria-label="Open Markdown files or folders">
+        <Upload size={13} /><span className="hidden sm:inline">Upload</span>
+      </button>
+      <button type="button" onClick={() => setOpen(value => !value)} className="split-download-caret"
+        data-tooltip="More ways to open" aria-label="Upload options" aria-haspopup="menu" aria-expanded={open}>
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="download-menu anim-drop-in" role="menu">
+          <button type="button" role="menuitem" className="download-menu-item" onClick={() => { setOpen(false); onOpen() }}>
+            <span className="flex items-center gap-2">
+              <FolderOpen size={13} style={{ color: 'var(--accent)' }} />
+              <span>Open Files or Folder…</span>
+            </span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>.md</span>
+          </button>
+          <button type="button" role="menuitem" className="download-menu-item" onClick={() => { setOpen(false); onImportUrl() }}>
+            <span className="flex items-center gap-2">
+              <Globe size={13} style={{ color: 'var(--accent)' }} />
+              <span>Import Markdown from URL…</span>
+            </span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>URL</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DownloadMenuButton({
   disabled,
   canExportPdf,
@@ -1457,6 +1583,7 @@ function DownloadMenuButton({
   onBackup,
   onRestore,
   onStorage,
+  onSaveInPlace,
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -1501,6 +1628,17 @@ function DownloadMenuButton({
 
       {open && (
         <div className="download-menu anim-drop-in" role="menu">
+          {onSaveInPlace && (
+            <>
+              <button type="button" role="menuitem" className="download-menu-item" disabled={disabled} onClick={() => { setOpen(false); onSaveInPlace() }}>
+                <span className="flex items-center gap-2">
+                  <Save size={13} style={{ color: 'var(--accent)' }} />
+                  <span>Save File in Place…</span>
+                </span>
+              </button>
+              <div className="download-menu-separator" role="separator" />
+            </>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -4544,6 +4682,7 @@ ${fontCss}
   return (
     <IconStyleContext.Provider value={smallIconStyle}>
     <LiteContext.Provider value={appSettings.lite}>
+    <CodeThemeContext.Provider value={highContrast ? null : theme}>
     <div
       ref={appRef}
       className="h-screen flex flex-col app-shell overflow-hidden anim-fade-in"
@@ -4590,9 +4729,7 @@ ${fontCss}
             <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt" multiple className="hidden"
               onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
             <NewFileButton onNew={handleNewFile} onTemplate={handleCreateFromTemplate} templates={allTemplates} onManageTemplates={() => setTemplatesOpen(true)} onWriteReadme={() => setWriteReadmeOpen(true)} />
-            <button onClick={handleOpenDiskFiles} className="btn-header" data-tooltip="Open Markdown files or folders" aria-label="Open Markdown files or folders">
-              <Upload size={13} /><span className="hidden sm:inline">Upload</span>
-            </button>
+            <UploadMenuButton onOpen={handleOpenDiskFiles} onImportUrl={handleImportUrl} />
             <DownloadMenuButton
               disabled={!activeFile}
               canExportPdf={Boolean(activeFile && content.trim())}
@@ -4606,47 +4743,19 @@ ${fontCss}
               onBackup={handleBackup}
               onRestore={() => restoreInputRef.current?.click()}
               onStorage={() => setSettingsOpen('storage')}
+              onSaveInPlace={handleSaveInPlace}
             />
-            <button onClick={handleImportUrl} className="btn-icon hidden sm:flex hdr-optional" data-tooltip="Import Markdown from URL" aria-label="Import Markdown from URL">
-              <Globe size={14} />
-            </button>
-            <button onClick={handleSaveInPlace} disabled={!activeFile} className="btn-icon hidden sm:flex hdr-optional disabled:opacity-40" data-tooltip="Save file in place or choose a location" aria-label="Save file in place">
-              <Save size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setKeepAwake(value => !value)}
-              data-tooltip={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
-              aria-label={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
-              aria-pressed={keepAwake}
-              className="btn-icon hdr-optional"
-              style={keepAwake ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-border)' } : undefined}
-            >
-              {keepAwake ? <MonitorUp size={15} /> : <MonitorDown size={15} />}
-            </button>
             <button onClick={toggleFullscreen} data-tooltip={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-              className="btn-icon hidden sm:flex hdr-optional">
+              className="btn-icon hidden sm:flex">
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
-            <button
-              onClick={cycleDocFont}
-              data-tooltip={`Reading font: ${activeFont.label}`}
-              aria-label={`Reading font ${activeFont.label} (${readerPrefs.fontIndex + 1} of ${DOC_FONTS.length})`}
-              className="btn-icon hdr-optional"
-              style={{ position: 'relative' }}
-            >
-              <Type size={15} />
-            </button>
-            <button
-              onClick={toggleHighContrast}
-              data-tooltip={highContrast ? 'Standard contrast' : 'High contrast'}
-              aria-label={highContrast ? 'Standard contrast' : 'High contrast'}
-              aria-pressed={highContrast}
-              className="btn-icon hdr-optional"
-              style={highContrast ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-border)' } : undefined}
-            >
-              <Contrast size={15} />
-            </button>
+            <HeaderViewMenu
+              items={[
+                { id: 'awake', label: 'Keep screen awake while reading', icon: keepAwake ? MonitorUp : MonitorDown, run: () => setKeepAwake(value => !value), checked: keepAwake },
+                { id: 'font', label: `Reading font: ${activeFont.label}`, hint: `${readerPrefs.fontIndex + 1}/${DOC_FONTS.length}`, icon: Type, run: cycleDocFont, keepOpen: true },
+                { id: 'contrast', label: 'High contrast', icon: Contrast, run: toggleHighContrast, checked: highContrast },
+              ]}
+            />
             <button onClick={toggleTheme} data-tooltip={`Color mode: ${themeLabel}`} aria-label={`Color mode ${theme}. Click to switch to ${nextTheme(theme, appSettings.extraThemes)} mode.`} className="btn-icon" key={themeKey}>
               {theme.startsWith('neon') ? <Zap size={15} className="theme-icon-enter" style={{ color: themeById(theme).swatch[1].startsWith('#') ? themeById(theme).swatch[1] : '#ffe600' }} />
                 : theme === 'sun' ? <Sunrise size={15} className="theme-icon-enter" style={{ color: '#ea580c' }} />
@@ -4768,6 +4877,7 @@ ${fontCss}
                 onFindReplace={() => { setFindOpen(true); setFindKey(k => k + 1) }}
                 onWriteReadme={() => setWriteReadmeOpen(true)}
                 aiHidden={hideAi}
+                aiBusy={Boolean(readmeWriting)}
                 content={content}
                 onChange={updateActiveContent}
                 onCreateFromTemplate={handleCreateFromTemplate}
@@ -5099,7 +5209,7 @@ ${fontCss}
                                   <button className="mt-1 opacity-60 hover:opacity-100" onClick={() => setAnnotations(prev => prev.filter(value => value.id !== item.id))}>Remove</button>
                                 </div>
                               ))}
-                              {!annotations.some(item => item.fileId === activeFileId) && <p style={{ color: 'var(--text-4)' }}>Select text, then choose the highlighter to save it here.</p>}
+                              {!annotations.some(item => item.fileId === activeFileId) && <EmptyState compact icon={Highlighter} title="No highlights yet" text="Select text in the page, then choose the highlighter to save it here." />}
                             </div>
                           </div>
                         )}
@@ -5374,6 +5484,11 @@ ${fontCss}
                   onScroll={handleSyncPreviewScroll}
                   className="flex-1 overflow-auto surface-preview"
                 >
+                  {content.trim() && (
+                    <div className="reading-progress no-print" role="progressbar" aria-label="Reading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={readProgress}>
+                      <span style={{ width: `${readProgress}%` }} />
+                    </div>
+                  )}
                   {content.trim() && headingTrail.length > 0 && (
                     <div className="reading-breadcrumb-anchor no-print">
                       <nav className={`reading-breadcrumb${showScrollTop ? ' is-visible' : ''}`} aria-label="Current section" aria-hidden={!showScrollTop}>
@@ -5469,6 +5584,10 @@ ${fontCss}
                             </span>
                             <button type="button" onClick={() => { setContentFilter(null); setOnlyBookmarked(false) }}>Show everything</button>
                           </div>
+                        )}
+
+                        {contentFilter && filterCount === 0 && (
+                          <EmptyState icon={Filter} title={`No ${filterLabel(contentFilter).toLowerCase()} here`} text="Try another filter, or choose Show everything." className="filter-empty no-print" />
                         )}
 
                         <FrontmatterCard meta={frontmatterMeta} />
@@ -5761,6 +5880,7 @@ ${fontCss}
         />
       )}
     </div>
+    </CodeThemeContext.Provider>
     </LiteContext.Provider>
     </IconStyleContext.Provider>
   )

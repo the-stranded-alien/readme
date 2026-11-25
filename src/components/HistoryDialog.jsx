@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
 import { GitCompare, History, RotateCcw, X } from '../icons'
+import EmptyState from './EmptyState'
 import { diffLines } from '../documentDiff'
 
 const relativeTime = at => {
@@ -42,7 +43,7 @@ export default function HistoryDialog({ fileName, current, snapshots, loading, o
         </div>
         <div className="history-body">
           {loading ? <p className="history-empty">Loading…</p> : snapshots.length === 0 ? (
-            <p className="history-empty">No snapshots yet for this file.</p>
+            <EmptyState icon={History} title="No versions yet" text="Versions are saved as you edit, save or restore this file." />
           ) : (
             <ul className="history-list" role="listbox" aria-label="Snapshots">
               {snapshots.map(snapshot => {

@@ -83,7 +83,6 @@ import {
   MenuUnfold as ParkMenuUnfold,
   MessageFailed as ParkMessageFailed,
   Minus as ParkMinus,
-  Monitor as ParkMonitor,
   Moon as ParkMoon,
   NetworkTree as ParkNetworkTree,
   Notes as ParkNotes,
@@ -139,9 +138,11 @@ import {
   Write as ParkWrite,
   ZoomIn as ParkZoomIn,
   ZoomOut as ParkZoomOut,
-  Computer as ParkComputer,
   Notepad as ParkNotepad,
   Slide as ParkSlide,
+  Adjustment as ParkAdjustment,
+  Cup as ParkCup,
+  TeaDrink as ParkTeaDrink,
 } from '@icon-park/react'
 
 /** 'two-tone' or 'filled' — the style for small icons, chosen by the theme. */
@@ -252,8 +253,8 @@ export const MessageSquareQuote = make(ParkComment, 'MessageSquareQuote')
 export const MessageSquareWarning = make(ParkMessageFailed, 'MessageSquareWarning')
 export const Minimize2 = make(ParkOffScreen, 'Minimize2')
 export const Minus = make(ParkMinus, 'Minus')
-export const MonitorDown = make(ParkComputer, 'MonitorDown')
-export const MonitorUp = make(ParkMonitor, 'MonitorUp')
+export const MonitorDown = make(ParkCup, 'MonitorDown')
+export const MonitorUp = make(ParkTeaDrink, 'MonitorUp')
 export const Moon = make(ParkMoon, 'Moon')
 export const OctagonAlert = make(ParkError, 'OctagonAlert')
 export const Palette = make(ParkPlatte, 'Palette')
@@ -312,3 +313,4 @@ export const XCircle = make(ParkCloseOne, 'XCircle')
 export const Zap = make(ParkLightning, 'Zap')
 export const ZoomIn = make(ParkZoomIn, 'ZoomIn')
 export const ZoomOut = make(ParkZoomOut, 'ZoomOut')
+export const SlidersHorizontal = make(ParkAdjustment, 'SlidersHorizontal')

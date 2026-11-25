@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, Info, Palette, RefreshCw, Settings, Sparkles, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
+import { themeClasses } from '../themes'
 
 export const REPO_URL = 'https://github.com/the-stranded-alien/readme'
 
@@ -21,8 +22,12 @@ export function ThemePicker({ themes, value, onChange, extraThemes, onExtraTheme
         {themes.map(theme => (
           <button key={theme.id} type="button" role="radio" aria-checked={value === theme.id}
             className={`theme-swatch${value === theme.id ? ' is-active' : ''}`} onClick={() => onChange(theme.id)}>
-            <span className="theme-swatch-preview" style={{ background: theme.swatch[0] }}>
-              <span style={{ background: theme.swatch[1] }} />
+            {/* A tiny page drawn with the theme's own colours (its classes set the tokens locally). */}
+            <span className={`theme-mini ${theme.dark ? 'dark' : 'tp-light'} ${themeClasses(theme).join(' ')}${theme.id === 'sepia' ? ' theme-sepia' : ''}`} aria-hidden="true">
+              <span className="tm-h" />
+              <span className="tm-l" />
+              <span className="tm-l is-short" />
+              <span className="tm-code"><i /><i /></span>
             </span>
             {theme.label}
           </button>

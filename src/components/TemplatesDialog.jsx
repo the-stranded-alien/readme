@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
+import EmptyState from './EmptyState'
 import { Copy, FilePlus, LayoutTemplate, Lock, Plus, Save, Trash2, X } from '../icons'
 
 const emptyDraft = { name: '', description: '', fileName: '', content: '' }
@@ -57,7 +58,7 @@ export default function TemplatesDialog({ builtIn, custom, onSave, onDelete, onU
               )}
             </div>
             <div className="templates-group">Your templates</div>
-            {custom.length === 0 && <p className="templates-empty">None yet — create one or duplicate a built-in template.</p>}
+            {custom.length === 0 && <EmptyState compact icon={LayoutTemplate} title="No templates of your own yet" text="Create one, or duplicate a built-in template." />}
             {custom.map(template => (
               <button key={template.id} type="button" aria-pressed={selectedId === template.id && !dirty}
                 className={`templates-item${selectedId === template.id && !dirty ? ' is-selected' : ''}`}

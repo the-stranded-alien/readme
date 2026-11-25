@@ -20,7 +20,12 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
     onTheme(themes[(index + 1) % themes.length].id)
   }, [themes, theme, onTheme])
   const currentTheme = themes.find(item => item.id === theme)
-  const go = useCallback(step => setIndex(current => Math.max(0, Math.min(slides.length - 1, current + step))), [slides.length])
+  // Slides move in the direction you're going.
+  const [direction, setDirection] = useState('next')
+  const go = useCallback(step => {
+    setDirection(step < 0 ? 'prev' : 'next')
+    setIndex(current => Math.max(0, Math.min(slides.length - 1, current + step)))
+  }, [slides.length])
   const toggleFullscreen = useCallback(async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen()
@@ -44,8 +49,8 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
     const key = event.key
     if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n'].includes(key)) { event.preventDefault(); go(1) }
     else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p'].includes(key)) { event.preventDefault(); go(-1) }
-    else if (key === 'Home') { event.preventDefault(); setIndex(0) }
-    else if (key === 'End') { event.preventDefault(); setIndex(slides.length - 1) }
+    else if (key === 'Home') { event.preventDefault(); setDirection('prev'); setIndex(0) }
+    else if (key === 'End') { event.preventDefault(); setDirection('next'); setIndex(slides.length - 1) }
     else if (key === 'f') { event.preventDefault(); toggleFullscreen() }
     else if (key === 't') { event.preventDefault(); cycleTheme() }
     else if (key === 'Escape' && !document.fullscreenElement) { event.preventDefault(); onClose() }
@@ -71,7 +76,7 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
     >
       <div className="presentation-progress" aria-hidden="true"><span style={{ width: `${((safeIndex + 1) / slides.length) * 100}%` }} /></div>
       <div className="presentation-stage">
-        <article key={safeIndex} className="presentation-slide rm-prose anim-fade-in" aria-roledescription="slide" aria-label={slideTitle(slides[safeIndex])}>
+        <article key={safeIndex} className={`presentation-slide rm-prose slide-in-${direction}`} aria-roledescription="slide" aria-label={slideTitle(slides[safeIndex])}>
           {renderMarkdown(slides[safeIndex])}
         </article>
       </div>

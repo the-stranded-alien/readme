@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { CircleHelp, Search, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
+import EmptyState from './EmptyState'
 import { shortcut } from '../platform'
 
 /** How-to guide for every part of the app, grouped into sections. */
@@ -124,7 +125,7 @@ export default function HelpDialog({ onShortcuts, onClose }) {
           </nav>
           <div className="settings-panel" role="region" aria-label={results ? 'Search results' : current.title}>
             <h3>{results ? `Results for “${query.trim()}”` : current.title}</h3>
-            {results && results.length === 0 && <p className="settings-muted">Nothing found. Try another word.</p>}
+            {results && results.length === 0 && <EmptyState icon={Search} title="Nothing found" text="Try another word, like “export” or “theme”." />}
             <dl className="help-list">
               {(results ?? current.items.map(item => ({ item }))).map(({ group, item: [title, text] }) => (
                 <div key={`${group || ''}${title}`} className="help-item">
