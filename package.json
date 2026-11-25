@@ -19,6 +19,7 @@
     "lucide-react": "^1.7.0",
     "mermaid": "^12.3.0",
     "oneko": "^0.6.1",
+    "pdfmake": "^0.3.15",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
@@ -27,7 +28,9 @@
     "rehype-raw": "^7.0.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

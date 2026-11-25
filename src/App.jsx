@@ -40,16 +40,6 @@ function useIsDark() {
   return dark
 }
 
-function useIsSepia() {
-  const [sepia, setSepia] = useState(() => document.documentElement.classList.contains('sepia'))
-  useEffect(() => {
-    const observer = new MutationObserver(() => setSepia(document.documentElement.classList.contains('sepia')))
-    observer.observe(document.documentElement, { attributeFilter: ['class'] })
-    return () => observer.disconnect()
-  }, [])
-  return sepia
-}
-
 // ── Custom view icons ──────────────────────────────────────────
 const SplitEqualIcon = () => (
   <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -72,7 +62,7 @@ const VIEW_MODES = [
 ]
 
 // Keep the parchment color mode out of the UI until it is ready to ship.
-const ENABLE_SEPIA_THEME = false
+const ENABLE_SEPIA_THEME = true
 
 // ── Sample markdown ────────────────────────────────────────────
 const SAMPLE_MD = `# Welcome to ReadMe
@@ -244,16 +234,8 @@ const vibrantLightCodeTheme = {
 }
 
 // ── CodeBlock ──────────────────────────────────────────────────
-const sepiaCodeTheme = {
-  ...oneLight,
-  comment: { color: '#62697a', fontStyle: 'italic' },
-  prolog: { color: '#62697a' },
-  cdata: { color: '#62697a' },
-}
-
 function CodeBlock({ rawLang, code }) {
   const dark = useIsDark()
-  const sepia = useIsSepia()
   const [wrapped, setWrapped] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -312,7 +294,7 @@ function CodeBlock({ rawLang, code }) {
       <div className="code-body">
         <SyntaxHighlighter
           language={prismLang}
-          style={dark ? oneDark : sepia ? sepiaCodeTheme : vibrantLightCodeTheme}
+          style={dark ? oneDark : vibrantLightCodeTheme}
           showLineNumbers={lineCount > 4}
           wrapLongLines={wrapped}
           customStyle={{
@@ -845,14 +827,17 @@ const READER_PAPERS = [
   { id: 'sepia', label: 'Sepia' },
   { id: 'crisp', label: 'Crisp' },
 ]
-const DEFAULT_READER_PREFS = { fontIndex: 0, size: 'md', width: 'book', paper: 'ivory' }
+const READER_PREFS_VERSION = 2
+const DEFAULT_READER_PREFS = { fontIndex: 0, size: 'md', width: 'full', paper: 'ivory', version: READER_PREFS_VERSION }
 
 function loadReaderPrefs() {
   try {
     const raw = localStorage.getItem('readme-reader-prefs')
     if (raw) {
       const parsed = JSON.parse(raw)
-      const merged = { ...DEFAULT_READER_PREFS, ...parsed }
+      const merged = { ...DEFAULT_READER_PREFS, ...parsed, version: READER_PREFS_VERSION }
+      // v2 made Wide the default preview width; move older saved prefs over once.
+      if (parsed.version !== READER_PREFS_VERSION) merged.width = 'full'
       if (typeof merged.fontIndex !== 'number' || merged.fontIndex < 0 || merged.fontIndex >= DOC_FONTS.length) {
         merged.fontIndex = parsed.font === 'book' ? 1 : 0
       }
@@ -1097,7 +1082,7 @@ function DownloadMenuButton({
           >
             <span className="flex items-center gap-2">
               <FileDown size={13} style={{ color: 'var(--accent)' }} />
-              <span>Print / Save as PDF</span>
+              <span>Download PDF</span>
             </span>
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
               style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
@@ -1818,7 +1803,7 @@ export default function App() {
   // Dark mode & high-contrast mode
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark)
-    document.documentElement.classList.toggle('sepia', isSepia)
+    document.documentElement.classList.toggle('theme-sepia', isSepia)
     localStorage.setItem('readme-theme', theme)
   }, [theme, isDark, isSepia])
 
@@ -2013,7 +1998,8 @@ export default function App() {
     return () => document.removeEventListener('fullscreenchange', cb)
   }, [])
   const toggleFullscreen = useCallback(async () => {
-    if (!document.fullscreenElement) await appRef.current?.requestFullscreen?.()
+    // Fullscreen the whole document so body-level layers (reading pets, popovers) stay visible.
+    if (!document.fullscreenElement) await document.documentElement.requestFullscreen?.()
     else await document.exitFullscreen?.()
   }, [])
 
@@ -2411,79 +2397,27 @@ export default function App() {
     a.click(); URL.revokeObjectURL(a.href)
   }, [activeFile, content, fileName])
 
-  // Use the browser's print layout engine so text, code colors, and diagrams
-  // remain vector content instead of rasterized screenshots.
-  const handleExportPdf = useCallback(() => {
-    const sourceArticle = previewScrollRef.current?.querySelector('.book-page')
-    if (!sourceArticle) return
-
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      alert('Allow pop-ups for this page to print or save as PDF.')
-      return
-    }
-
+  // Build a real PDF from the Markdown source (pdfmake) so the output has
+  // selectable text and consistent document styling.
+  const [pdfExporting, setPdfExporting] = useState(false)
+  const handleExportPdf = useCallback(async () => {
+    if (!activeFile || !markdownBody.trim() || pdfExporting) return
+    const baseName = (fileName || 'document').replace(/\.[^.]+$/, '') || 'document'
+    setPdfExporting(true)
     try {
-      const printDocument = printWindow.document
-      printDocument.documentElement.className = document.documentElement.className
-      printDocument.documentElement.lang = document.documentElement.lang || 'en'
-      printDocument.title = `${(fileName || 'Document').replace(/\.[^.]+$/, '')} — Print`
-
-      const base = printDocument.createElement('base')
-      base.href = document.baseURI
-      printDocument.head.append(base)
-
-      document.head.querySelectorAll('link[rel="stylesheet"], style').forEach(sourceStyle => {
-        const copiedStyle = sourceStyle.cloneNode(true)
-        if (copiedStyle.tagName === 'LINK') copiedStyle.href = sourceStyle.href
-        printDocument.head.append(copiedStyle)
+      const { exportMarkdownPdf } = await import('./pdfExport')
+      await exportMarkdownPdf(markdownBody, {
+        title: headings[0]?.text || baseName,
+        fileName: `${baseName}.pdf`,
+        meta: frontmatterMeta,
       })
-
-      const printStyles = printDocument.createElement('style')
-      printStyles.textContent = `
-        @page { size: A4 portrait; margin: 16mm; }
-        html, body { width: auto !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
-        body { display: block !important; margin: 0 !important; padding: 0 !important; background: var(--bg-preview) !important; color: var(--text-1) !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        .book-page { width: auto !important; max-width: 100% !important; margin: 0 auto !important; box-shadow: none !important; }
-        .rm-prose { max-width: none !important; }
-        .rm-prose h1, .rm-prose h2, .rm-prose h3 { break-after: avoid-page; page-break-after: avoid; }
-        .rm-prose p, .rm-prose li { orphans: 3; widows: 3; }
-        .rm-prose table, .rm-prose tr, .code-wrapper, blockquote, img, .mermaid-svg { break-inside: avoid-page; page-break-inside: avoid; }
-        .code-body { overflow: visible !important; }
-        .code-body pre { white-space: pre-wrap !important; overflow-wrap: anywhere !important; }
-        *, *::before, *::after { animation: none !important; transition: none !important; }
-      `
-      printDocument.head.append(printStyles)
-
-      const article = sourceArticle.cloneNode(true)
-      article.querySelectorAll('.book-folio-header, .book-folio-footer, .heading-anchor, .code-actions, button').forEach(element => element.remove())
-      article.querySelectorAll('*').forEach(element => {
-        Array.from(element.classList).filter(className => className.startsWith('anim-')).forEach(className => element.classList.remove(className))
-      })
-      article.classList.remove('anim-slide-up')
-      printDocument.body.replaceChildren(article)
-
-      printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true })
-      const startPrint = () => {
-        printWindow.requestAnimationFrame(() => {
-          printWindow.focus()
-          printWindow.print()
-        })
-      }
-      const stylesheetLoads = Array.from(printDocument.querySelectorAll('link[rel="stylesheet"]')).map(link => {
-        if (link.sheet) return Promise.resolve()
-        return new Promise(resolve => {
-          link.addEventListener('load', resolve, { once: true })
-          link.addEventListener('error', resolve, { once: true })
-        })
-      })
-      Promise.all([...stylesheetLoads, printDocument.fonts?.ready]).then(startPrint, startPrint)
     } catch (error) {
-      printWindow.close()
-      console.error('Could not prepare the print view', error)
-      alert('Could not prepare the print view. Please try again.')
+      console.error('Could not generate the PDF', error)
+      alert('Could not generate the PDF. Please try again.')
+    } finally {
+      setPdfExporting(false)
     }
-  }, [fileName])
+  }, [activeFile, markdownBody, fileName, headings, frontmatterMeta, pdfExporting])
 
   const handleCopyAll = useCallback(async () => {
     try {
@@ -2654,7 +2588,7 @@ export default function App() {
     ...(activeFile ? [
       { id: 'dl-md', label: 'Download Markdown (.md)', hint: 'Export', icon: Download, run: handleDownload },
       { id: 'dl-html', label: 'Export Standalone HTML (.html)', hint: 'Export', icon: FileCode2, run: handleExportHtml },
-    { id: 'dl-pdf', label: 'Print / Save as PDF', hint: 'Export', icon: FileDown, run: handleExportPdf },
+    { id: 'dl-pdf', label: 'Download PDF', hint: 'Export', icon: FileDown, run: handleExportPdf },
     ] : []),
     ...(files.length > 0 ? [
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
@@ -2679,7 +2613,7 @@ export default function App() {
   return (
     <div
       ref={appRef}
-      className={`h-screen flex flex-col app-shell overflow-hidden anim-fade-in${isSepia ? ' sepia' : ''}${isSepia && highContrast ? ' high-contrast' : ''}`}
+      className={`h-screen flex flex-col app-shell overflow-hidden anim-fade-in${isSepia ? ' theme-sepia' : ''}${isSepia && highContrast ? ' high-contrast' : ''}`}
       data-density={uiDensity}
       onDrop={handleDrop}
       onDragOver={handleDragOver}

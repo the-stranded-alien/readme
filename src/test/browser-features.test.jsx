@@ -350,40 +350,72 @@ describe('advanced browser features', () => {
     expect(fetch).toHaveBeenCalledWith('https://example.test/remote.md')
   })
 
-  it('uses native print layout without changing the live page theme or scroll', async () => {
-    localStorage.setItem('readme-theme', 'dark')
-    const handlers = {}
-    const printDocument = document.implementation.createHTMLDocument()
-    const popup = {
-      document: printDocument,
-      addEventListener: vi.fn((type, handler) => { handlers[type] = handler }),
-      requestAnimationFrame: callback => callback(),
-      focus: vi.fn(),
-      print: vi.fn(),
-      close: vi.fn(),
-    }
-    vi.spyOn(window, 'open').mockReturnValue(popup)
-    const { container } = installApp()
-    await waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(true))
-    const scroller = container.querySelector('.surface-preview.overflow-auto')
-    scroller.scrollTop = 90
-    const originalScrollTop = scroller.scrollTop
-    const sourceArticle = container.querySelector('.book-page')
-    const sourceArticleStyle = sourceArticle.getAttribute('style')
-    window.HTMLElement.prototype.scrollIntoView.mockClear()
+  it('builds a styled pdfmake document from Markdown source', async () => {
+    const { buildPdfDefinition } = await import('../pdfExport.js')
+    const markdown = [
+      '# Title 🚀',
+      '',
+      'Some **bold** and *italic* text with `code` and a [link](https://example.com).',
+      '',
+      '- [x] done',
+      '- [ ] todo',
+      '',
+      '> quoted',
+      '',
+      '```js',
+      'const x = 1',
+      '```',
+      '',
+      '| A | B |',
+      '|:--|--:|',
+      '| 1 | 2 |',
+    ].join('\n')
+    const definition = await buildPdfDefinition(markdown, { title: 'Title', meta: [{ key: 'author', value: 'Me' }] })
+    const serialized = JSON.stringify(definition.content)
+    expect(definition.pageSize).toBe('A4')
+    expect(serialized).toContain('Title ')
+    expect(serialized).not.toContain('🚀')
+    expect(serialized).toContain('"bold":true')
+    expect(serialized).toContain('"italics":true')
+    expect(serialized).toContain('"link":"https://example.com"')
+    expect(serialized).toContain('const x = 1')
+    expect(serialized).toContain('"font":"Courier"')
+    expect(serialized).toContain('[x] ')
+    expect(serialized).toContain('author: ')
+    expect(definition.content.some(block => block.table?.headerRows === 1)).toBe(true)
+  })
 
+  it('downloads a generated PDF instead of opening a print window', async () => {
+    const exportMarkdownPdf = vi.fn(async () => {})
+    vi.doMock('../pdfExport', () => ({ exportMarkdownPdf }))
+    const open = vi.spyOn(window, 'open')
+    installApp()
     fireEvent.click(screen.getByRole('button', { name: 'Download and export options' }))
-    fireEvent.click(await screen.findByText('Print / Save as PDF'))
-    await waitFor(() => expect(popup.print).toHaveBeenCalledOnce())
+    fireEvent.click(await screen.findByText('Download PDF'))
+    await waitFor(() => expect(exportMarkdownPdf).toHaveBeenCalledOnce())
+    expect(exportMarkdownPdf.mock.calls[0][1].fileName).toMatch(/\.pdf$/)
+    expect(open).not.toHaveBeenCalled()
+    vi.doUnmock('../pdfExport')
+  })
 
-    expect(document.documentElement.classList.contains('dark')).toBe(true)
-    expect(scroller.scrollTop).toBe(originalScrollTop)
-    expect(sourceArticle.getAttribute('style')).toBe(sourceArticleStyle)
-    expect(window.HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled()
-    expect(printDocument.documentElement.classList.contains('dark')).toBe(true)
-    expect(printDocument.body.querySelector('.book-page')).toBeTruthy()
-    expect(printDocument.body.querySelector('.book-folio-header, .book-folio-footer, button')).toBeNull()
-    expect(Array.from(printDocument.head.querySelectorAll('style')).some(style => style.textContent.includes('@page'))).toBe(true)
-    expect(printDocument.body.querySelector('canvas')).toBeNull()
+  it('names the installed app ReadMe', async () => {
+    const testDir = dirname(fileURLToPath(import.meta.url))
+    const manifest = JSON.parse(await readFile(resolve(testDir, '../../public/manifest.webmanifest'), 'utf8'))
+    expect(manifest.name).toBe('ReadMe')
+    expect(manifest.short_name).toBe('ReadMe')
+  })
+
+  it('defaults the preview to wide mode, migrating older saved prefs', () => {
+    localStorage.setItem('readme-reader-prefs', JSON.stringify({ fontIndex: 0, size: 'md', width: 'book', paper: 'ivory' }))
+    const { container } = installApp()
+    expect(container.querySelector('.book-page').style.maxWidth).toBe('100%')
+  })
+
+  it('cycles light, dark and sepia color modes', async () => {
+    localStorage.setItem('readme-theme', 'dark')
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: /Color mode dark/ }))
+    await waitFor(() => expect(document.documentElement.classList.contains('theme-sepia')).toBe(true))
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 })
