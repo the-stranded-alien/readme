@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
+import { createElement, useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -18,7 +18,10 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, Loader2, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
+  Volume2, Pause, Play, Highlighter, StickyNote, MonitorUp, Globe, Save,
 } from 'lucide-react'
+import { readWorkspace, writeWorkspace } from './workspaceDb'
+import { analyzeDocument } from './documentAnalysis'
 
 // ── useIsDark — subscribes to <html class="dark"> ─────────────
 function useIsDark() {
@@ -123,24 +126,30 @@ Write \`inline code\`, **bold**, *italic*, ~~strikethrough~~, and [links](https:
 ---
 `
 
-// ── Extract headings from markdown ────────────────────────────
-function extractHeadings(md) {
-  return md.split('\n')
-    .filter(l => /^#{1,3}\s/.test(l))
-    .map(l => {
-      const m = l.match(/^(#{1,3})\s+(.+)/)
-      if (!m) return null
-      const raw = m[2]
-        .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')
-        .replace(/`([^`]+)`/g, '$1')
-        .trim()
-      return {
-        level: m[1].length,
-        text: raw,
-        id: raw.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, ''),
+function useDocumentAnalysis(markdown) {
+  const [analysis, setAnalysis] = useState(() => analyzeDocument(markdown))
+  const workerRef = useRef(null)
+  const requestIdRef = useRef(0)
+  useEffect(() => {
+    if (!('Worker' in window)) return
+    try {
+      const worker = new Worker(new URL('./workers/documentWorker.js', import.meta.url), { type: 'module' })
+      workerRef.current = worker
+      worker.onmessage = ({ data }) => {
+        if (data.id === requestIdRef.current) setAnalysis(data)
       }
-    })
-    .filter(Boolean)
+      return () => { worker.terminate(); workerRef.current = null }
+    } catch { /* use the synchronous fallback */ }
+  }, [])
+  useEffect(() => {
+    const id = ++requestIdRef.current
+    if (workerRef.current) workerRef.current.postMessage({ id, markdown })
+    else {
+      const timer = setTimeout(() => setAnalysis(analyzeDocument(markdown)), 0)
+      return () => clearTimeout(timer)
+    }
+  }, [markdown])
+  return analysis
 }
 
 // ── Markdown formatting helpers ────────────────────────────────
@@ -583,16 +592,19 @@ function PillSwitcher({ view, onChange }) {
   return (
     <div ref={containerRef} className="pill-track hidden sm:flex">
       <div className="pill-indicator" style={pill} />
-      {VIEW_MODES.map(({ id, label, Icon }, i) => (
+      {VIEW_MODES.map((mode, i) => {
+        const { id, label } = mode
+        return (
         <button key={id} ref={el => (btnRefs.current[i] = el)}
           onClick={() => onChange(id)}
           className={`pill-btn ${view === id ? 'active' : ''}`}
           title={label}
         >
-          <Icon size={13} />
+          {createElement(mode.Icon, { size: 13 })}
           {label}
         </button>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -1173,6 +1185,7 @@ export default function App() {
   const [initialWorkspace] = useState(loadInitialWorkspace)
   const [files, setFiles]               = useState(initialWorkspace.files)
   const [activeFileId, setActiveFileId] = useState(initialWorkspace.activeId)
+  const [workspaceReady, setWorkspaceReady] = useState(false)
   const [view, setView]             = useState('split')
   const [isDragging, setIsDragging] = useState(false)
   const [mobileTab, setMobileTab]   = useState('preview')
@@ -1194,6 +1207,16 @@ export default function App() {
   const [lightboxImg, setLightboxImg] = useState(null)
   const [syncScroll, setSyncScroll]   = useState(true)
   const [cmdOpen, setCmdOpen]         = useState(false)
+  const [speechActive, setSpeechActive] = useState(false)
+  const [speechPaused, setSpeechPaused] = useState(false)
+  const [keepAwake, setKeepAwake] = useState(false)
+  const [annotations, setAnnotations] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('readme-annotations') || '[]') } catch { return [] }
+  })
+  const [annotationOpen, setAnnotationOpen] = useState(false)
+  const [annotationText, setAnnotationText] = useState('')
+  const [annotationNote, setAnnotationNote] = useState('')
+  const [selectedQuote, setSelectedQuote] = useState('')
 
   const activeFile = useMemo(
     () => files.find(f => f.id === activeFileId) ?? null,
@@ -1215,10 +1238,20 @@ export default function App() {
   const syncLockRef     = useRef(null)
   const syncTimerRef    = useRef(null)
   const syncRafRef      = useRef(null)
+  const diskHandlesRef = useRef(new Map())
+  const speechRef = useRef(null)
+  const broadcastRef = useRef(null)
+  const remoteUpdateRef = useRef(null)
+  const lastLocalEditAtRef = useRef(0)
+  const syncClientIdRef = useRef(createFileId())
+  const analysis = useDocumentAnalysis(content)
 
   const activeFont = DOC_FONTS[readerPrefs.fontIndex] ?? DOC_FONTS[0]
   const cycleDocFont = useCallback(() => {
     setReaderPrefs(p => ({ ...p, fontIndex: (p.fontIndex + 1) % DOC_FONTS.length }))
+  }, [])
+  const markWorkspaceEdit = useCallback(() => {
+    lastLocalEditAtRef.current = Math.max(Date.now(), lastLocalEditAtRef.current + 1)
   }, [])
 
   // Dark mode & high-contrast mode
@@ -1243,15 +1276,59 @@ export default function App() {
 
   // Sync in-memory file list + active tab to browser localStorage (best-effort)
   useEffect(() => {
+    let cancelled = false
+    readWorkspace().then(saved => {
+      if (cancelled) return
+      if (saved?.files && Array.isArray(saved.files)) {
+        setFiles(saved.files)
+        saved.files.forEach(file => { if (file.diskHandle) diskHandlesRef.current.set(file.id, file.diskHandle) })
+        setActiveFileId(saved.files.some(file => file.id === saved.activeId) ? saved.activeId : saved.files[0]?.id ?? null)
+      }
+    }).catch(() => {}).finally(() => { if (!cancelled) setWorkspaceReady(true) })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       try {
-        localStorage.setItem('readme-files', JSON.stringify(files))
+        localStorage.setItem('readme-files', JSON.stringify(files.map(({ id, name, content }) => ({ id, name, content }))))
         if (activeFileId) localStorage.setItem('readme-active-file', activeFileId)
         else localStorage.removeItem('readme-active-file')
       } catch {
         // Quota exceeded or storage disabled — keep everything working in memory
       }
+      if (workspaceReady) writeWorkspace({ files, activeId: activeFileId }).catch(() => {})
     }, 300)
+    return () => clearTimeout(timer)
+  }, [files, activeFileId, workspaceReady])
+
+  useEffect(() => {
+    if (!('BroadcastChannel' in window)) return
+    const channel = new BroadcastChannel('readme-workspace-sync')
+    broadcastRef.current = channel
+    channel.onmessage = ({ data }) => {
+      if (!data || data.source === syncClientIdRef.current || !Array.isArray(data.files)) return
+      const updatedAt = Number(data.updatedAt) || 0
+      if (updatedAt <= lastLocalEditAtRef.current) return
+      lastLocalEditAtRef.current = updatedAt
+      remoteUpdateRef.current = JSON.stringify({
+        files: data.files.map(({ id, name, content }) => ({ id, name, content })),
+        activeId: data.activeId ?? null,
+      })
+      setFiles(data.files)
+      setActiveFileId(data.activeId ?? null)
+    }
+    return () => { channel.close(); broadcastRef.current = null }
+  }, [])
+
+  useEffect(() => {
+    const safeFiles = files.map(({ id, name, content }) => ({ id, name, content }))
+    const snapshot = JSON.stringify({ files: safeFiles, activeId: activeFileId })
+    if (remoteUpdateRef.current === snapshot) { remoteUpdateRef.current = null; return }
+    remoteUpdateRef.current = null
+    const timer = setTimeout(() => {
+      try { broadcastRef.current?.postMessage({ source: syncClientIdRef.current, files: safeFiles, activeId: activeFileId, updatedAt: lastLocalEditAtRef.current }) } catch { /* handles may not be cloneable in this browser */ }
+    }, 180)
     return () => clearTimeout(timer)
   }, [files, activeFileId])
 
@@ -1262,6 +1339,40 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('readme-reading-bookmarks', JSON.stringify(readingBookmarks)) } catch { /* ignore */ }
   }, [readingBookmarks])
+
+  useEffect(() => {
+    try { localStorage.setItem('readme-annotations', JSON.stringify(annotations)) } catch { /* ignore */ }
+  }, [annotations])
+
+  useEffect(() => {
+    if (!keepAwake || !('wakeLock' in navigator)) return
+    let sentinel
+    let disposed = false
+    const request = async () => {
+      try { sentinel = await navigator.wakeLock.request('screen') } catch { /* unavailable or denied */ }
+    }
+    const onVisibility = () => { if (document.visibilityState === 'visible' && !sentinel?.released) request() }
+    request()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      disposed = true
+      document.removeEventListener('visibilitychange', onVisibility)
+      if (!disposed) return
+      sentinel?.release().catch(() => {})
+    }
+  }, [keepAwake])
+
+  useEffect(() => () => {
+    window.speechSynthesis?.cancel()
+    speechRef.current = null
+  }, [])
+
+  useEffect(() => {
+    window.speechSynthesis?.cancel()
+    speechRef.current = null
+    setSpeechActive(false)
+    setSpeechPaused(false)
+  }, [activeFileId])
 
   const activeBookmark = activeFileId ? readingBookmarks[activeFileId] : null
   const saveReadingBookmark = useCallback(() => {
@@ -1319,7 +1430,7 @@ export default function App() {
   }, [])
 
   // TOC (computed from body without YAML frontmatter)
-  const headings = useMemo(() => extractHeadings(markdownBody), [markdownBody])
+  const headings = analysis.headings
 
   // Active heading via IntersectionObserver
   useEffect(() => {
@@ -1363,7 +1474,9 @@ export default function App() {
   useEffect(() => {
     const root = previewScrollRef.current?.querySelector('.rm-prose')
     const q = searchQuery.trim()
-    if (!root || !searchOpen || !q) {
+    const lowerQuery = q.toLocaleLowerCase()
+    const safeToPrefilter = /^[\p{L}\p{N}\s-]+$/u.test(lowerQuery)
+    if (!root || !searchOpen || !q || (safeToPrefilter && !analysis.searchIndex.includes(lowerQuery))) {
       searchHitsRef.current = []
       setSearchCount(0)
       return
@@ -1419,7 +1532,7 @@ export default function App() {
       }
       searchHitsRef.current = []
     }
-  }, [searchOpen, searchQuery, content, activeFileId, view, mobileTab])
+  }, [searchOpen, searchQuery, content, activeFileId, view, mobileTab, analysis.searchIndex])
 
   useEffect(() => {
     const hits = searchHitsRef.current
@@ -1427,6 +1540,43 @@ export default function App() {
     hits.forEach((m, i) => m.classList.toggle('current', i === searchIndex))
     hits[searchIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [searchIndex, searchCount])
+
+  useEffect(() => {
+    const root = previewScrollRef.current?.querySelector('.rm-prose')
+    if (!root || !window.CSS?.highlights || !window.Highlight) return
+    if (!document.getElementById('readme-highlight-style')) {
+      const style = document.createElement('style')
+      style.id = 'readme-highlight-style'
+      style.textContent = '::highlight(readme-annotations) { background: rgba(250, 204, 21, .34); color: inherit; text-decoration: underline; text-decoration-color: rgba(202, 138, 4, .75); text-decoration-thickness: 1px; }'
+      document.head.append(style)
+    }
+    const textNodes = []
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let node
+    let joined = ''
+    while ((node = walker.nextNode())) {
+      const start = joined.length
+      joined += node.nodeValue || ''
+      textNodes.push({ node, start, end: joined.length })
+    }
+    const ranges = []
+    for (const annotation of annotations.filter(item => item.fileId === activeFileId)) {
+      const quote = annotation.quote
+      const offset = quote ? joined.indexOf(quote) : -1
+      if (offset < 0) continue
+      const end = offset + quote.length
+      const first = textNodes.find(entry => entry.start <= offset && entry.end > offset)
+      const last = textNodes.find(entry => entry.start < end && entry.end >= end)
+      if (!first || !last) continue
+      const range = document.createRange()
+      range.setStart(first.node, offset - first.start)
+      range.setEnd(last.node, end - last.start)
+      ranges.push(range)
+    }
+    if (ranges.length) window.CSS.highlights.set('readme-annotations', new window.Highlight(...ranges))
+    else window.CSS.highlights.delete('readme-annotations')
+    return () => window.CSS.highlights.delete('readme-annotations')
+  }, [annotations, activeFileId, content, view, mobileTab])
 
   const stepSearch = useCallback((dir) => {
     if (!searchCount) return
@@ -1436,10 +1586,12 @@ export default function App() {
   // Multi-file in-memory handlers
   const updateActiveContent = useCallback((nextContent) => {
     if (!activeFileId) return
+    markWorkspaceEdit()
     setFiles(prev => prev.map(f => (f.id === activeFileId ? { ...f, content: nextContent } : f)))
-  }, [activeFileId])
+  }, [activeFileId, markWorkspaceEdit])
 
   const handleNewFile = useCallback(() => {
+    markWorkspaceEdit()
     const id = createFileId()
     setFiles(prev => [...prev, { id, name: getNextUntitledName(prev), content: '' }])
     setActiveFileId(id)
@@ -1448,19 +1600,21 @@ export default function App() {
     if (view === 'preview') setView('split')
     setMobileTab('editor')
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [view])
+  }, [view, markWorkspaceEdit])
 
   const handleSelectFile = useCallback((id) => {
     if (id === activeFileId) return
+    markWorkspaceEdit()
     setActiveFileId(id)
     setActiveHeadingId(null)
     setShowScrollTop(false)
     previewScrollRef.current?.scrollTo({ top: 0 })
-  }, [activeFileId])
+  }, [activeFileId, markWorkspaceEdit])
 
   const handleCloseFile = useCallback((id) => {
     const idx = files.findIndex(f => f.id === id)
     if (idx === -1) return
+    markWorkspaceEdit()
     const next = files.filter(f => f.id !== id)
     setFiles(next)
     if (id === activeFileId) {
@@ -1469,13 +1623,14 @@ export default function App() {
       setActiveHeadingId(null)
       setShowScrollTop(false)
     }
-  }, [files, activeFileId])
+  }, [files, activeFileId, markWorkspaceEdit])
 
   const handleRenameFile = useCallback((id, rawName) => {
     const trimmed = rawName.trim()
     if (!trimmed) return
+    markWorkspaceEdit()
     setFiles(prev => prev.map(f => (f.id === id ? { ...f, name: trimmed } : f)))
-  }, [])
+  }, [markWorkspaceEdit])
 
   const handleFiles = useCallback(async (fileList) => {
     const incoming = Array.from(fileList || [])
@@ -1488,12 +1643,13 @@ export default function App() {
     }
     try {
       const loaded = await Promise.all(
-        valid.map(async f => ({
-          id: createFileId(),
-          name: f.name,
-          content: await readFileAsText(f),
-        }))
+        valid.map(async f => {
+          const id = createFileId()
+          if (f.readmeHandle) diskHandlesRef.current.set(id, f.readmeHandle)
+          return { id, name: f.readmePath || f.name, content: await readFileAsText(f), ...(f.readmeHandle ? { diskHandle: f.readmeHandle } : {}) }
+        })
       )
+      markWorkspaceEdit()
       setFiles(prev => [...prev, ...loaded])
       setActiveFileId(loaded[0].id)
       setActiveHeadingId(null)
@@ -1506,11 +1662,141 @@ export default function App() {
       console.error('Failed to read uploaded file(s)', err)
       alert('Failed to read one or more files. Please try again.')
     }
-  }, [])
+  }, [markWorkspaceEdit])
 
-  const handleDrop      = useCallback(e => { e.preventDefault(); setIsDragging(false); handleFiles(e.dataTransfer.files) }, [handleFiles])
+  const handleDrop = useCallback(async (e) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const items = Array.from(e.dataTransfer.items || [])
+    const fileSystemHandles = await Promise.all(items.map(item => item.getAsFileSystemHandle?.()?.catch(() => null)))
+    const collected = []
+    const walk = async (handle, prefix = '') => {
+      if (!handle) return
+      if (handle.kind === 'file') {
+        if (/\.(md|markdown|txt)$/i.test(handle.name)) {
+          const file = await handle.getFile()
+          collected.push(Object.assign(file, { readmeHandle: handle, readmePath: `${prefix}${handle.name}` }))
+        }
+      } else if (handle.kind === 'directory') {
+        for await (const child of handle.values()) await walk(child, `${prefix}${handle.name}/`)
+      }
+    }
+    if (fileSystemHandles.some(Boolean)) {
+      for (const handle of fileSystemHandles) await walk(handle)
+      await handleFiles(collected)
+    } else {
+      handleFiles(e.dataTransfer.files)
+    }
+  }, [handleFiles])
   const handleDragOver  = useCallback(e => { e.preventDefault(); setIsDragging(true)  }, [])
   const handleDragLeave = useCallback(e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false) }, [])
+
+  const handleOpenDiskFiles = useCallback(async () => {
+    if (!window.showOpenFilePicker) { fileInputRef.current?.click(); return }
+    try {
+      const handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt'] } }] })
+      const loaded = await Promise.all(handles.map(async handle => {
+        const file = await handle.getFile()
+        const id = createFileId()
+        diskHandlesRef.current.set(id, handle)
+        return { id, name: file.name, content: await readFileAsText(file), diskHandle: handle }
+      }))
+      if (loaded.length) {
+        markWorkspaceEdit()
+        setFiles(prev => [...prev, ...loaded])
+        setActiveFileId(loaded[0].id)
+        setMobileTab('preview')
+      }
+    } catch (error) {
+      if (error?.name !== 'AbortError') { console.error('Open file failed', error); fileInputRef.current?.click() }
+    }
+  }, [markWorkspaceEdit])
+
+  const handleSaveInPlace = useCallback(async () => {
+    if (!activeFile) return
+    let handle = diskHandlesRef.current.get(activeFile.id) || activeFile.diskHandle
+    try {
+      if (!handle && window.showSaveFilePicker) {
+        handle = await window.showSaveFilePicker({ suggestedName: fileName || 'document.md', types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }] })
+        diskHandlesRef.current.set(activeFile.id, handle)
+      }
+      if (!handle) {
+        const download = Object.assign(document.createElement('a'), {
+          href: URL.createObjectURL(new Blob([content], { type: 'text/markdown' })),
+          download: fileName || 'document.md',
+        })
+        download.click()
+        URL.revokeObjectURL(download.href)
+        return
+      }
+      if (handle.queryPermission && await handle.queryPermission({ mode: 'readwrite' }) !== 'granted' && await handle.requestPermission({ mode: 'readwrite' }) !== 'granted') {
+        alert('Allow file access to save this document in place.')
+        return
+      }
+      const writable = await handle.createWritable()
+      await writable.write(content)
+      await writable.close()
+    } catch (error) {
+      if (error?.name !== 'AbortError') { console.error('Save file failed', error); alert('Could not save this file. Use Download as a fallback.') }
+    }
+  }, [activeFile, content, fileName])
+
+  const handleImportUrl = useCallback(async () => {
+    const url = window.prompt('Paste a public Markdown file URL (the server must allow CORS):')
+    if (!url) return
+    try {
+      const parsed = new URL(url)
+      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Use an http or https URL')
+      const response = await fetch(parsed.href)
+      if (!response.ok) throw new Error(`Request failed (${response.status})`)
+      const markdown = await response.text()
+      const name = decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() || 'remote-document.md')
+      const id = createFileId()
+      markWorkspaceEdit()
+      setFiles(prev => [...prev, { id, name: /\.(md|markdown|txt)$/i.test(name) ? name : `${name}.md`, content: markdown }])
+      setActiveFileId(id)
+      setMobileTab('preview')
+    } catch (error) {
+      alert(`Could not import URL: ${error.message}. Cross-origin servers must allow browser CORS access.`)
+    }
+  }, [markWorkspaceEdit])
+
+  const toggleSpeech = useCallback(() => {
+    if (!('speechSynthesis' in window)) return
+    if (speechActive && !speechPaused) {
+      window.speechSynthesis.pause(); setSpeechPaused(true); return
+    }
+    if (speechPaused) {
+      window.speechSynthesis.resume(); setSpeechPaused(false); return
+    }
+    const article = previewScrollRef.current?.querySelector('.rm-prose')
+    const clone = article?.cloneNode(true)
+    clone?.querySelectorAll('pre, .code-block, .mermaid-block, .code-actions, .heading-anchor, button, svg, table, img').forEach(node => node.remove())
+    const text = clone?.innerText?.trim() || content.replace(/```[\s\S]*?```/g, ' code block ')
+    if (!text) return
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.onend = () => { setSpeechActive(false); setSpeechPaused(false); speechRef.current = null }
+    utterance.onerror = utterance.onend
+    speechRef.current = utterance
+    setSpeechActive(true); setSpeechPaused(false)
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
+  }, [speechActive, speechPaused, content])
+
+  const captureSelection = useCallback(() => {
+    const quote = window.getSelection()?.toString().trim()
+    if (!quote) return
+    setSelectedQuote(quote)
+    setAnnotationText(quote)
+    setAnnotationNote('')
+    setAnnotationOpen(true)
+  }, [])
+
+  const saveAnnotation = useCallback(() => {
+    if (!activeFileId || !annotationText.trim()) return
+    setAnnotations(prev => [...prev, { id: createFileId(), fileId: activeFileId, quote: annotationText.trim(), note: annotationNote.trim(), headingId: activeHeadingId, progress: readProgress, createdAt: Date.now() }])
+    setAnnotationOpen(false)
+  }, [activeFileId, annotationText, annotationNote, activeHeadingId, readProgress])
 
   const handleDownload = useCallback(() => {
     if (!activeFile) return
@@ -1528,18 +1814,31 @@ export default function App() {
   const handleExportPdf = useCallback(async () => {
     if (exportingPdf) return
     const scroller = previewScrollRef.current
-    const root = scroller?.querySelector('.rm-prose')
-    if (!root || !scroller) return
+    const sourceArticle = scroller?.querySelector('.book-page')
+    if (!sourceArticle || !scroller) return
 
     setExportingPdf(true)
-    const prevScrollTop = scroller.scrollTop
-    document.documentElement.classList.add('pdf-export-active')
+    const yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0))
+    let staging = null
 
     try {
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
         import('html2canvas-pro'),
         import('jspdf'),
       ])
+
+      await document.fonts?.ready
+      staging = document.createElement('div')
+      staging.id = 'readme-pdf-staging'
+      const configuredMax = READER_WIDTHS[readerPrefs.width]?.maxW
+      const configuredWidth = configuredMax?.endsWith('px') ? Number.parseInt(configuredMax, 10) : window.innerWidth - 48
+      const stageWidth = sourceArticle.getBoundingClientRect().width || Math.min(window.innerWidth - 24, configuredWidth || 740)
+      staging.style.cssText = `position:fixed;left:0;top:0;width:${stageWidth}px;height:auto;overflow:visible;opacity:0;pointer-events:none;z-index:-1;`
+      staging.append(sourceArticle.cloneNode(true))
+      document.body.append(staging)
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      const root = staging.querySelector('.rm-prose')
+      if (!root) throw new Error('Could not prepare the document for export')
 
       const rootVars = getComputedStyle(document.documentElement)
       const bgColor     = rootVars.getPropertyValue('--bg-preview').trim() || (isDark ? '#1c1d2f' : '#ffffff')
@@ -1572,21 +1871,21 @@ export default function App() {
       }
       paintPageBg()
 
-      const scale = window.devicePixelRatio > 1 ? 2 : 1.6
+      const scale = Math.min(window.devicePixelRatio || 1, 1.5)
       const blocks = Array.from(root.children)
 
       for (const block of blocks) {
-        // Code blocks use CodeMirror, which can virtualize off-screen lines
-        // and horizontally scroll long lines — scroll into view (so lines
-        // mount) before capturing; force-wrap is handled by the
-        // .pdf-export-active CSS override below.
-        const hasEditor = Boolean(block.querySelector?.('.cm-editor'))
-        block.scrollIntoView({ block: 'center' })
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-        if (hasEditor) await new Promise(r => setTimeout(r, 40))
+        // Let input, scrolling, and paint run between captures. This detached,
+        // invisible copy stays outside the reader's scroll container.
+        await yieldToBrowser()
 
         const canvas = await html2canvas(block, {
           scale, backgroundColor: bgColor, useCORS: true, logging: false,
+          ignoreElements: element => element.matches?.('.heading-anchor, .code-actions, .book-folio-header, .book-folio-footer, .reading-progress-track, .preview-search-bar'),
+          onclone: clonedDocument => {
+            const clone = clonedDocument.getElementById('readme-pdf-staging')
+            if (clone) clone.style.opacity = '1'
+          },
         })
         if (!canvas.width || !canvas.height) continue
 
@@ -1622,6 +1921,9 @@ export default function App() {
           pdf.addImage(canvas.toDataURL('image/png'), 'PNG', MARGIN_X, cursorY, imgW, imgH)
           cursorY += imgH + GAP
         }
+        canvas.width = 0
+        canvas.height = 0
+        await yieldToBrowser()
       }
       stampFooter()
 
@@ -1630,19 +1932,34 @@ export default function App() {
       console.error('PDF export failed', err)
       alert('Sorry, exporting to PDF failed. Please try again.')
     } finally {
-      document.documentElement.classList.remove('pdf-export-active')
-      scroller.scrollTop = prevScrollTop
+      staging?.remove()
       setExportingPdf(false)
     }
-  }, [exportingPdf, fileName, headings, isDark, isSepia])
+  }, [exportingPdf, fileName, headings, isDark, isSepia, readerPrefs.width])
 
   const handleCopyAll = useCallback(async () => {
-    await navigator.clipboard.writeText(content)
-    setCopyAllDone(true)
-    setTimeout(() => setCopyAllDone(false), 2000)
+    try {
+      const article = previewScrollRef.current?.querySelector('.rm-prose')
+      if (navigator.clipboard?.write && window.ClipboardItem && article) {
+        const clone = article.cloneNode(true)
+        clone.querySelectorAll('button, .heading-anchor, svg').forEach(node => node.remove())
+        const html = clone.innerHTML
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([content], { type: 'text/plain' }),
+        })])
+      } else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(content)
+      else throw new Error('Clipboard is unavailable')
+      setCopyAllDone(true)
+      setTimeout(() => setCopyAllDone(false), 2000)
+    } catch (error) {
+      console.error('Copy failed', error)
+      alert('Could not access the clipboard. Check browser clipboard permissions.')
+    }
   }, [content])
 
   const handleCreateFromTemplate = useCallback((tpl) => {
+    markWorkspaceEdit()
     const id = createFileId()
     setFiles(prev => {
       const taken = new Set(prev.map(f => f.name.toLowerCase()))
@@ -1663,7 +1980,7 @@ export default function App() {
     if (view === 'preview') setView('split')
     setMobileTab('editor')
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [view])
+  }, [view, markWorkspaceEdit])
 
   const handleExportHtml = useCallback(() => {
     const article = previewScrollRef.current?.querySelector('.book-page')
@@ -1776,7 +2093,8 @@ export default function App() {
 
   const paletteActions = useMemo(() => [
     { id: 'new', label: 'New blank file', hint: 'Action', icon: FilePlus, run: handleNewFile },
-    { id: 'upload', label: 'Upload files…', hint: 'Action', icon: Upload, run: () => fileInputRef.current?.click() },
+    { id: 'upload', label: 'Open files…', hint: 'Action', icon: Upload, run: handleOpenDiskFiles },
+    { id: 'url-import', label: 'Import Markdown from URL…', hint: 'Action', icon: Globe, run: handleImportUrl },
     { id: 'wide', label: readerPrefs.width === 'full' ? 'Switch to Book page width' : 'Expand to Wide mode', hint: 'Reader', icon: UnfoldHorizontal, run: () => setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' })) },
     { id: 'sepia', label: readerPrefs.paper === 'sepia' ? 'Paper tone: Ivory' : 'Paper tone: Sepia', hint: 'Reader', icon: BookOpen, run: () => setReaderPrefs(p => ({ ...p, paper: p.paper === 'sepia' ? 'ivory' : 'sepia' })) },
     { id: 'contrast', label: highContrast ? 'Disable High Contrast' : 'Enable High Contrast', hint: 'Theme', icon: Contrast, run: () => setHighContrast(h => !h) },
@@ -1791,13 +2109,13 @@ export default function App() {
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
     ] : []),
   ], [
-    handleNewFile, readerPrefs.width, readerPrefs.paper, highContrast, theme, isDark,
+    handleNewFile, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, readerPrefs.paper, highContrast, theme, isDark,
     toggleTheme, syncScroll, activeFile, files.length, handleDownload,
     handleExportHtml, handleExportPdf, handleExportZip,
   ])
 
-  const wordCount   = useMemo(() => content.trim() ? content.trim().split(/\s+/).length : 0, [content])
-  const lineCount   = useMemo(() => content.split('\n').length, [content])
+  const wordCount   = analysis.wordCount
+  const lineCount   = analysis.lineCount
   const readingTime = useMemo(() => Math.max(1, Math.ceil(wordCount / 220)), [wordCount])
 
   const showEditor  = view !== 'preview'
@@ -1852,8 +2170,14 @@ export default function App() {
             <button onClick={handleNewFile} title="New file" className="btn-header">
               <FilePlus size={14} /><span className="hidden sm:inline">New</span>
             </button>
-            <button onClick={() => fileInputRef.current?.click()} className="btn-header">
+            <button onClick={handleOpenDiskFiles} className="btn-header" title="Open Markdown files or folders">
               <Upload size={13} /><span className="hidden sm:inline">Upload</span>
+            </button>
+            <button onClick={handleImportUrl} className="btn-icon hidden sm:flex" title="Import Markdown from URL">
+              <Globe size={14} />
+            </button>
+            <button onClick={handleSaveInPlace} disabled={!activeFile} className="btn-icon hidden sm:flex disabled:opacity-40" title="Save file in place (or choose a location)">
+              <Save size={14} />
             </button>
             <DownloadMenuButton
               disabled={!activeFile}
@@ -2108,6 +2432,76 @@ export default function App() {
                       {view === 'preview' && <span className="text-[10px] font-medium whitespace-nowrap">Resume {activeBookmark.progress}%</span>}
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={toggleSpeech}
+                    title={!speechActive ? 'Read document aloud' : speechPaused ? 'Resume read aloud' : 'Pause read aloud'}
+                    aria-label={!speechActive ? 'Read document aloud' : speechPaused ? 'Resume reading' : 'Pause reading'}
+                    className="btn-icon !p-1"
+                  >
+                    {!speechActive ? <Volume2 size={12} /> : speechPaused ? <Play size={12} /> : <Pause size={12} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setKeepAwake(value => !value)}
+                    title={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
+                    aria-pressed={keepAwake}
+                    className="btn-icon !p-1"
+                    style={{ color: keepAwake ? 'var(--accent)' : undefined }}
+                  >
+                    <MonitorUp size={12} />
+                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={captureSelection}
+                      title="Save selected text as a highlight or note"
+                      className="btn-icon !p-1"
+                    >
+                      <Highlighter size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedQuote(''); setAnnotationText(''); setAnnotationNote(''); setAnnotationOpen(value => !value) }}
+                      title={`Reading notes (${annotations.filter(item => item.fileId === activeFileId).length})`}
+                      className="btn-icon !p-1"
+                      style={{ color: annotations.some(item => item.fileId === activeFileId) ? 'var(--accent)' : undefined }}
+                    >
+                      <StickyNote size={12} />
+                    </button>
+                    {annotationOpen && (
+                      <div className="reader-popover anim-drop-in no-print" style={{ right: 0, top: 'calc(100% + 8px)', width: 300 }}>
+                        {selectedQuote ? (
+                          <div className="space-y-2">
+                            <div className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Save highlight or note</div>
+                            <div className="text-[11px] line-clamp-3 rounded p-2" style={{ color: 'var(--text-2)', background: 'var(--bg-editor)' }}>{selectedQuote}</div>
+                            <textarea value={annotationNote} onChange={e => setAnnotationNote(e.target.value)} placeholder="Add a note (optional)" className="w-full rounded p-2 text-xs outline-none" rows={3} style={{ background: 'var(--bg-editor)', color: 'var(--text-1)', border: '1px solid var(--border)' }} />
+                            <div className="flex justify-end gap-2">
+                              <button className="reader-chip" onClick={() => setAnnotationOpen(false)}>Cancel</button>
+                              <button className="reader-chip active" onClick={saveAnnotation}>Save</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Highlights and notes</div>
+                            <div className="max-h-64 overflow-auto space-y-2">
+                              {annotations.filter(item => item.fileId === activeFileId).map(item => (
+                                <div key={item.id} className="rounded p-2 text-[11px]" style={{ background: 'var(--bg-editor)', color: 'var(--text-2)' }}>
+                                  <button className="text-left w-full" onClick={() => {
+                                    if (item.headingId) navigateToHeading(item.headingId)
+                                    else previewScrollRef.current?.scrollTo({ top: previewScrollRef.current.scrollHeight * item.progress / 100, behavior: 'smooth' })
+                                  }}><span className="line-clamp-3">“{item.quote}”</span>{item.note && <span className="block mt-1 opacity-80">{item.note}</span>}</button>
+                                  <button className="mt-1 opacity-60 hover:opacity-100" onClick={() => setAnnotations(prev => prev.filter(value => value.id !== item.id))}>Remove</button>
+                                </div>
+                              ))}
+                              {!annotations.some(item => item.fileId === activeFileId) && <p style={{ color: 'var(--text-4)' }}>Select text, then choose the highlighter to save it here.</p>}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={() =>
                       setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' }))
