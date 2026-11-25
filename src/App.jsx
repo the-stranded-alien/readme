@@ -2113,6 +2113,14 @@ export default function App() {
           <div className="flex items-center gap-1">
             <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt" multiple className="hidden"
               onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
+            <button
+              onClick={() => setCmdOpen(true)}
+              data-tooltip="Command palette (Cmd/Ctrl + K)"
+              aria-label="Command palette"
+              className="btn-icon hidden sm:flex"
+            >
+              <Command size={15} />
+            </button>
             <button onClick={handleNewFile} data-tooltip="Create a new Markdown file" aria-label="New file" className="btn-header">
               <FilePlus size={14} /><span className="hidden sm:inline">New</span>
             </button>
@@ -2133,14 +2141,6 @@ export default function App() {
             </button>
             <button onClick={handleSaveInPlace} disabled={!activeFile} className="btn-icon hidden sm:flex disabled:opacity-40" data-tooltip="Save file in place or choose a location" aria-label="Save file in place">
               <Save size={14} />
-            </button>
-            <button
-              onClick={() => setCmdOpen(true)}
-              data-tooltip="Command palette (Cmd/Ctrl + K)"
-              aria-label="Command palette"
-              className="btn-icon hidden sm:flex"
-            >
-              <Command size={15} />
             </button>
             <button onClick={toggleFullscreen} data-tooltip={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               className="btn-icon hidden sm:flex">
