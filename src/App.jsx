@@ -389,7 +389,7 @@ function SectionHeading({ as, iconSize, node, children }) {
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} section ${text}`}
           title={collapsed ? 'Expand section' : 'Collapse section'}
         >
-          <ChevronRight size={iconSize + 2} />
+          <ChevronRight size={14} strokeWidth={2.4} />
         </button>
       )}
       {children}
