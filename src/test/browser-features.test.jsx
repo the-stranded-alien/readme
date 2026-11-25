@@ -732,6 +732,55 @@ describe('advanced browser features', () => {
     expect(document.querySelector('.rm-prose').style.getPropertyValue('--rm-font-weight')).toBe('500')
   })
 
+  it('opens files launched from the operating system (File Handling API)', async () => {
+    let consumer
+    window.launchQueue = { setConsumer: fn => { consumer = fn } }
+    installApp()
+    await waitFor(() => expect(consumer).toBeTypeOf('function'))
+    const { handle } = makeFileHandle('Launched.md', '# Opened from Finder')
+    await consumer({ files: [handle] })
+    await waitFor(() => expect(screen.getByRole('tab', { selected: true })).toHaveAttribute('aria-label', 'Launched.md'))
+    delete window.launchQueue
+  })
+
+  it('turns shared text, links and files into new files (Web Share Target)', async () => {
+    const { sharedItemToFiles } = await import('../pwaIntegration.js')
+    expect(sharedItemToFiles({ title: 'Article', text: 'Worth reading', url: 'https://example.com/a' })).toEqual([
+      { name: 'Article.md', content: '# Article\n\nWorth reading\n\n[https://example.com/a](https://example.com/a)\n' },
+    ])
+    expect(sharedItemToFiles({ files: [{ name: 'notes.md', content: '# Notes' }] })).toEqual([{ name: 'notes.md', content: '# Notes' }])
+
+    const inbox = [{ title: '', text: 'Hello from my phone', url: '', files: [] }]
+    const store = new Map([['/__share-inbox__', new Response(JSON.stringify(inbox))]])
+    vi.stubGlobal('caches', {
+      keys: async () => ['readme-shell-v4'],
+      open: async () => ({ match: async key => store.get(key), delete: async key => store.delete(key) }),
+    })
+    window.history.replaceState(null, '', '/?shared=1')
+    installApp()
+    await waitFor(() => expect(screen.getByRole('tab', { selected: true })).toHaveAttribute('aria-label', 'Shared note.md'))
+    expect(window.location.search).toBe('')
+    expect(store.has('/__share-inbox__')).toBe(false)
+  })
+
+  it('shows storage usage and asks the browser to keep data', async () => {
+    let persisted = false
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: {
+      estimate: async () => ({ usage: 2 * 1024 * 1024, quota: 100 * 1024 * 1024 }),
+      persisted: async () => persisted,
+      persist: vi.fn(async () => { persisted = true; return true }),
+    } })
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Download and export options' }))
+    fireEvent.click(await screen.findByText(/Storage & Data Safety/))
+    const dialog = await screen.findByRole('dialog', { name: /Storage & backup/ })
+    await within(dialog).findByText('2.0 MB')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep my data' }))
+    await within(dialog).findByText('Protected from automatic clean-up')
+    expect(navigator.storage.persist).toHaveBeenCalled()
+    delete navigator.storage
+  })
+
   it('collapses and expands heading sections, individually and all at once', async () => {
     installApp()
     const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })

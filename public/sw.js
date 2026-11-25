@@ -1,4 +1,4 @@
-const CACHE_NAME = 'readme-shell-v3'
+const CACHE_NAME = 'readme-shell-v4'
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME)
@@ -14,8 +14,36 @@ self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('readme-shell-') && key !== CACHE_NAME).map(key => caches.delete(key)))))
   self.clients.claim()
 })
+// Web Share Target: the OS share sheet POSTs here. Stash what was shared in the
+// cache and redirect to the app, which picks it up on load.
+const SHARE_INBOX = '/__share-inbox__'
+async function receiveShare(request) {
+  const form = await request.formData()
+  const files = []
+  for (const file of form.getAll('files')) {
+    if (file && typeof file.text === 'function') files.push({ name: file.name || 'Shared.md', content: await file.text() })
+  }
+  const shared = {
+    title: String(form.get('title') || ''),
+    text: String(form.get('text') || ''),
+    url: String(form.get('url') || ''),
+    files,
+    at: Date.now(),
+  }
+  const cache = await caches.open(CACHE_NAME)
+  const previous = await cache.match(SHARE_INBOX)
+  const inbox = previous ? await previous.json() : []
+  inbox.push(shared)
+  await cache.put(SHARE_INBOX, new Response(JSON.stringify(inbox), { headers: { 'Content-Type': 'application/json' } }))
+  return Response.redirect('/?shared=1', 303)
+}
+
 self.addEventListener('fetch', event => {
   const request = event.request
+  if (request.method === 'POST' && new URL(request.url).pathname === '/share-target') {
+    event.respondWith(receiveShare(request).catch(() => Response.redirect('/?shared=error', 303)))
+    return
+  }
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).then(response => {

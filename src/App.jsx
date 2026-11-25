@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
@@ -39,6 +39,8 @@ import GlobalSearch from './components/GlobalSearch'
 import HistoryDialog from './components/HistoryDialog'
 import CodeEditor from './components/CodeEditor'
 import TemplateMenu from './components/TemplateMenu'
+import StorageDialog from './components/StorageDialog'
+import { requestPersistentStorage, sharedItemToFiles, takeSharedItems } from './pwaIntegration'
 import { applyBackup, createBackup, readBackup } from './backup'
 import { shortcut } from './platform'
 import { buildShareUrl, readShareFromHash } from './shareLink'
@@ -1172,6 +1174,7 @@ function DownloadMenuButton({
   onExportZip,
   onBackup,
   onRestore,
+  onStorage,
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -1324,6 +1327,12 @@ function DownloadMenuButton({
             <span className="flex items-center gap-2">
               <ArchiveRestore size={13} style={{ color: 'var(--accent)' }} />
               <span>Restore from Backup…</span>
+            </span>
+          </button>
+          <button type="button" role="menuitem" className="download-menu-item" onClick={() => { setOpen(false); onStorage() }}>
+            <span className="flex items-center gap-2">
+              <HardDrive size={13} style={{ color: 'var(--accent)' }} />
+              <span>Storage &amp; Data Safety…</span>
             </span>
           </button>
         </div>
@@ -2868,6 +2877,72 @@ export default function App() {
   }, [activeFile, content, takeSnapshot, updateActiveContent])
   const [historyCompare, setHistoryCompare] = useState(null)
 
+  // ── Browser integration: open files from the OS, share target, storage ──
+  const addExternalFiles = useCallback((incoming, { activate = true } = {}) => {
+    if (!incoming.length) return
+    markWorkspaceEdit()
+    const created = incoming.map(file => ({ id: createFileId(), ...file }))
+    setFiles(prev => [...prev, ...created])
+    if (activate) {
+      setActiveFileId(created[0].id)
+      setActiveHeadingId(null)
+      setMobileTab('preview')
+    }
+    return created
+  }, [markWorkspaceEdit])
+
+  // File Handling API: files opened from Finder / Explorer with the installed app.
+  useEffect(() => {
+    if (!('launchQueue' in window) || !workspaceReady) return
+    window.launchQueue.setConsumer(async params => {
+      if (!params.files?.length) return
+      const opened = []
+      for (const handle of params.files) {
+        try {
+          const file = await handle.getFile()
+          if (!/\.(md|markdown|txt)$/i.test(file.name)) continue
+          const text = await readFileAsText(file)
+          opened.push({ name: file.name, content: text, diskHandle: handle, diskSavedContent: text })
+        } catch (error) {
+          console.warn('Could not open launched file', error)
+        }
+      }
+      const created = addExternalFiles(opened)
+      created?.forEach(file => diskHandlesRef.current.set(file.id, file.diskHandle))
+    })
+  }, [workspaceReady, addExternalFiles])
+
+  // Web Share Target: content shared to the app from other apps.
+  useEffect(() => {
+    if (!workspaceReady) return
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has('shared')) return
+    history.replaceState(null, '', window.location.pathname + window.location.hash)
+    if (params.get('shared') === 'error') {
+      setToast({ message: 'Something went wrong receiving the shared content.', tone: 'warning' })
+      return
+    }
+    takeSharedItems().then(items => {
+      const incoming = items.flatMap(sharedItemToFiles)
+      if (!incoming.length) return
+      addExternalFiles(incoming)
+      setToast({ message: `Added ${incoming.length} shared file${incoming.length === 1 ? '' : 's'}.`, tone: 'success' })
+    }).catch(() => {})
+  }, [workspaceReady, addExternalFiles])
+
+  // Storage API: ask once (on the first edit) for storage the browser won't evict.
+  const persistAskedRef = useRef(false)
+  useEffect(() => {
+    if (!workspaceReady || persistAskedRef.current || !lastLocalEditAtRef.current) return
+    persistAskedRef.current = true
+    try {
+      if (localStorage.getItem('readme-storage-persist-asked')) return
+      localStorage.setItem('readme-storage-persist-asked', '1')
+    } catch { /* storage is optional */ }
+    navigator.storage?.persisted?.().then(persisted => { if (!persisted) requestPersistentStorage() }).catch(() => {})
+  }, [files, workspaceReady])
+  const [storageOpen, setStorageOpen] = useState(false)
+
   // ── Backup / restore ─────────────────────────────────────────
   const restoreInputRef = useRef(null)
   const handleBackup = useCallback(async () => {
@@ -3415,6 +3490,7 @@ ${fontCss}
       { id: 'history', label: 'Version history…', hint: 'File', icon: History, run: openHistory },
       { id: 'snapshot', label: 'Save a snapshot of this file', hint: 'File', icon: History, run: () => takeSnapshot(activeFile.id, content, 'Manual snapshot').then(list => list && setToast({ message: 'Snapshot saved to version history.', tone: 'success' })) },
     ] : []),
+    { id: 'storage', label: 'Storage & backup…', hint: 'Workspace', icon: HardDrive, run: () => setStorageOpen(true) },
     { id: 'backup', label: 'Back up workspace (.zip)', hint: 'Workspace', icon: DatabaseBackup, run: handleBackup },
     { id: 'restore', label: 'Restore workspace from backup…', hint: 'Workspace', icon: ArchiveRestore, run: () => restoreInputRef.current?.click() },
     ...(headings.length > 0 ? [{ id: 'focus-section', label: focusSection ? 'Exit section focus' : 'Focus on current section', hint: 'Reader', icon: Crosshair, run: focusSection ? exitSectionFocus : startSectionFocus }] : []),
@@ -3546,6 +3622,7 @@ ${fontCss}
               onExportZip={handleExportZip}
               onBackup={handleBackup}
               onRestore={() => restoreInputRef.current?.click()}
+              onStorage={() => setStorageOpen(true)}
             />
             <button onClick={handleImportUrl} className="btn-icon hidden sm:flex" data-tooltip="Import Markdown from URL" aria-label="Import Markdown from URL">
               <Globe size={14} />
@@ -4254,6 +4331,15 @@ ${fontCss}
       )}
 
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+
+      {storageOpen && (
+        <StorageDialog
+          fileCount={files.length}
+          onBackup={handleBackup}
+          onRestore={() => restoreInputRef.current?.click()}
+          onClose={() => setStorageOpen(false)}
+        />
+      )}
 
       <input ref={restoreInputRef} type="file" accept=".zip,application/zip" hidden onChange={handleRestoreFile} aria-label="Restore workspace from backup" />
 

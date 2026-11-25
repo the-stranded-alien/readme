@@ -1949,3 +1949,23 @@ button[data-tooltip]:not(:focus-visible)::after {
 .template-menu-text strong { font-size: 12.5px; font-weight: 650; color: var(--text-1); }
 .template-menu-text span { font-size: 11px; line-height: 1.4; color: var(--text-4); }
 .template-menu-heading { margin: 4px 9px 2px; padding-top: 8px; border-top: 1px solid var(--border-light); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-4); }
+
+/* ── Storage dialog ───────────────────────────────────────── */
+.storage-muted { margin: 0; font-size: 12.5px; color: var(--text-4); }
+.storage-usage { display: grid; gap: 7px; }
+.storage-usage-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--text-3); }
+.storage-usage-row strong { color: var(--text-1); font-weight: 650; }
+.storage-usage-row strong span { color: var(--text-4); font-weight: 500; }
+.storage-bar { height: 8px; border-radius: 999px; background: var(--border-light); overflow: hidden; }
+.storage-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.storage-persist {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 12px;
+  border-radius: 12px; border: 1px solid color-mix(in srgb, #b7791f 40%, transparent); background: color-mix(in srgb, #b7791f 8%, transparent);
+}
+.storage-persist > svg { color: #b7791f; }
+.storage-persist.is-persisted { border-color: color-mix(in srgb, #1a7f37 40%, transparent); background: color-mix(in srgb, #1a7f37 8%, transparent); }
+.storage-persist.is-persisted > svg { color: #1a7f37; }
+.dark .storage-persist.is-persisted > svg { color: #3fb950; }
+.storage-persist > div { display: grid; gap: 2px; }
+.storage-persist strong { font-size: 13px; color: var(--text-1); }
+.storage-persist span { font-size: 11.5px; color: var(--text-3); }
