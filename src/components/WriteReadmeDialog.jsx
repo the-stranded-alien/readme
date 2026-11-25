@@ -9,7 +9,7 @@ const EXAMPLES = [
 ]
 
 /** Ask for a short project description; the README is written into a new file. */
-export default function WriteReadmeDialog({ withAi, onGenerate, onClose }) {
+export default function WriteReadmeDialog({ withAi, aiHidden, onGenerate, onClose }) {
   const [prompt, setPrompt] = useState('')
   const inputRef = useRef(null)
   useDialogKeys(onClose, { focus: () => inputRef.current?.focus() })
@@ -54,7 +54,7 @@ export default function WriteReadmeDialog({ withAi, onGenerate, onClose }) {
               {withAi ? <Sparkles size={13} /> : <Wand2 size={13} />}
               {withAi
                 ? 'Written by the on-device AI in your browser — nothing is sent to a server.'
-                : 'Your browser has no built-in AI writer, so a structured README is generated from your description.'}
+                : aiHidden ? 'AI features are turned off in Settings, so a structured README is generated from your description.' : 'Your browser has no built-in AI writer, so a structured README is generated from your description.'}
             </p>
           </div>
           <div className="pdf-dialog-footer">

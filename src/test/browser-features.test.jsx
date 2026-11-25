@@ -809,7 +809,7 @@ describe('advanced browser features', () => {
     installApp()
     fireEvent.click(screen.getByRole('button', { name: 'Download and export options' }))
     fireEvent.click(await screen.findByText(/Storage & Data Safety/))
-    const dialog = await screen.findByRole('dialog', { name: /Storage & backup/ })
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
     await within(dialog).findByText('2.0 MB')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Keep my data' }))
     await within(dialog).findByText('Protected from automatic clean-up')
@@ -1060,6 +1060,24 @@ describe('advanced browser features', () => {
     installApp()
     fireEvent.click(await screen.findByRole('button', { name: 'Write a README with AI' }))
     expect(await screen.findByRole('dialog', { name: 'Write a README' })).toBeInTheDocument()
+  })
+
+  it('has settings to hide AI, turn on lite mode, and an About section', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'AI tools' }))
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'AI tools' })).getByRole('button', { name: 'Close AI tools' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Features' }))
+    fireEvent.click(within(dialog).getByRole('switch', { name: /Hide AI features/ }))
+    fireEvent.click(within(dialog).getByRole('switch', { name: /Lite mode/ }))
+    expect(document.documentElement).toHaveClass('lite-mode')
+    expect(screen.queryByRole('button', { name: 'AI tools' })).not.toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('readme-app-settings'))).toMatchObject({ hideAi: true, lite: true })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'About' }))
+    expect(within(dialog).getByText('Sahil Gupta')).toBeInTheDocument()
+    expect(within(dialog).getByRole('link', { name: 'View on GitHub' })).toHaveAttribute('href', 'https://github.com/the-stranded-alien/readme')
+    document.documentElement.classList.remove('lite-mode')
   })
 
   it('collapses and expands heading sections, individually and all at once', async () => {

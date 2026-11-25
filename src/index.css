@@ -2239,3 +2239,42 @@ button[data-tooltip]:not(:focus-visible)::after {
 .ai-unsupported { display: grid; gap: 4px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-editor); font-size: 12.5px; }
 .ai-unsupported strong { color: var(--text-1); }
 .ai-unsupported span { color: var(--text-3); line-height: 1.5; }
+
+/* ── Settings ─────────────────────────────────────────────── */
+.settings-dialog {
+  width: min(760px, calc(100vw - 32px)); height: min(540px, calc(100vh - 48px)); display: flex; flex-direction: column;
+  border-radius: 18px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-xl); overflow: hidden;
+}
+.settings-body { display: grid; grid-template-columns: 180px 1fr; min-height: 0; flex: 1; border-top: 1px solid var(--border-light); }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; border-right: 1px solid var(--border-light); background: var(--bg-editor); }
+.settings-nav button { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 9px; border: 0; background: transparent; color: var(--text-2); font-size: 12.5px; font-weight: 500; text-align: left; cursor: pointer; }
+.settings-nav button:hover { background: var(--bg-hover, var(--accent-soft)); color: var(--text-1); }
+.settings-nav button.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.settings-panel { padding: 18px 22px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.settings-panel h3 { margin: 0; font-size: 15px; font-weight: 700; color: var(--text-1); }
+.settings-muted { margin: 0; font-size: 12.5px; color: var(--text-3); line-height: 1.5; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-toggle { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-light); background: var(--bg-editor); cursor: pointer; }
+.settings-toggle.is-disabled { opacity: .55; cursor: not-allowed; }
+.settings-toggle-text { flex: 1; display: grid; gap: 3px; }
+.settings-toggle-text strong { font-size: 13px; color: var(--text-1); font-weight: 600; }
+.settings-toggle-text span { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
+.settings-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.settings-switch { flex-shrink: 0; width: 36px; height: 20px; border-radius: 999px; background: var(--border-strong); position: relative; transition: background .15s; }
+.settings-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+.settings-toggle input:checked + .settings-switch { background: var(--accent); }
+.settings-toggle input:checked + .settings-switch::after { transform: translateX(16px); }
+.settings-toggle input:focus-visible + .settings-switch { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-about { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.settings-about p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); }
+.settings-about-logo { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.settings-about-link { text-decoration: none; }
+@media (max-width: 640px) {
+  .settings-body { grid-template-columns: 1fr; }
+  .settings-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border-light); }
+  .settings-nav button { white-space: nowrap; }
+}
+
+/* ── Lite mode: fewer effects, less memory ────────────────── */
+html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation: none !important; transition: none !important; backdrop-filter: none !important; }
+.code-plain { margin: 0; padding: 16px 20px; overflow-x: auto; background: var(--code-bg); font: 0.86rem/1.75 'JetBrains Mono', 'Fira Code', monospace; color: var(--text-1); }

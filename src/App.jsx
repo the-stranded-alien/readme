@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
@@ -40,6 +40,7 @@ import HistoryDialog from './components/HistoryDialog'
 import CodeEditor from './components/CodeEditor'
 import TemplateMenu from './components/TemplateMenu'
 import StorageDialog from './components/StorageDialog'
+import SettingsDialog from './components/SettingsDialog'
 import TemplatesDialog from './components/TemplatesDialog'
 import SlashMenu from './components/SlashMenu'
 import FindReplacePanel from './components/FindReplacePanel'
@@ -250,7 +251,17 @@ const vibrantLightCodeTheme = {
 }
 
 // ── CodeBlock ──────────────────────────────────────────────────
+// Lite mode: plain code blocks and diagrams as code (less memory and CPU).
+const LiteContext = createContext(false)
+
+function DiagramBlock({ code, dark }) {
+  const lite = useContext(LiteContext)
+  if (lite) return <CodeBlock rawLang="mermaid" code={code} dark={dark} />
+  return <MermaidBlock code={code} dark={dark} />
+}
+
 function CodeBlock({ rawLang, code, dark }) {
+  const lite = useContext(LiteContext)
   const [wrapped, setWrapped] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -307,6 +318,9 @@ function CodeBlock({ rawLang, code, dark }) {
 
       {/* Code body */}
       <div className="code-body">
+        {lite ? (
+          <pre className="code-plain" tabIndex={0} aria-label={`Code${language ? `: ${language}` : ''}`} style={{ whiteSpace: wrapped ? 'pre-wrap' : 'pre' }}><code>{code}</code></pre>
+        ) : (
         <SyntaxHighlighter
           // Scrollable code must be reachable by keyboard.
           tabIndex={0}
@@ -342,6 +356,7 @@ function CodeBlock({ rawLang, code, dark }) {
         >
           {code}
         </SyntaxHighlighter>
+        )}
       </div>
     </div>
   )
@@ -493,7 +508,7 @@ function MarkdownRenderer({ content, dark }) {
       const raw = (className || '').replace('language-', '')
       const str = String(children).replace(/\n$/, '')
       if (raw.toLowerCase() === 'mermaid') {
-        return <MermaidBlock code={str} dark={dark} />
+        return <DiagramBlock code={str} dark={dark} />
       }
       const isBlock = Boolean(raw) || str.includes('\n')
       if (isBlock) return <CodeBlock rawLang={raw} code={str} dark={dark} />
@@ -770,7 +785,7 @@ const FMT_ACTIONS = [
   { label: 'Divider',   Icon: Minus,       mode: 'insert', text: '\n---\n' },
 ]
 
-function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme }) {
+function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme, aiHidden }) {
   const [tplOpen, setTplOpen] = useState(false)
   const tplRef = useRef(null)
   const closeTemplates = useCallback(() => setTplOpen(false), [])
@@ -821,7 +836,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
 
       <div className="relative shrink-0 ml-2 flex items-center gap-0.5">
         {onWriteReadme && (
-          <button type="button" onClick={onWriteReadme} title="Write a README with AI" aria-label="Write a README with AI" className="fmt-btn fmt-btn-ai !px-2 gap-1">
+          <button type="button" onClick={onWriteReadme} title={aiHidden ? 'Write a README' : 'Write a README with AI'} aria-label={aiHidden ? 'Write a README' : 'Write a README with AI'} className="fmt-btn fmt-btn-ai !px-2 gap-1">
             <Sparkles size={12} />
             <span className="hidden lg:inline text-[10px] font-semibold">Write README</span>
           </button>
@@ -2036,6 +2051,16 @@ export default function App() {
   const [highContrast, setHighContrast] = useState(
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
+  const [appSettings, setAppSettings] = useState(() => {
+    try { return { hideAi: false, lite: false, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return { hideAi: false, lite: false } }
+  })
+  const updateAppSetting = useCallback((key, value) => setAppSettings(current => ({ ...current, [key]: value })), [])
+  useEffect(() => {
+    try { localStorage.setItem('readme-app-settings', JSON.stringify(appSettings)) } catch { /* storage is optional */ }
+  }, [appSettings])
+  useLayoutEffect(() => { document.documentElement.classList.toggle('lite-mode', appSettings.lite) }, [appSettings.lite])
+  const [settingsOpen, setSettingsOpen] = useState(null) // section id when open
+  const hideAi = appSettings.hideAi
   const [initialWorkspace] = useState(loadInitialWorkspace)
   const [files, setFiles]               = useState(initialWorkspace.files)
   const [activeFileId, setActiveFileId] = useState(initialWorkspace.activeId)
@@ -2162,8 +2187,10 @@ export default function App() {
   const [writingStats, setWritingStats] = useState({})
   const [presenting, setPresenting] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
-  const [aiAvailable] = useState(() => hasAnyAi())
-  const [canSummarize] = useState(() => aiSupport().summarizer)
+  const [aiSupported] = useState(() => hasAnyAi())
+  const aiAvailable = aiSupported && !hideAi
+  const [summarizerSupported] = useState(() => aiSupport().summarizer)
+  const canSummarize = summarizerSupported && !hideAi
   // On-page summaries, one per file: { status, text, error, progress, preparing, source, visible }
   const [summaries, setSummaries] = useState({})
   const summaryAbortRef = useRef(null)
@@ -3242,7 +3269,8 @@ export default function App() {
   const [readmeWriting, setReadmeWriting] = useState(null) // { fileId, preparing, progress }
   const readmeAbortRef = useRef(null)
   const readmeQuickRef = useRef(false) // "Use quick version": skip the AI and use the generator
-  const [aiWriter] = useState(() => canWriteWithAi())
+  const [aiWriterSupported] = useState(() => canWriteWithAi())
+  const aiWriter = aiWriterSupported && !hideAi
   const handleWriteReadme = useCallback(async prompt => {
     readmeAbortRef.current?.abort()
     const controller = new AbortController()
@@ -3972,12 +4000,14 @@ ${fontCss}
     ] : []),
     ...(activeFile ? [{ id: 'find-replace', label: 'Find & replace in editor', hint: shortcut('F', { alt: true }), icon: Replace, run: () => { setFindOpen(true); setFindKey(k => k + 1) } }] : []),
     ...(activeFile && canSummarize ? [{ id: 'summarize', label: 'Summarize this document', hint: 'On-device', icon: ScrollText, run: toggleSummary }] : []),
-    ...(activeFile ? [{ id: 'ai-tools', label: 'AI tools: summarize, translate, proofread…', hint: aiAvailable ? 'On-device' : 'Not supported here', icon: Sparkles, run: () => setAiOpen(true) }] : []),
+    ...(activeFile && !hideAi ? [{ id: 'ai-tools', label: 'AI tools: summarize, translate, proofread…', hint: aiAvailable ? 'On-device' : 'Not supported here', icon: Sparkles, run: () => setAiOpen(true) }] : []),
     ...(activeFile ? [{ id: 'present', label: 'Present as slides', hint: 'Reader', icon: Presentation, run: () => setPresenting(true) }] : []),
     { id: 'file-tree', label: fileTreeOpen ? 'Hide file tree' : 'Show file tree', hint: 'Files', icon: FolderTree, run: () => setFileTreeOpen(open => !open) },
     { id: 'write-readme', label: 'Write a README from a description…', hint: aiWriter ? 'AI' : 'Generator', icon: BookOpenText, run: () => setWriteReadmeOpen(true) },
     { id: 'templates', label: 'Manage templates…', hint: 'Templates', icon: LayoutTemplate, run: () => setTemplatesOpen(true) },
-    { id: 'storage', label: 'Storage & backup…', hint: 'Workspace', icon: HardDrive, run: () => setStorageOpen(true) },
+    { id: 'settings', label: 'Settings…', hint: 'App', icon: Settings, run: () => setSettingsOpen('workspace') },
+    { id: 'storage', label: 'Storage & backup…', hint: 'Settings', icon: HardDrive, run: () => setSettingsOpen('storage') },
+    { id: 'about', label: 'About ReadMe', hint: 'Settings', icon: Info, run: () => setSettingsOpen('about') },
     { id: 'backup', label: 'Back up workspace (.zip)', hint: 'Workspace', icon: DatabaseBackup, run: handleBackup },
     { id: 'restore', label: 'Restore workspace from backup…', hint: 'Workspace', icon: ArchiveRestore, run: () => restoreInputRef.current?.click() },
     ...(headings.length > 0 ? [{ id: 'focus-section', label: focusSection ? 'Exit section focus' : 'Focus on current section', hint: 'Reader', icon: Crosshair, run: focusSection ? exitSectionFocus : startSectionFocus }] : []),
@@ -4005,7 +4035,7 @@ ${fontCss}
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
-    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter,
+    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi,
   ])
 
   const qualityIssues = useMemo(() => {
@@ -4048,6 +4078,7 @@ ${fontCss}
   useEffect(() => { setTocVisible(view === 'preview' || view === 'focus') }, [view])
 
   return (
+    <LiteContext.Provider value={appSettings.lite}>
     <div
       ref={appRef}
       className="h-screen flex flex-col app-shell overflow-hidden anim-fade-in"
@@ -4109,7 +4140,7 @@ ${fontCss}
               onExportZip={handleExportZip}
               onBackup={handleBackup}
               onRestore={() => restoreInputRef.current?.click()}
-              onStorage={() => setStorageOpen(true)}
+              onStorage={() => setSettingsOpen('storage')}
             />
             <button onClick={handleImportUrl} className="btn-icon hidden sm:flex" data-tooltip="Import Markdown from URL" aria-label="Import Markdown from URL">
               <Globe size={14} />
@@ -4160,7 +4191,10 @@ ${fontCss}
                   : <Moon size={15} className="theme-icon-enter" />
               }
             </button>
-            <ReadingPetFooter />
+            {!appSettings.lite && <ReadingPetFooter />}
+            <button type="button" onClick={() => setSettingsOpen('workspace')} className="btn-icon" data-tooltip="Settings" aria-label="Settings">
+              <Settings size={15} />
+            </button>
           </div>
         </div>
       </header>
@@ -4258,6 +4292,7 @@ ${fontCss}
                 onManageTemplates={() => setTemplatesOpen(true)}
                 onFindReplace={() => { setFindOpen(true); setFindKey(k => k + 1) }}
                 onWriteReadme={() => setWriteReadmeOpen(true)}
+                aiHidden={hideAi}
                 content={content}
                 onChange={updateActiveContent}
                 onCreateFromTemplate={handleCreateFromTemplate}
@@ -4624,7 +4659,7 @@ ${fontCss}
                       <span className="hidden xl:inline reader-toolbar-label">Summarize</span>
                     </button>
                   )}
-                  {markdownBody.trim() && (
+                  {markdownBody.trim() && !hideAi && (
                     <button
                       type="button"
                       onClick={() => setAiOpen(true)}
@@ -4846,7 +4881,7 @@ ${fontCss}
                           <span className="shrink-0">{wordCount} words · ~{readingTime} min read</span>
                         </div>
 
-                        {activeSummary?.visible && (
+                        {activeSummary?.visible && !hideAi && (
                           <section className="summary-card no-print anim-drop-in" aria-label="Document summary" aria-busy={activeSummary.status === 'loading'}>
                             <div className="summary-card-header">
                               <span className="summary-card-title"><Sparkles size={14} aria-hidden="true" />Summary</span>
@@ -4994,7 +5029,7 @@ ${fontCss}
         <FileDiffView files={files} activeFileId={activeFileId} compareWithId={diffCompareId} onClose={() => setDiffOpen(false)} />
       )}
 
-      <LinkPreview rootRef={previewScrollRef} disabled={!content.trim()} />
+      <LinkPreview rootRef={previewScrollRef} disabled={!content.trim() || appSettings.lite} />
 
       {sharedDoc && (
         <div className="shared-doc-view anim-fade-in" role="dialog" aria-modal="true" aria-label={`Shared document: ${sharedDoc.name}`}>
@@ -5060,8 +5095,25 @@ ${fontCss}
         />
       )}
 
+      {settingsOpen && (
+        <SettingsDialog
+          initialSection={settingsOpen}
+          settings={appSettings}
+          onChange={updateAppSetting}
+          fileCount={files.length}
+          onBackup={handleBackup}
+          onRestore={() => restoreInputRef.current?.click()}
+          onExportZip={handleExportZip}
+          density={uiDensity}
+          onDensity={setUiDensity}
+          highContrast={highContrast}
+          onHighContrast={value => { if (value !== highContrast) toggleHighContrast() }}
+          onClose={() => setSettingsOpen(null)}
+        />
+      )}
+
       {writeReadmeOpen && (
-        <WriteReadmeDialog withAi={aiWriter} onGenerate={handleWriteReadme} onClose={() => setWriteReadmeOpen(false)} />
+        <WriteReadmeDialog withAi={aiWriter} aiHidden={hideAi} onGenerate={handleWriteReadme} onClose={() => setWriteReadmeOpen(false)} />
       )}
 
       {templatesOpen && (
@@ -5150,5 +5202,6 @@ ${fontCss}
         />
       )}
     </div>
+    </LiteContext.Provider>
   )
 }
