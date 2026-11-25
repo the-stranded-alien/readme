@@ -32,8 +32,11 @@ function Segmented({ label, options, value, onChange, disabled }) {
  */
 export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onInsertSummary, onCreateFile, onApplyText, onClose }) {
   const support = useMemo(() => aiSupport(), [])
-  const tabs = TABS.filter(tab => support[tab.needs])
-  const [tab, setTab] = useState(tabs[0]?.id)
+  // Every tool is listed; ones this browser can't run explain why instead.
+  const tabs = TABS
+  const [tab, setTab] = useState(() => (TABS.find(item => support[item.needs]) ?? TABS[0]).id)
+  const supported = Boolean(support[TABS.find(item => item.id === tab)?.needs])
+  const noAiAtAll = !TABS.some(item => support[item.needs])
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(null) // download progress 0–1
   const [step, setStep] = useState(null) // { done, total }
@@ -127,7 +130,8 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
 
         <div className="ai-tabs" role="tablist" aria-label="AI tools">
           {tabs.map(item => (
-            <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'is-active' : ''}
+            <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={`${tab === item.id ? 'is-active' : ''}${support[item.needs] ? '' : ' is-unsupported'}`}
+              title={support[item.needs] ? undefined : 'Not supported in this browser'}
               onClick={() => { setTab(item.id); setError('') }} disabled={busy}>
               <item.icon size={13} />{item.label}
             </button>
@@ -135,7 +139,21 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
         </div>
 
         <div className="ai-body" role="tabpanel">
-          {tab === 'summarize' && (
+          {!supported && (
+            <div className="ai-unsupported" role="note">
+              <strong>
+                {noAiAtAll
+                  ? 'In-browser AI isn’t supported in this browser.'
+                  : `On-device ${tab === 'summarize' ? 'summarizing' : tab === 'translate' ? 'translation' : 'proofreading'} isn’t supported in this browser.`}
+              </strong>
+              <span>
+                These tools use the AI model built into recent desktop Google Chrome (version 138 or later, on a computer that meets its hardware requirements).
+                {tab === 'proofread' && ' Proofreading is still experimental: enable “Proofreader API” at chrome://flags.'}
+                {' '}Writing a README still works everywhere with the built-in generator.
+              </span>
+            </div>
+          )}
+          {tab === 'summarize' && supported && (
             <>
               <div className="ai-options">
                 <Segmented label="Style" options={SUMMARY_TYPES} value={summaryType} onChange={setSummaryType} disabled={busy} />
@@ -144,7 +162,7 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
               {summary && <div className="ai-result rm-prose">{renderMarkdown(summary)}</div>}
             </>
           )}
-          {tab === 'translate' && (
+          {tab === 'translate' && supported && (
             <>
               <div className="ai-options ai-options-row">
                 <div className="pdf-option">
@@ -161,7 +179,7 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
               {translation && <pre className="ai-result ai-result-text">{translation}</pre>}
             </>
           )}
-          {tab === 'proofread' && (
+          {tab === 'proofread' && supported && (
             corrections === null ? <p className="ai-hint">Checks spelling and grammar in your paragraphs (code and tables are skipped).</p>
               : corrections.length === 0 ? <p className="ai-hint ai-ok"><Check size={14} /> No issues found.</p>
                 : (
@@ -216,7 +234,7 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
           <span style={{ flex: 1 }} />
           {busy
             ? <button type="button" className="reader-chip" onClick={() => abortRef.current?.abort()}>Stop</button>
-            : (
+            : !supported ? null : (
               <button type="button" className="pdf-dialog-primary" onClick={tab === 'summarize' ? runSummary : tab === 'translate' ? runTranslation : runProofread}>
                 {tab === 'summarize' ? <Sparkles size={13} /> : tab === 'translate' ? <Languages size={13} /> : <SpellCheck size={13} />}
                 {tab === 'summarize' ? (summary ? 'Summarize again' : 'Summarize') : tab === 'translate' ? `Translate to ${languageName(targetLanguage)}` : 'Check document'}

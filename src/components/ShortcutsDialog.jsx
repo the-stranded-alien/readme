@@ -8,6 +8,7 @@ const GROUPS = [
     title: 'General',
     items: [
       [shortcut('K'), 'Command palette'],
+      [shortcut('S'), 'Save all files (browser + files opened from disk)'],
       [shortcut('F', { shift: true }), 'Search in all files'],
       ['?', 'Keyboard shortcuts'],
       [`${shortcut('T', { shift: true, alt: true, mod: false })}  or  ${shortcut('T', { shift: true })}`, 'Reopen closed tab'],

@@ -820,6 +820,12 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
       </div>
 
       <div className="relative shrink-0 ml-2 flex items-center gap-0.5">
+        {onWriteReadme && (
+          <button type="button" onClick={onWriteReadme} title="Write a README with AI" aria-label="Write a README with AI" className="fmt-btn fmt-btn-ai !px-2 gap-1">
+            <Sparkles size={12} />
+            <span className="hidden lg:inline text-[10px] font-semibold">Write README</span>
+          </button>
+        )}
         {onFindReplace && (
           <button type="button" onClick={onFindReplace} title={`Find & replace (${shortcut('F', { alt: true })})`} aria-label="Find and replace" className="fmt-btn">
             <Replace size={13} />
@@ -3588,6 +3594,53 @@ export default function App() {
     }
   }, [activeFile, content, fileName, updateActiveContent, takeSnapshot])
 
+  // Cmd/Ctrl+S: save everything open in the app (never the browser's "save page as HTML").
+  const handleSaveAll = useCallback(async () => {
+    try {
+      localStorage.setItem('readme-files', JSON.stringify(files.map(syncableFile)))
+      if (activeFileId) localStorage.setItem('readme-active-file', activeFileId)
+    } catch { /* quota — IndexedDB below still has it */ }
+    let browserSaved = true
+    try { await writeWorkspace({ files, activeId: activeFileId }) } catch { browserSaved = false }
+    let diskSaved = 0
+    const diskFailed = []
+    for (const file of files) {
+      const handle = diskHandlesRef.current.get(file.id) || file.diskHandle
+      if (!handle || file.content === file.diskSavedContent) continue
+      try {
+        if (handle.queryPermission && await handle.queryPermission({ mode: 'readwrite' }) !== 'granted'
+          && await handle.requestPermission({ mode: 'readwrite' }) !== 'granted') throw new Error('permission')
+        const writable = await handle.createWritable()
+        await writable.write(file.content)
+        await writable.close()
+        diskSaved += 1
+        setFiles(prev => prev.map(item => (item.id === file.id ? { ...item, diskSavedContent: file.content } : item)))
+        takeSnapshot(file.id, file.content, 'Saved to disk')
+        handle.getFile?.().then(saved => diskStampRef.current.set(file.id, saved.lastModified)).catch(() => {})
+      } catch {
+        diskFailed.push(file.name)
+      }
+    }
+    const count = files.length
+    if (diskFailed.length) {
+      setToast({ message: `Saved in the browser, but couldn't write ${diskFailed.join(', ')} to disk.`, tone: 'warning', duration: 5000 })
+    } else if (!browserSaved) {
+      setToast({ message: 'Could not save to browser storage. Download a backup to be safe.', tone: 'warning', duration: 5000 })
+    } else {
+      setToast({ message: `Saved ${count} file${count === 1 ? '' : 's'}${diskSaved ? ` (${diskSaved} written to disk)` : ''}.`, tone: 'success' })
+    }
+  }, [files, activeFileId, takeSnapshot])
+  useEffect(() => {
+    const onKey = event => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        handleSaveAll()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [handleSaveAll])
+
   const handleImportUrl = useCallback(async () => {
     const url = window.prompt('Paste a public Markdown file URL (the server must allow CORS):')
     if (!url) return
@@ -3919,7 +3972,7 @@ ${fontCss}
     ] : []),
     ...(activeFile ? [{ id: 'find-replace', label: 'Find & replace in editor', hint: shortcut('F', { alt: true }), icon: Replace, run: () => { setFindOpen(true); setFindKey(k => k + 1) } }] : []),
     ...(activeFile && canSummarize ? [{ id: 'summarize', label: 'Summarize this document', hint: 'On-device', icon: ScrollText, run: toggleSummary }] : []),
-    ...(activeFile && aiAvailable ? [{ id: 'ai-tools', label: 'AI tools: summarize, translate, proofread…', hint: 'On-device', icon: Sparkles, run: () => setAiOpen(true) }] : []),
+    ...(activeFile ? [{ id: 'ai-tools', label: 'AI tools: summarize, translate, proofread…', hint: aiAvailable ? 'On-device' : 'Not supported here', icon: Sparkles, run: () => setAiOpen(true) }] : []),
     ...(activeFile ? [{ id: 'present', label: 'Present as slides', hint: 'Reader', icon: Presentation, run: () => setPresenting(true) }] : []),
     { id: 'file-tree', label: fileTreeOpen ? 'Hide file tree' : 'Show file tree', hint: 'Files', icon: FolderTree, run: () => setFileTreeOpen(open => !open) },
     { id: 'write-readme', label: 'Write a README from a description…', hint: aiWriter ? 'AI' : 'Generator', icon: BookOpenText, run: () => setWriteReadmeOpen(true) },
@@ -4403,7 +4456,7 @@ ${fontCss}
               }}
             >
               {/* Preview toolbar */}
-              <div className="no-print shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 surface-toolbar relative reader-preview-toolbar">
+              <div className={`no-print shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 surface-toolbar relative reader-preview-toolbar${view === 'split' || view === 'focus' ? ' is-icons-only' : ''}`}>
                 <div className="flex items-center gap-2 reader-toolbar-left">
                   <button
                     onClick={() => setTocVisible(v => !v)}
@@ -4571,7 +4624,7 @@ ${fontCss}
                       <span className="hidden xl:inline reader-toolbar-label">Summarize</span>
                     </button>
                   )}
-                  {aiAvailable && markdownBody.trim() && (
+                  {markdownBody.trim() && (
                     <button
                       type="button"
                       onClick={() => setAiOpen(true)}

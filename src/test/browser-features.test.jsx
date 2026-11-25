@@ -1039,6 +1039,29 @@ describe('advanced browser features', () => {
     expect(screen.queryByRole('status', { name: '' })?.textContent || '').not.toContain('Preparing')
   })
 
+  it('saves every file with Cmd/Ctrl+S instead of the browser saving the page', async () => {
+    installApp()
+    await screen.findAllByRole('tab')
+    const event = new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true })
+    window.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(await screen.findByText(/^Saved \d+ files?/)).toBeInTheDocument()
+  })
+
+  it('shows the AI tools and explains when in-browser AI is not supported', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'AI tools' }))
+    const dialog = await screen.findByRole('dialog', { name: 'AI tools' })
+    expect(dialog).toHaveTextContent('In-browser AI isn’t supported in this browser.')
+    expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
+  })
+
+  it('opens Write a README from the editor toolbar', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write a README with AI' }))
+    expect(await screen.findByRole('dialog', { name: 'Write a README' })).toBeInTheDocument()
+  })
+
   it('collapses and expands heading sections, individually and all at once', async () => {
     installApp()
     const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })
