@@ -405,8 +405,37 @@ describe('advanced browser features', () => {
     expect(manifest.short_name).toBe('ReadMe')
   })
 
+  it('collapses and expands heading sections, individually and all at once', async () => {
+    installApp()
+    const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })
+    const section = toggle.closest('section')
+    expect(section.getAttribute('data-collapsed')).toBeNull()
+    fireEvent.click(toggle)
+    expect(section.getAttribute('data-collapsed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Expand section Features' }))
+    expect(section.getAttribute('data-collapsed')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all sections' }))
+    expect(section.getAttribute('data-collapsed')).toBe('true')
+    // The lone title section stays open so the outline remains visible.
+    expect(screen.getByRole('button', { name: /section Welcome to ReadMe/ }).closest('section').getAttribute('data-collapsed')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all sections' }))
+    expect(section.getAttribute('data-collapsed')).toBeNull()
+  })
+
+  it('starts long documents (over 5 minutes) collapsed', async () => {
+    const long = ['# Long read', '', '## Part one', '', 'word '.repeat(800), '', '## Part two', '', 'word '.repeat(800)].join('\n')
+    await writeWorkspace({ activeId: 'long', files: [{ id: 'long', name: 'Long.md', content: long }] })
+    localStorage.setItem('readme-files', JSON.stringify([{ id: 'long', name: 'Long.md', content: long }]))
+    localStorage.setItem('readme-active-file', 'long')
+    installApp()
+    const toggle = await screen.findByRole('button', { name: 'Expand section Part one' })
+    expect(toggle.closest('section').getAttribute('data-collapsed')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Expand all sections' })).toBeInTheDocument()
+  })
+
   it('defaults the preview to wide mode, migrating older saved prefs', () => {
-    localStorage.setItem('readme-reader-prefs', JSON.stringify({ fontIndex: 0, size: 'md', width: 'book', paper: 'ivory' }))
+    localStorage.setItem('readme-reader-prefs', JSON.stringify({ fontIndex: 0, size: 'md', width: 'book' }))
     const { container } = installApp()
     expect(container.querySelector('.book-page').style.maxWidth).toBe('100%')
   })

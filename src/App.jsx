@@ -1,4 +1,4 @@
-import { createElement, useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
+import { createContext, createElement, useContext, useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -11,6 +11,7 @@ import 'katex/dist/katex.min.css'
 import MermaidBlock from './components/MermaidBlock'
 import CommandPalette from './components/CommandPalette'
 import { MD_TEMPLATES, parseFrontmatter } from './templates'
+import { rehypeHeadingSections, headingSlug, headingText } from './headingSections'
 import {
   Sun, Moon, Upload, Copy, CopyPlus, Check, FileText, FilePlus, Eye, Code2,
   X, Download, Maximize2, Minimize2, Hash, ChevronRight,
@@ -26,19 +27,6 @@ import { readWorkspace, writeWorkspace } from './workspaceDb'
 import { analyzeDocument } from './documentAnalysis'
 import { makeDuplicateFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
-
-// ── useIsDark — subscribes to <html class="dark"> ─────────────
-function useIsDark() {
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
-  useEffect(() => {
-    const obs = new MutationObserver(() =>
-      setDark(document.documentElement.classList.contains('dark'))
-    )
-    obs.observe(document.documentElement, { attributeFilter: ['class'] })
-    return () => obs.disconnect()
-  }, [])
-  return dark
-}
 
 // ── Custom view icons ──────────────────────────────────────────
 const SplitEqualIcon = () => (
@@ -234,8 +222,7 @@ const vibrantLightCodeTheme = {
 }
 
 // ── CodeBlock ──────────────────────────────────────────────────
-function CodeBlock({ rawLang, code }) {
-  const dark = useIsDark()
+function CodeBlock({ rawLang, code, dark }) {
   const [wrapped, setWrapped] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -358,6 +345,72 @@ function FrontmatterCard({ meta }) {
 }
 
 // ── MarkdownRenderer ───────────────────────────────────────────
+// ── Collapsible heading sections ───────────────────────────────
+const SectionCollapseContext = createContext(null)
+
+function isSectionCollapsed(state, properties) {
+  const key = properties?.dataSectionKey
+  if (!state || !key || state.forceExpanded || properties.dataEmpty) return false
+  const base = state.mode === 'collapsed' && !properties.dataTitleSection
+  return state.overrides.has(key) ? !base : base
+}
+
+function CollapsibleSection({ node, children }) {
+  const state = useContext(SectionCollapseContext)
+  const properties = node?.properties ?? {}
+  const collapsed = isSectionCollapsed(state, properties)
+  return (
+    <section
+      className="md-section"
+      data-section-key={properties.dataSectionKey}
+      data-collapsed={collapsed ? 'true' : undefined}
+    >
+      {children}
+    </section>
+  )
+}
+
+function SectionHeading({ as, iconSize, node, children }) {
+  const state = useContext(SectionCollapseContext)
+  const properties = node?.properties ?? {}
+  const text = headingText(node)
+  const id = headingSlug(text)
+  const key = properties.dataSectionKey
+  const canToggle = Boolean(state && key && !properties.dataEmpty)
+  const collapsed = isSectionCollapsed(state, properties)
+  return (
+    createElement(as, { id, className: canToggle ? `has-section-toggle${collapsed ? ' is-collapsed' : ''}` : undefined }, <>
+      {canToggle && (
+        <button
+          type="button"
+          className="section-toggle"
+          onClick={() => state.toggle(key)}
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? 'Expand' : 'Collapse'} section ${text}`}
+          title={collapsed ? 'Expand section' : 'Collapse section'}
+        >
+          <ChevronRight size={iconSize + 2} />
+        </button>
+      )}
+      {children}
+      <a href={`#${id}`} className="heading-anchor" aria-label="Link to section">
+        <Hash size={iconSize} />
+      </a>
+    </>)
+  )
+}
+
+// Stable component types, so a theme switch never remounts document sections.
+const SECTION_COMPONENTS = {
+  h1: props => <SectionHeading as="h1" iconSize={14} {...props} />,
+  h2: props => <SectionHeading as="h2" iconSize={13} {...props} />,
+  h3: props => <SectionHeading as="h3" iconSize={12} {...props} />,
+  h4: props => <SectionHeading as="h4" iconSize={12} {...props} />,
+  h5: props => <SectionHeading as="h5" iconSize={11} {...props} />,
+  h6: props => <SectionHeading as="h6" iconSize={11} {...props} />,
+  section: CollapsibleSection,
+}
+
 function MarkdownRenderer({ content, dark }) {
   const components = useMemo(() => ({
     pre({ children }) { return <>{children}</> },
@@ -370,7 +423,7 @@ function MarkdownRenderer({ content, dark }) {
         return <MermaidBlock code={str} dark={dark} />
       }
       const isBlock = Boolean(raw) || str.includes('\n')
-      if (isBlock) return <CodeBlock rawLang={raw} code={str} />
+      if (isBlock) return <CodeBlock rawLang={raw} code={str} dark={dark} />
       return <code>{children}</code>
     },
 
@@ -390,46 +443,14 @@ function MarkdownRenderer({ content, dark }) {
     },
 
     hr() { return <hr /> },
-    // Headings with hover-anchor links
-    h1({ children }) {
-      const id = String(children).toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')
-      return (
-        <h1 id={id}>
-          {children}
-          <a href={`#${id}`} className="heading-anchor" aria-label="Link to section">
-            <Hash size={14} />
-          </a>
-        </h1>
-      )
-    },
-    h2({ children }) {
-      const id = String(children).toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')
-      return (
-        <h2 id={id}>
-          {children}
-          <a href={`#${id}`} className="heading-anchor" aria-label="Link to section">
-            <Hash size={13} />
-          </a>
-        </h2>
-      )
-    },
-    h3({ children }) {
-      const id = String(children).toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')
-      return (
-        <h3 id={id}>
-          {children}
-          <a href={`#${id}`} className="heading-anchor" aria-label="Link to section">
-            <Hash size={12} />
-          </a>
-        </h3>
-      )
-    },
+    // Headings with hover-anchor links and a collapse toggle for their section
+    ...SECTION_COMPONENTS,
   }), [dark])
 
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
+      rehypePlugins={[rehypeKatex, rehypeHeadingSections]}
       components={components}
     >
       {content}
@@ -822,13 +843,8 @@ const READER_WIDTHS = {
   wide:   { label: 'Wide',    maxW: '960px' },
   full:   { label: 'Full',    maxW: '100%'  },
 }
-const READER_PAPERS = [
-  { id: 'ivory', label: 'Ivory' },
-  { id: 'sepia', label: 'Sepia' },
-  { id: 'crisp', label: 'Crisp' },
-]
 const READER_PREFS_VERSION = 2
-const DEFAULT_READER_PREFS = { fontIndex: 0, size: 'md', width: 'full', paper: 'ivory', version: READER_PREFS_VERSION }
+const DEFAULT_READER_PREFS = { fontIndex: 0, size: 'md', width: 'full', version: READER_PREFS_VERSION }
 
 function loadReaderPrefs() {
   try {
@@ -836,6 +852,7 @@ function loadReaderPrefs() {
     if (raw) {
       const parsed = JSON.parse(raw)
       const merged = { ...DEFAULT_READER_PREFS, ...parsed, version: READER_PREFS_VERSION }
+      delete merged.paper // paper tones were removed
       // v2 made Wide the default preview width; move older saved prefs over once.
       if (parsed.version !== READER_PREFS_VERSION) merged.width = 'full'
       if (typeof merged.fontIndex !== 'number' || merged.fontIndex < 0 || merged.fontIndex >= DOC_FONTS.length) {
@@ -926,22 +943,6 @@ function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityCha
                 className={`reader-chip ${prefs.width === id ? 'active' : ''}`}
               >
                 {cfg.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-4)' }}>
-            Paper Tone
-          </div>
-          <div className="flex gap-1.5">
-            {READER_PAPERS.map(p => (
-              <button key={p.id}
-                onClick={() => onChange({ ...prefs, paper: p.id })}
-                className={`reader-chip ${prefs.paper === p.id ? 'active' : ''}`}
-              >
-                {p.label}
               </button>
             ))}
           </div>
@@ -1775,6 +1776,38 @@ export default function App() {
     [content]
   )
 
+  // Collapsible heading sections. Long documents (> 5 min read) start
+  // collapsed; the state resets whenever another document is opened.
+  const isLongDocument = useMemo(
+    () => Math.ceil((markdownBody.match(/\S+/g)?.length ?? 0) / 220) > 5,
+    [markdownBody]
+  )
+  const sectionDocKey = `${activeFileId}:${workspaceReady}`
+  const [sectionCollapse, setSectionCollapse] = useState(() => ({
+    docKey: sectionDocKey, mode: isLongDocument ? 'collapsed' : 'expanded', overrides: new Set(),
+  }))
+  if (sectionCollapse.docKey !== sectionDocKey) {
+    setSectionCollapse({ docKey: sectionDocKey, mode: isLongDocument ? 'collapsed' : 'expanded', overrides: new Set() })
+  }
+  const toggleSection = useCallback(key => {
+    setSectionCollapse(state => {
+      const overrides = new Set(state.overrides)
+      if (overrides.has(key)) overrides.delete(key)
+      else overrides.add(key)
+      return { ...state, overrides }
+    })
+  }, [])
+  const toggleAllSections = useCallback(() => {
+    setSectionCollapse(state => ({ ...state, mode: state.mode === 'collapsed' ? 'expanded' : 'collapsed', overrides: new Set() }))
+  }, [])
+  const sectionCollapseValue = useMemo(() => ({
+    mode: sectionCollapse.mode,
+    overrides: sectionCollapse.overrides,
+    // Show everything while searching so every hit is visible.
+    forceExpanded: Boolean(searchOpen && searchQuery.trim()),
+    toggle: toggleSection,
+  }), [sectionCollapse.mode, sectionCollapse.overrides, searchOpen, searchQuery, toggleSection])
+
   const fileInputRef    = useRef(null)
   const appRef          = useRef(null)
   const textareaRef     = useRef(null)
@@ -2026,8 +2059,25 @@ export default function App() {
     const el = previewScrollRef.current?.querySelector(`[id="${id}"]`)
     if (!el) return
     const container = previewScrollRef.current
-    const elTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top
-    container.scrollBy({ top: elTop - 20, behavior: 'smooth' })
+    const scrollToHeading = () => {
+      const elTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top
+      container.scrollBy({ top: elTop - 20, behavior: 'smooth' })
+    }
+    // Open every collapsed section that hides (or is owned by) this heading.
+    const collapsedKeys = []
+    for (let section = el.closest('section[data-section-key]'); section; section = section.parentElement?.closest('section[data-section-key]')) {
+      if (section.dataset.collapsed === 'true') collapsedKeys.push(section.dataset.sectionKey)
+    }
+    if (!collapsedKeys.length) {
+      scrollToHeading()
+      return
+    }
+    setSectionCollapse(state => {
+      const overrides = new Set(state.overrides)
+      collapsedKeys.forEach(key => (overrides.has(key) ? overrides.delete(key) : overrides.add(key)))
+      return { ...state, overrides }
+    })
+    requestAnimationFrame(() => requestAnimationFrame(scrollToHeading))
   }, [])
 
   // Scroll-to-top & reading progress in preview
@@ -2469,7 +2519,7 @@ export default function App() {
     if (!article) return
     const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
     const clone = article.cloneNode(true)
-    clone.querySelectorAll('.heading-anchor, .code-actions, .book-folio-footer').forEach(el => el.remove())
+    clone.querySelectorAll('.heading-anchor, .section-toggle, .code-actions, .book-folio-footer').forEach(el => el.remove())
 
     const html = `<!doctype html>
 <html lang="en"${isDark ? ' class="dark"' : ''}>
@@ -2581,7 +2631,6 @@ export default function App() {
     { id: 'quality', label: 'Check document quality', hint: 'Document', icon: TriangleAlert, run: () => { setQualityOpen(true); if (view === 'editor') setView('split') } },
     ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => setDiffOpen(true) }] : []),
     { id: 'wide', label: readerPrefs.width === 'full' ? 'Switch to Book page width' : 'Expand to Wide mode', hint: 'Reader', icon: UnfoldHorizontal, run: () => setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' })) },
-    { id: 'sepia', label: readerPrefs.paper === 'sepia' ? 'Paper tone: Ivory' : 'Paper tone: Sepia', hint: 'Reader', icon: BookOpen, run: () => setReaderPrefs(p => ({ ...p, paper: p.paper === 'sepia' ? 'ivory' : 'sepia' })) },
     { id: 'contrast', label: highContrast ? 'Disable High Contrast' : 'Enable High Contrast', hint: 'Theme', icon: Contrast, run: () => setHighContrast(h => !h) },
     { id: 'theme', label: `Switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'Sepia' : isDark ? 'Light' : 'Dark'} mode`, hint: 'Theme', icon: ENABLE_SEPIA_THEME && theme === 'sepia' ? BookOpen : isDark ? Sun : Moon, run: toggleTheme },
     { id: 'sync', label: syncScroll ? 'Disable Synchronized Scroll' : 'Enable Synchronized Scroll', hint: 'Editor', icon: Link2, run: () => setSyncScroll(s => !s) },
@@ -2594,7 +2643,7 @@ export default function App() {
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
     ] : []),
   ], [
-    handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, readerPrefs.paper, highContrast, theme, isDark,
+    handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, handleExportPdf, handleExportZip,
   ])
@@ -3026,6 +3075,23 @@ export default function App() {
                     {readerPrefs.width === 'full' ? <FoldHorizontal size={11} /> : <UnfoldHorizontal size={11} />}
                     <span className="hidden md:inline reader-toolbar-label">{readerPrefs.width === 'full' ? 'Compact' : 'Wide'}</span>
                   </button>
+                  {headings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={toggleAllSections}
+                      data-tooltip={sectionCollapse.mode === 'collapsed' ? 'Expand all sections' : 'Collapse all sections'}
+                      aria-label={sectionCollapse.mode === 'collapsed' ? 'Expand all sections' : 'Collapse all sections'}
+                      className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
+                      style={{
+                        fontSize: 10, fontWeight: 500,
+                        color: sectionCollapse.mode === 'collapsed' ? 'var(--accent)' : 'var(--text-4)',
+                        background: sectionCollapse.mode === 'collapsed' ? 'var(--accent-soft)' : 'transparent',
+                      }}
+                    >
+                      {sectionCollapse.mode === 'collapsed' ? <ChevronsUpDown size={11} /> : <ChevronsDownUp size={11} />}
+                      <span className="hidden md:inline reader-toolbar-label">{sectionCollapse.mode === 'collapsed' ? 'Expand all' : 'Collapse all'}</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setSearchOpen(s => !s)
@@ -3148,13 +3214,11 @@ export default function App() {
                   ref={previewScrollRef}
                   onScroll={handleSyncPreviewScroll}
                   className="flex-1 overflow-auto surface-preview"
-                  data-paper={readerPrefs.paper}
                 >
                   {content.trim() ? (
                     <div className={readerPrefs.width === 'full' ? 'px-2 sm:px-4 py-3 sm:py-5' : 'px-4 sm:px-8 md:px-10 py-6 sm:py-9'}>
                       <article
                         className="book-page px-6 sm:px-11 md:px-14 py-8 sm:py-11 anim-slide-up"
-                        data-paper={readerPrefs.paper}
                         style={{ maxWidth: READER_WIDTHS[readerPrefs.width]?.maxW ?? '740px' }}
                         onClick={e => {
                           if (e.target.tagName === 'IMG' && e.target.src) {
@@ -3177,7 +3241,9 @@ export default function App() {
                             fontFamily: activeFont.family,
                           }}
                         >
-                          <MarkdownRenderer content={markdownBody} dark={isDark} />
+                          <SectionCollapseContext.Provider value={sectionCollapseValue}>
+                            <MarkdownRenderer content={markdownBody} dark={isDark} />
+                          </SectionCollapseContext.Provider>
                         </div>
 
                         <div className="book-folio-footer">
