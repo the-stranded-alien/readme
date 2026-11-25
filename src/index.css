@@ -892,10 +892,26 @@ button.file-tab-count:hover, button.file-tab-count[aria-expanded="true"] { backg
 }
 
 /* ── Logo glow ────────────────────────────────────────────── */
-.logo-glow {
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
-  animation: pulseGlow 3s ease-in-out infinite;
+/* Header logo: the tile takes the theme's accent colours. */
+.app-logo {
+  --logo-bg: linear-gradient(135deg, var(--accent), var(--accent-2));
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 30px; height: 30px; border-radius: 9px; color: #fff;
+  background: var(--logo-bg);
+  box-shadow: 0 3px 10px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.25);
+  animation: logoGlow 3.2s ease-in-out infinite;
+  transition: background .3s ease, box-shadow .3s ease;
 }
+.app-logo-ribbon { fill: currentColor; fill-opacity: .9; }
+@keyframes logoGlow { 0%,100% { box-shadow: 0 3px 10px var(--accent-glow), 0 0 0 0 transparent, inset 0 1px 0 rgba(255,255,255,.25) } 50% { box-shadow: 0 3px 10px var(--accent-glow), 0 0 0 6px var(--accent-soft), inset 0 1px 0 rgba(255,255,255,.25) } }
+/* Light-text accents need dark ink on a bright tile. */
+.dark:not(.theme-neon):not(.theme-ocean) .app-logo { color: #15112b; }
+.theme-ocean .app-logo { color: #06202e; }
+.theme-sepia .app-logo { --logo-bg: linear-gradient(135deg, #b45309, #9a5212); color: #fff8ec; }
+.theme-forest .app-logo { --logo-bg: linear-gradient(135deg, #3f9a62, #2f7d4f); }
+.theme-neon .app-logo { --logo-bg: linear-gradient(135deg, rgb(var(--neon-1)), rgb(var(--neon-2))); color: #07060f; box-shadow: 0 0 16px rgba(var(--neon-1),.55), 0 0 4px rgba(var(--neon-2),.6); }
+.theme-neon-rainbow .app-logo { --logo-bg: var(--rainbow); }
+.high-contrast .app-logo { box-shadow: none; animation: none; outline: 1.5px solid var(--text-1); outline-offset: 1px; }
 
 /* ── TOC sidebar ──────────────────────────────────────────── */
 .toc-item {
@@ -2576,3 +2592,4 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 }
 /* Secondary header buttons step aside on narrow windows (all are in the command palette / Settings). */
 @media (max-width: 1023px) { .surface-header .hdr-optional { display: none !important; } }
+.theme-neon-rainbow .brand-accent { background: var(--rainbow); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }

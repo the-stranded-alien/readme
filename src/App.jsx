@@ -832,6 +832,21 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
   )
 }
 
+// ── App logo: an open book with a bookmark, tinted by the current theme ─
+function AppLogo() {
+  return (
+    <span className="app-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 7c-2-1.6-4.9-2.1-8-1.6v12.2c3.1-.5 6 0 8 1.6" />
+        <path d="M12 7c2-1.6 4.9-2.1 8-1.6v12.2c-3.1-.5-6 0-8 1.6" />
+        <path d="M12 7v12.2" />
+        <path d="M6.6 9.6h2.8M6.6 12.4h2.8" strokeWidth="1.4" opacity=".75" />
+        <path className="app-logo-ribbon" d="M15.2 5.6v5.3l1.45-1.15 1.45 1.15V5.25" strokeWidth="1.3" />
+      </svg>
+    </span>
+  )
+}
+
 // ── PillSwitcher ───────────────────────────────────────────────
 function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
   const containerRef = useRef(null)
@@ -4570,11 +4585,9 @@ ${fontCss}
           {/* Logo */}
           <div className="flex items-center shrink-0">
             <div className="flex items-center gap-2.5 select-none">
-              <div className="w-7 h-7 rounded-lg logo-glow flex items-center justify-center">
-                <FileText size={14} className="text-white" />
-              </div>
+              <AppLogo />
               <span className="font-semibold text-[15px] tracking-tight" style={{ color: 'var(--text-1)' }}>
-                Read<span style={{ color: 'var(--accent)' }}>Me</span>
+                Read<span className="brand-accent" style={{ color: 'var(--accent)' }}>Me</span>
               </span>
             </div>
           </div>
