@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { readFile } from 'node:fs/promises'
 import { runInNewContext } from 'node:vm'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import App from '../App.jsx'
-import { analyzeDocument } from '../documentAnalysis.js'
+import { analyzeDocument, checkMarkdownQuality } from '../documentAnalysis.js'
+import { diffLines } from '../documentDiff.js'
+import { makeDuplicateFileName } from '../fileUtils.js'
 import { readWorkspace, writeWorkspace } from '../workspaceDb.js'
 
 function installApp(root = document.body) {
@@ -51,7 +53,49 @@ describe('advanced browser features', () => {
     expect(close).toHaveBeenCalledOnce()
   })
 
-  it('analyzes headings, counts, and normalized search text for the worker', () => {
+  it('duplicates an open file into a new independent tab', async () => {
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate Welcome.md' }))
+    await waitFor(() => expect(screen.getAllByText('Welcome copy.md').length).toBeGreaterThan(0))
+    const editor = screen.getByRole('textbox')
+    const sourceText = editor.value
+    expect(sourceText).toMatch(/^# Welcome to ReadMe/)
+    fireEvent.change(editor, { target: { value: `${sourceText}\nIndependent edit` } })
+    const sourceTab = screen.getAllByRole('tab').find(tab => tab.textContent.includes('Welcome.md') && !tab.textContent.includes('copy'))
+    fireEvent.click(sourceTab)
+    await waitFor(() => expect(editor).toHaveValue(sourceText))
+  })
+
+  it('opens the quality review and reports when the document is clean', async () => {
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: /Document quality checks/ }))
+    expect(await screen.findByText('All clear')).toBeInTheDocument()
+  })
+
+  it('opens a synchronized side-by-side comparison of two files', async () => {
+    installApp()
+    fireEvent.click(screen.getAllByRole('button', { name: 'New file' })[0])
+    const editor = document.querySelector('textarea.editor-textarea')
+    fireEvent.change(editor, { target: { value: '# Revised\nnew line' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Open command palette' }))
+    const paletteSearch = screen.getByPlaceholderText('Jump to file, heading, template, or command…')
+    fireEvent.change(paletteSearch, { target: { value: 'Compare open files' } })
+    fireEvent.click(await screen.findByText('Compare open files'))
+    const diffDialog = await screen.findByRole('dialog', { name: 'Compare open files' })
+    await waitFor(() => expect(within(diffDialog).getByText('new line')).toBeInTheDocument())
+    expect(screen.getByLabelText('Original file')).toBeInTheDocument()
+    expect(screen.getByLabelText('Changed file')).toBeInTheDocument()
+  })
+
+  it('switches interface density and keeps the choice in the workspace UI', async () => {
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Reader comfort settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'compact' }))
+    expect(document.querySelector('.app-shell')).toHaveAttribute('data-density', 'compact')
+    await waitFor(() => expect(localStorage.getItem('readme-ui-density')).toBe('compact'))
+  })
+
+  it('analyzes headings, counts, quality issues, and normalized search text for the worker', () => {
     const analysis = analyzeDocument('# **Setup**\n\nRead [the guide](https://example.test) &amp; `code`.')
     expect(analysis.headings).toEqual([{ level: 1, text: 'Setup', id: 'setup' }])
     expect(analysis.wordCount).toBe(7)
@@ -60,18 +104,50 @@ describe('advanced browser features', () => {
     expect(analysis.searchIndex).toContain('&')
   })
 
+  it('finds common documentation quality issues with line numbers and fixes', () => {
+    const issues = checkMarkdownQuality('# Start\n### Skipped\n![ ](cover.png)\n[broken](#missing)\n[empty]()')
+    expect(issues.map(issue => issue.type)).toEqual(['heading-level-skip', 'missing-image-alt', 'broken-anchor', 'empty-link'])
+    expect(issues.map(issue => issue.line)).toEqual([2, 3, 4, 5])
+    expect(issues[1].suggestion).toMatch(/description/i)
+    expect(checkMarkdownQuality('```md\n### code sample\n![ ](not-real.png)\n```')).toEqual([])
+    expect(checkMarkdownQuality('Text [#ghost](#ghost)\n```md\n# ghost\n```')).toHaveLength(1)
+    const fileLinks = checkMarkdownQuality('[ok](./guide.md)\n[missing](missing.md)', {
+      fileName: 'docs/readme.md',
+      knownFiles: ['docs/guide.md'],
+    })
+    expect(fileLinks).toHaveLength(1)
+    expect(fileLinks[0].type).toBe('broken-file-link')
+  })
+
+  it('aligns modified lines and preserves matching lines in file diffs', () => {
+    expect(diffLines('before\nold\nafter', 'before\nnew\nafter')).toEqual([
+      { kind: 'equal', left: 'before', right: 'before', leftLine: 1, rightLine: 1 },
+      { kind: 'change', left: 'old', right: 'new', leftLine: 2, rightLine: 2 },
+      { kind: 'equal', left: 'after', right: 'after', leftLine: 3, rightLine: 3 },
+    ])
+    const manyLines = Array.from({ length: 5000 }, (_, index) => `line ${index}`).join('\n')
+    expect(diffLines(manyLines, `${manyLines}\nnew`).length).toBeLessThan(100)
+  })
+
+  it('creates unique duplicate names without changing the source extension', () => {
+    expect(makeDuplicateFileName('guide.md', ['guide.md'])).toBe('guide copy.md')
+    expect(makeDuplicateFileName('guide.md', ['guide.md', 'guide copy.md'])).toBe('guide copy 2.md')
+  })
+
   it('returns analysis messages from the document worker', async () => {
     const testDir = dirname(fileURLToPath(import.meta.url))
     const workerSource = await readFile(resolve(testDir, '../workers/documentWorker.js'), 'utf8')
-    const executableSource = workerSource.replace(/^import .*\n/, '')
+    const executableSource = workerSource.replace(/^import .*\n/gm, '')
     const workerScope = { postMessage: vi.fn() }
-    runInNewContext(executableSource, { self: workerScope, analyzeDocument })
+    runInNewContext(executableSource, { self: workerScope, analyzeDocument, diffLines })
     workerScope.onmessage({ data: { id: 42, markdown: '# Worker title\nbody' } })
     expect(workerScope.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       id: 42,
       headings: [{ level: 1, text: 'Worker title', id: 'worker-title' }],
       lineCount: 2,
     }))
+    workerScope.onmessage({ data: { id: 43, operation: 'diff', leftText: 'old', rightText: 'new' } })
+    expect(workerScope.postMessage).toHaveBeenLastCalledWith({ id: 43, rows: [{ kind: 'change', left: 'old', right: 'new', leftLine: 1, rightLine: 1 }] })
   })
 
   it('caches the app shell and serves the cached page during offline navigation', async () => {
@@ -82,24 +158,42 @@ describe('advanced browser features', () => {
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
     expect(manifest.display).toBe('standalone')
     expect(manifest.start_url).toBe('/')
+    expect(manifest.icons.some(icon => icon.src === '/favicon.svg')).toBe(true)
 
     const listeners = {}
     const cachedPage = { body: 'cached app shell' }
     const cache = { addAll: vi.fn(async () => {}), match: vi.fn(async key => key === '/index.html' ? cachedPage : null), put: vi.fn(async () => {}) }
     const caches = { open: vi.fn(async () => cache), keys: vi.fn(async () => ['readme-shell-old', 'unrelated']), delete: vi.fn(async () => true), match: vi.fn(async key => cache.match(key)) }
     const serviceWorkerGlobal = { location: { origin: 'https://readme.test' }, clients: { claim: vi.fn() }, skipWaiting: vi.fn(), addEventListener: (type, fn) => { listeners[type] = fn } }
-    runInNewContext(source, { self: serviceWorkerGlobal, caches, URL, Promise, fetch: async () => { throw new Error('offline') } })
+    runInNewContext(source, { self: serviceWorkerGlobal, caches, URL, Promise, fetch: async url => {
+      if (url === '/precache-manifest.json') return { ok: true, json: async () => ['/assets/app.js', '/assets/app.css'] }
+      throw new Error('offline')
+    } })
 
     let installPromise
     listeners.install({ waitUntil: promise => { installPromise = promise } })
     await installPromise
-    expect(cache.addAll).toHaveBeenCalledWith(['/', '/index.html', '/manifest.webmanifest'])
+    expect(cache.addAll).toHaveBeenCalledWith(['/', '/index.html', '/manifest.webmanifest', '/favicon.svg', '/precache-manifest.json'])
+    expect(cache.addAll).toHaveBeenCalledWith(['/assets/app.js', '/assets/app.css'])
     let navigationResponse
     listeners.fetch({
       request: { method: 'GET', url: 'https://readme.test/guide', mode: 'navigate' },
       respondWith: promise => { navigationResponse = promise },
     })
     await expect(navigationResponse).resolves.toBe(cachedPage)
+  })
+
+  it('offers browser installation from the command palette when supported', async () => {
+    const prompt = vi.fn(async () => {})
+    const installEvent = new Event('beforeinstallprompt', { cancelable: true })
+    Object.assign(installEvent, { prompt, userChoice: Promise.resolve({ outcome: 'accepted' }) })
+    installApp()
+    window.dispatchEvent(installEvent)
+    fireEvent.click(screen.getByRole('button', { name: 'Open command palette' }))
+    const paletteSearch = screen.getByPlaceholderText('Jump to file, heading, template, or command…')
+    fireEvent.change(paletteSearch, { target: { value: 'Install ReadMe' } })
+    fireEvent.click(await screen.findByText('Install ReadMe app'))
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce())
   })
 
   it('copies rich HTML and plain Markdown through the Clipboard API', async () => {

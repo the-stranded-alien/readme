@@ -2,8 +2,25 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+function offlinePrecacheManifest() {
+  return {
+    name: 'readme-offline-precache-manifest',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const files = Object.keys(bundle)
+        .filter(fileName => fileName !== 'sw.js' && !fileName.endsWith('.map'))
+        .map(fileName => `/${fileName}`)
+      this.emitFile({
+        type: 'asset',
+        fileName: 'precache-manifest.json',
+        source: JSON.stringify(files),
+      })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), offlinePrecacheManifest()],
   base: '/',
   build: {
     chunkSizeWarningLimit: 2000,

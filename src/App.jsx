@@ -11,17 +11,19 @@ import MermaidBlock from './components/MermaidBlock'
 import CommandPalette from './components/CommandPalette'
 import { MD_TEMPLATES, parseFrontmatter } from './templates'
 import {
-  Sun, Moon, Upload, Copy, Check, FileText, FilePlus, Eye, Code2,
+  Sun, Moon, Upload, Copy, CopyPlus, Check, FileText, FilePlus, Eye, Code2,
   X, Download, Maximize2, Minimize2, Hash, ChevronRight,
   List, AlignLeft, PanelLeftOpen, PanelLeftClose,
   Bold, Italic, Strikethrough, Link, Code, Minus,
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, MonitorUp, MonitorDown, Globe, Save,
+  Volume2, Pause, Play, Highlighter, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert,
 } from 'lucide-react'
 import { readWorkspace, writeWorkspace } from './workspaceDb'
 import { analyzeDocument } from './documentAnalysis'
+import { makeDuplicateFileName } from './fileUtils'
+import FileDiffView from './components/FileDiffView'
 
 // ── useIsDark — subscribes to <html class="dark"> ─────────────
 function useIsDark() {
@@ -126,10 +128,16 @@ Write \`inline code\`, **bold**, *italic*, ~~strikethrough~~, and [links](https:
 ---
 `
 
-function useDocumentAnalysis(markdown) {
-  const [analysis, setAnalysis] = useState(() => analyzeDocument(markdown))
+function useDocumentAnalysis(markdown, fileName = '', knownFiles = []) {
+  const [analysis, setAnalysis] = useState({ headings: [], lineCount: 1, wordCount: 0, searchIndex: '', qualityIssues: [] })
   const workerRef = useRef(null)
   const requestIdRef = useRef(0)
+  const knownFilesKey = knownFiles.map(file => file.name).join('\u0000')
+  const knownFileNames = useMemo(() => knownFilesKey ? knownFilesKey.split('\u0000') : [], [knownFilesKey])
+  const latestMarkdownRef = useRef({ markdown, fileName, knownFiles: knownFileNames })
+  useEffect(() => {
+    latestMarkdownRef.current = { markdown, fileName, knownFiles: knownFileNames }
+  }, [markdown, fileName, knownFilesKey, knownFileNames])
   useEffect(() => {
     if (!('Worker' in window)) return
     try {
@@ -138,17 +146,29 @@ function useDocumentAnalysis(markdown) {
       worker.onmessage = ({ data }) => {
         if (data.id === requestIdRef.current) setAnalysis(data)
       }
+      worker.onerror = () => {
+        worker.terminate()
+        workerRef.current = null
+        const id = ++requestIdRef.current
+        const source = latestMarkdownRef.current
+        setTimeout(() => {
+          if (id === requestIdRef.current) setAnalysis({ id, ...analyzeDocument(source.markdown, source) })
+        }, 0)
+      }
       return () => { worker.terminate(); workerRef.current = null }
     } catch { /* use the synchronous fallback */ }
   }, [])
   useEffect(() => {
     const id = ++requestIdRef.current
-    if (workerRef.current) workerRef.current.postMessage({ id, markdown })
-    else {
-      const timer = setTimeout(() => setAnalysis(analyzeDocument(markdown)), 0)
-      return () => clearTimeout(timer)
+    const options = { fileName, knownFiles: knownFileNames }
+    if (workerRef.current) {
+      try { workerRef.current.postMessage({ id, markdown, ...options }); return } catch { workerRef.current.terminate(); workerRef.current = null }
     }
-  }, [markdown])
+    const timer = setTimeout(() => {
+      if (id === requestIdRef.current) setAnalysis({ id, ...analyzeDocument(markdown, options) })
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [markdown, fileName, knownFilesKey, knownFileNames])
   return analysis
 }
 
@@ -851,11 +871,11 @@ function loadReadingBookmarks() {
   }
 }
 
-function ReaderSettingsPopover({ prefs, onChange, onClose }) {
+function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityChange }) {
   const ref = useRef(null)
   useEffect(() => {
     const onDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose()
+      if (ref.current && !ref.current.contains(e.target) && !e.target.closest?.('.reader-settings-control')) onClose()
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
@@ -939,7 +959,61 @@ function ReaderSettingsPopover({ prefs, onChange, onClose }) {
             ))}
           </div>
         </div>
+
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-4)' }}>
+            Interface Density
+          </div>
+          <div className="flex gap-1.5">
+            {['comfortable', 'compact'].map(option => (
+              <button key={option} type="button"
+                onClick={() => onDensityChange(option)}
+                className={`reader-chip capitalize ${density === option ? 'active' : ''}`}
+                aria-pressed={density === option}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
+    </div>
+  )
+}
+
+function DocumentQualityPopover({ issues, onClose }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const onDown = event => {
+      if (ref.current && !ref.current.contains(event.target) && !event.target.closest?.('.quality-control')) onClose()
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [onClose])
+
+  return (
+    <div ref={ref} className="reader-popover quality-popover anim-drop-in no-print" role="region" aria-label="Document quality checks">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Document checks</span>
+        <span className="text-[10px] font-semibold" style={{ color: issues.length ? 'var(--accent)' : '#15803d' }}>
+          {issues.length ? `${issues.length} ${issues.length === 1 ? 'item' : 'items'}` : 'All clear'}
+        </span>
+      </div>
+      {issues.length ? (
+        <ul className="quality-issue-list">
+          {issues.map(issue => (
+            <li key={issue.id}>
+              <TriangleAlert size={13} />
+              <div>
+                <strong>Line {issue.line}: {issue.message}</strong>
+                <span>{issue.suggestion}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>No missing image descriptions, broken document or heading links, empty links, or skipped heading levels found.</p>
+      )}
     </div>
   )
 }
@@ -1067,7 +1141,7 @@ function DownloadMenuButton({
 }
 
 // ── FileTabBar ─────────────────────────────────────────────────
-function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename, searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette }) {
+function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename, onDuplicate, onCompare, searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette }) {
   const tabRefs = useRef({})
   const [editingId, setEditingId] = useState(null)
   const [draftName, setDraftName] = useState('')
@@ -1159,6 +1233,18 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
                 type="button"
                 onClick={e => {
                   e.stopPropagation()
+                  onDuplicate(file.id)
+                }}
+                className="file-tab-duplicate"
+                title={`Duplicate ${file.name}`}
+                aria-label={`Duplicate ${file.name}`}
+              >
+                <CopyPlus size={11} />
+              </button>
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation()
                   onClose(file.id)
                 }}
                 className="file-tab-close"
@@ -1185,11 +1271,23 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
 
       <span
         className="file-tab-count hidden sm:inline shrink-0 pb-1"
-        style={{ fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
+        style={{ fontSize: 10, fontVariantNumeric: 'tabular-nums', color: 'var(--text-3)', fontWeight: 600 }}
       >
         {files.length} {files.length === 1 ? 'file' : 'files'}
       </span>
       <div className="file-tabs-search-region">
+        <div className="file-tabs-compare-control">
+          <button
+            type="button"
+            onClick={onCompare}
+            className="file-tabs-command-button"
+            data-tooltip="Compare open files"
+            aria-label="Compare open files"
+            disabled={files.length < 2}
+          >
+            <GitCompare size={14} />
+          </button>
+        </div>
         <label className="file-tabs-command-search">
           <Search size={13} aria-hidden="true" />
           <input
@@ -1243,6 +1341,7 @@ export default function App() {
   const [themeKey, setThemeKey]     = useState(0)
   const [copyAllDone, setCopyAllDone] = useState(false)
   const [readerPrefs, setReaderPrefs] = useState(loadReaderPrefs)
+  const [uiDensity, setUiDensity] = useState(() => localStorage.getItem('readme-ui-density') === 'compact' ? 'compact' : 'comfortable')
   const [readingBookmarks, setReadingBookmarks] = useState(loadReadingBookmarks)
   const [readerOpen, setReaderOpen]   = useState(false)
   const [readProgress, setReadProgress] = useState(0)
@@ -1254,6 +1353,9 @@ export default function App() {
   const [syncScroll, setSyncScroll]   = useState(true)
   const [cmdOpen, setCmdOpen]         = useState(false)
   const [cmdQuery, setCmdQuery]       = useState('')
+  const [diffOpen, setDiffOpen] = useState(false)
+  const [qualityOpen, setQualityOpen] = useState(false)
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null)
   const [speechActive, setSpeechActive] = useState(false)
   const [speechPaused, setSpeechPaused] = useState(false)
   const [keepAwake, setKeepAwake] = useState(false)
@@ -1291,7 +1393,7 @@ export default function App() {
   const remoteUpdateRef = useRef(null)
   const lastLocalEditAtRef = useRef(0)
   const syncClientIdRef = useRef(createFileId())
-  const analysis = useDocumentAnalysis(content)
+  const analysis = useDocumentAnalysis(content, fileName || '', files)
 
   const activeFont = DOC_FONTS[readerPrefs.fontIndex] ?? DOC_FONTS[0]
   const cycleDocFont = useCallback(() => {
@@ -1312,6 +1414,33 @@ export default function App() {
     document.documentElement.classList.toggle('high-contrast', highContrast)
     localStorage.setItem('readme-high-contrast', String(highContrast))
   }, [highContrast])
+
+  useEffect(() => {
+    localStorage.setItem('readme-ui-density', uiDensity)
+  }, [uiDensity])
+
+  useEffect(() => {
+    const onBeforeInstall = event => {
+      event.preventDefault()
+      setDeferredInstallPrompt(event)
+    }
+    const onInstalled = () => setDeferredInstallPrompt(null)
+    window.addEventListener('beforeinstallprompt', onBeforeInstall)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
+  }, [])
+
+  const handleInstallApp = useCallback(async () => {
+    if (!deferredInstallPrompt) return
+    try {
+      await deferredInstallPrompt.prompt()
+      await deferredInstallPrompt.userChoice
+    } catch { /* the browser may cancel or dismiss the install prompt */ }
+    setDeferredInstallPrompt(null)
+  }, [deferredInstallPrompt])
 
   const toggleTheme = useCallback(() => {
     setTheme(t => {
@@ -1648,6 +1777,20 @@ export default function App() {
     setMobileTab('editor')
     requestAnimationFrame(() => textareaRef.current?.focus())
   }, [view, markWorkspaceEdit])
+
+  const handleDuplicateFile = useCallback((fileId) => {
+    const source = files.find(file => file.id === fileId)
+    if (!source) return
+    markWorkspaceEdit()
+    const id = createFileId()
+    const name = makeDuplicateFileName(source.name, files.map(file => file.name))
+    setFiles(prev => [...prev, { id, name, content: source.content }])
+    setActiveFileId(id)
+    setActiveHeadingId(null)
+    setShowScrollTop(false)
+    setMobileTab('editor')
+    if (view === 'preview') setView('split')
+  }, [files, markWorkspaceEdit, view])
 
   const handleSelectFile = useCallback((id) => {
     if (id === activeFileId) return
@@ -2086,8 +2229,11 @@ export default function App() {
 
   const paletteActions = useMemo(() => [
     { id: 'new', label: 'New blank file', hint: 'Action', icon: FilePlus, run: handleNewFile },
+    ...(deferredInstallPrompt ? [{ id: 'install', label: 'Install ReadMe app', hint: 'App', icon: Download, run: handleInstallApp }] : []),
     { id: 'upload', label: 'Open files…', hint: 'Action', icon: Upload, run: handleOpenDiskFiles },
     { id: 'url-import', label: 'Import Markdown from URL…', hint: 'Action', icon: Globe, run: handleImportUrl },
+    { id: 'quality', label: 'Check document quality', hint: 'Document', icon: TriangleAlert, run: () => { setQualityOpen(true); if (view === 'editor') setView('split') } },
+    ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => setDiffOpen(true) }] : []),
     { id: 'wide', label: readerPrefs.width === 'full' ? 'Switch to Book page width' : 'Expand to Wide mode', hint: 'Reader', icon: UnfoldHorizontal, run: () => setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' })) },
     { id: 'sepia', label: readerPrefs.paper === 'sepia' ? 'Paper tone: Ivory' : 'Paper tone: Sepia', hint: 'Reader', icon: BookOpen, run: () => setReaderPrefs(p => ({ ...p, paper: p.paper === 'sepia' ? 'ivory' : 'sepia' })) },
     { id: 'contrast', label: highContrast ? 'Disable High Contrast' : 'Enable High Contrast', hint: 'Theme', icon: Contrast, run: () => setHighContrast(h => !h) },
@@ -2102,8 +2248,8 @@ export default function App() {
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
     ] : []),
   ], [
-    handleNewFile, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, readerPrefs.paper, highContrast, theme, isDark,
-    toggleTheme, syncScroll, activeFile, files.length, handleDownload,
+    handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, readerPrefs.paper, highContrast, theme, isDark,
+    toggleTheme, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, handleExportPdf, handleExportZip,
   ])
 
@@ -2122,6 +2268,7 @@ export default function App() {
     <div
       ref={appRef}
       className={`h-screen flex flex-col app-shell overflow-hidden anim-fade-in${isSepia ? ' sepia' : ''}${isSepia && highContrast ? ' high-contrast' : ''}`}
+      data-density={uiDensity}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -2201,8 +2348,8 @@ export default function App() {
             </button>
             <button
               onClick={cycleDocFont}
-              data-tooltip={`Reading font: ${activeFont.label} (click to change)`}
-              aria-label={`Reading font ${activeFont.label} (${readerPrefs.fontIndex + 1} of ${DOC_FONTS.length}). Click to change.`}
+              data-tooltip={`Reading font: ${activeFont.label}`}
+              aria-label={`Reading font ${activeFont.label} (${readerPrefs.fontIndex + 1} of ${DOC_FONTS.length})`}
               className="btn-icon"
               style={{ position: 'relative' }}
             >
@@ -2239,6 +2386,8 @@ export default function App() {
         onClose={handleCloseFile}
         onCreate={handleNewFile}
         onRename={handleRenameFile}
+        onDuplicate={handleDuplicateFile}
+        onCompare={() => setDiffOpen(true)}
         searchValue={cmdQuery}
         onSearchChange={value => { setCmdQuery(value); setCmdOpen(true) }}
         onSearchFocus={() => setCmdOpen(true)}
@@ -2412,6 +2561,20 @@ export default function App() {
                       <span className="reader-toolbar-compact-time">~{readingTime}m</span>
                     </span>
                   )}
+                  <div className="relative quality-control">
+                    <button
+                      type="button"
+                      onClick={() => setQualityOpen(open => !open)}
+                      className="btn-icon !p-1 quality-trigger"
+                      data-tooltip={`Document checks: ${analysis.qualityIssues?.length ?? 0} issues`}
+                      aria-label={`Document quality checks, ${analysis.qualityIssues?.length ?? 0} issues`}
+                      aria-expanded={qualityOpen}
+                    >
+                      <TriangleAlert size={12} />
+                      {(analysis.qualityIssues?.length ?? 0) > 0 && <span>{analysis.qualityIssues.length}</span>}
+                    </button>
+                    {qualityOpen && <DocumentQualityPopover issues={analysis.qualityIssues ?? []} onClose={() => setQualityOpen(false)} />}
+                  </div>
                   <button
                     type="button"
                     onClick={saveReadingBookmark}
@@ -2449,7 +2612,7 @@ export default function App() {
                   >
                     {!speechActive ? <Volume2 size={12} /> : speechPaused ? <Play size={12} /> : <Pause size={12} />}
                   </button>
-                  <div className="relative">
+                  <div className="relative reader-settings-control">
                     <button
                       type="button"
                       onMouseDown={e => e.preventDefault()}
@@ -2552,6 +2715,8 @@ export default function App() {
                       <ReaderSettingsPopover
                         prefs={readerPrefs}
                         onChange={setReaderPrefs}
+                        density={uiDensity}
+                        onDensityChange={setUiDensity}
                         onClose={() => setReaderOpen(false)}
                       />
                     )}
@@ -2726,6 +2891,10 @@ export default function App() {
           onNavigateHeading={navigateToHeading}
           onCreateFromTemplate={handleCreateFromTemplate}
         />
+      )}
+
+      {diffOpen && files.length > 1 && (
+        <FileDiffView files={files} activeFileId={activeFileId} onClose={() => setDiffOpen(false)} />
       )}
 
       {/* ── Image lightbox ────────────────────────────── */}
