@@ -113,7 +113,7 @@ function TabContextMenu({ menu, file, files, canReopen, actions, onClose }) {
       <button type="button" role="menuitem" onClick={run(() => actions.onClose(file.id))}><X size={13} />Close<kbd>Middle-click</kbd></button>
       <button type="button" role="menuitem" onClick={run(() => actions.onCloseOthers(file.id))} disabled={files.length < 2}><XCircle size={13} />Close others</button>
       <button type="button" role="menuitem" onClick={run(() => actions.onCloseToRight(file.id))} disabled={index === files.length - 1}><XCircle size={13} />Close to the right</button>
-      <button type="button" role="menuitem" onClick={run(actions.onReopenClosed)} disabled={!canReopen}><RotateCcw size={13} />Reopen closed tab<kbd>{shortcut('T', { shift: true })}</kbd></button>
+      <button type="button" role="menuitem" onClick={run(actions.onReopenClosed)} disabled={!canReopen}><RotateCcw size={13} />Reopen closed tab<kbd>{shortcut('T', { shift: true, alt: true, mod: false })}</kbd></button>
     </div>,
     document.body,
   )

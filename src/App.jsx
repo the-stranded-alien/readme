@@ -1821,14 +1821,19 @@ function applyTextareaEdit(textarea, edit) {
 
 // ── Editor preferences ─────────────────────────────────────────
 const EDITOR_PREFS_KEY = 'readme-editor-prefs'
-const DEFAULT_EDITOR_PREFS = { engine: 'code', keymap: 'default', lineNumbers: false }
+// The simple (textarea) editor is the default; the code editor is opt-in.
+const EDITOR_PREFS_VERSION = 2
+const DEFAULT_EDITOR_PREFS = { engine: 'plain', keymap: 'default', lineNumbers: false, syntaxColors: true, version: EDITOR_PREFS_VERSION }
 function loadEditorPrefs() {
   try {
     const saved = JSON.parse(localStorage.getItem(EDITOR_PREFS_KEY) || '{}')
     return {
-      engine: saved.engine === 'plain' ? 'plain' : 'code',
+      // Before v2 the code editor was the default and got saved for everyone: move back to simple once.
+      engine: saved.version === EDITOR_PREFS_VERSION && saved.engine === 'code' ? 'code' : 'plain',
+      version: EDITOR_PREFS_VERSION,
       keymap: ['vim', 'emacs'].includes(saved.keymap) ? saved.keymap : 'default',
       lineNumbers: saved.lineNumbers === true,
+      syntaxColors: saved.syntaxColors !== false,
     }
   } catch {
     return DEFAULT_EDITOR_PREFS
@@ -1873,6 +1878,15 @@ function EditorOptions({ prefs, onChange }) {
             <div className="pdf-segmented">{option('keymap', 'default', 'Standard')}{option('keymap', 'vim', 'Vim')}{option('keymap', 'emacs', 'Emacs')}</div>
             {prefs.engine !== 'code' && <span className="pdf-toggle-hint">Available in the code editor</span>}
           </div>
+          <label className="pdf-toggle">
+            <span>
+              <span className="pdf-option-label">Syntax colours</span>
+              <span className="pdf-toggle-hint">Off shows plain text, like the simple editor</span>
+            </span>
+            <input type="checkbox" checked={prefs.syntaxColors && prefs.engine === 'code'} disabled={prefs.engine !== 'code'}
+              onChange={event => set('syntaxColors', event.target.checked)} />
+            <span className="pdf-switch" aria-hidden="true" />
+          </label>
           <label className="pdf-toggle">
             <span><span className="pdf-option-label">Line numbers</span></span>
             <input type="checkbox" checked={prefs.lineNumbers && prefs.engine === 'code'} disabled={prefs.engine !== 'code'}
@@ -2884,11 +2898,13 @@ export default function App() {
     }
   }, [])
 
-  // Cmd/Ctrl+Shift+T reopens the last closed tab. Browsers may reserve this
-  // shortcut in a normal tab; it works in the installed app and via the menu/palette.
+  // Cmd/Ctrl+Shift+T (installed app) or Alt+Shift+T (anywhere) reopens the last closed tab.
   useEffect(() => {
     const onKeyDown = event => {
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 't') {
+      // Cmd/Ctrl+Shift+T is reserved by browsers in a normal tab, so Alt+Shift+T also works.
+      // (event.code: on macOS, Option changes event.key.)
+      const reopenCombo = event.shiftKey && event.code === 'KeyT' && ((event.metaKey || event.ctrlKey) || (event.altKey && !event.metaKey && !event.ctrlKey))
+      if (reopenCombo) {
         event.preventDefault()
         handleReopenClosed()
       }
@@ -3723,6 +3739,7 @@ ${fontCss}
                     placeholder={'# Start typing Markdown…\n\nOr drag & drop .md files anywhere. Paste or drop images to embed them.'}
                     keymapMode={editorPrefs.keymap}
                     showLineNumbers={editorPrefs.lineNumbers}
+                    syntaxColors={editorPrefs.syntaxColors}
                     sectionState={editorSectionState}
                     onSectionToggle={handleEditorSectionToggle}
                   />

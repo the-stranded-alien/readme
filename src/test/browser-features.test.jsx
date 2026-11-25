@@ -441,6 +441,13 @@ describe('advanced browser features', () => {
     fireEvent.contextMenu(tabs()[1], { clientX: 40, clientY: 40 })
     fireEvent.click(await screen.findByRole('menuitem', { name: /Reopen closed tab/ }))
     expect(tabs()).toHaveLength(3)
+
+    // Alt+Shift+T reopens too (works in a normal browser tab).
+    fireEvent.contextMenu(tabs()[2], { clientX: 40, clientY: 40 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Close(?! others| to)/ }))
+    expect(tabs()).toHaveLength(2)
+    fireEvent.keyDown(window, { key: 'T', code: 'KeyT', altKey: true, shiftKey: true })
+    await waitFor(() => expect(tabs()).toHaveLength(3))
   })
 
   it('opens a fuzzy file switcher from the files pill', async () => {
@@ -494,6 +501,7 @@ describe('advanced browser features', () => {
     const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body', '', '## Three', '', 'Third body'].join('\n')
     await writeWorkspace({ activeId: 'f', files: [{ id: 'f', name: 'Focus.md', content: doc }] })
     installApp()
+    await screen.findByText('Second body')
     fireEvent.click(await screen.findByRole('button', { name: 'Focus on section' }))
     const prose = document.querySelector('.rm-prose')
     await waitFor(() => expect(prose.className).toContain('focus-section-mode'))
@@ -657,8 +665,8 @@ describe('advanced browser features', () => {
     expect(history[0].reason).toBe('Saved to disk')
   })
 
-  it('uses the CodeMirror editor by default with folds that mirror the preview', async () => {
-    localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code' }))
+  it('uses the CodeMirror editor (opt-in) with folds that mirror the preview', async () => {
+    localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code', version: 2 }))
     const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body'].join('\n')
     await writeWorkspace({ activeId: 'cm', files: [{ id: 'cm', name: 'Code.md', content: doc }] })
     installApp()
@@ -681,7 +689,7 @@ describe('advanced browser features', () => {
   })
 
   it('switches between the code editor, the simple editor and Vim keys', async () => {
-    localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code' }))
+    localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code', version: 2 }))
     installApp()
     await waitFor(() => expect(document.querySelector('.cm-editor')).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Editor options' }))
@@ -689,6 +697,13 @@ describe('advanced browser features', () => {
     fireEvent.click(within(options).getByRole('radio', { name: 'Vim' }))
     await waitFor(() => expect(JSON.parse(localStorage.getItem('readme-editor-prefs')).keymap).toBe('vim'))
     await waitFor(() => expect(document.querySelector('.cm-vimMode, .cm-fat-cursor')).toBeTruthy())
+    // Syntax colours can be switched off for the plain text look.
+    await waitFor(() => expect(document.querySelector('.cm-line span')).toBeTruthy())
+    fireEvent.click(within(options).getByRole('checkbox', { name: /Syntax colours/ }))
+    await waitFor(() => expect(document.querySelector('.cm-line span')).toBeNull())
+    expect(JSON.parse(localStorage.getItem('readme-editor-prefs')).syntaxColors).toBe(false)
+    fireEvent.click(within(options).getByRole('checkbox', { name: /Syntax colours/ }))
+    await waitFor(() => expect(document.querySelector('.cm-line span')).toBeTruthy())
     fireEvent.click(within(options).getByRole('radio', { name: 'Simple' }))
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea')).toBeTruthy())
     expect(document.querySelector('.cm-editor')).toBeNull()

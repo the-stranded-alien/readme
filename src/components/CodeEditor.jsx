@@ -61,6 +61,8 @@ const editorTheme = EditorView.theme({
   '.cm-vim-panel, .cm-vim-panel input': { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-1)', backgroundColor: 'var(--bg-toolbar)' },
 })
 
+const colourExtensions = () => [syntaxHighlighting(markdownHighlight), highlightActiveLine()]
+
 function foldMarker(open) {
   const marker = document.createElement('span')
   marker.className = `cm-fold-marker${open ? ' is-open' : ''}`
@@ -144,12 +146,12 @@ async function loadKeymap(mode) {
 }
 
 export default function CodeEditor({
-  value, onChange, onScroll, onImageFiles, editorRef, placeholder, keymapMode = 'default', showLineNumbers = false,
+  value, onChange, onScroll, onImageFiles, editorRef, placeholder, keymapMode = 'default', showLineNumbers = false, syntaxColors = true,
   sectionState, onSectionToggle,
 }) {
   const hostRef = useRef(null)
   const viewRef = useRef(null)
-  const compartments = useRef({ keymap: new Compartment(), lineNumbers: new Compartment() })
+  const compartments = useRef({ keymap: new Compartment(), lineNumbers: new Compartment(), syntax: new Compartment() })
   const callbacks = useRef({})
   // Keep the latest callbacks without recreating the editor.
   useEffect(() => { callbacks.current = { onChange, onScroll, onImageFiles, onSectionToggle, sectionState } })
@@ -172,12 +174,12 @@ export default function CodeEditor({
           indentOnInput(),
           bracketMatching(),
           closeBrackets(),
-          highlightActiveLine(),
           highlightSelectionMatches(),
           EditorView.lineWrapping,
           // Markdown keymap: Enter continues lists / quotes, Backspace removes markup.
           markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
-          syntaxHighlighting(markdownHighlight),
+          // Colours + active-line tint; off = the plain text look of the simple editor.
+          compartments.current.syntax.of(syntaxColors ? colourExtensions() : []),
           keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap]),
           placeholderExt(placeholder || ''),
           editorTheme,
@@ -284,6 +286,10 @@ export default function CodeEditor({
     })
     return () => { cancelled = true }
   }, [keymapMode])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: compartments.current.syntax.reconfigure(syntaxColors ? colourExtensions() : []) })
+  }, [syntaxColors])
 
   useEffect(() => {
     viewRef.current?.dispatch({ effects: compartments.current.lineNumbers.reconfigure(showLineNumbers ? lineNumbers() : []) })

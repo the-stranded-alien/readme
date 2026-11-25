@@ -9,7 +9,7 @@ const GROUPS = [
       [shortcut('K'), 'Command palette'],
       [shortcut('F', { shift: true }), 'Search in all files'],
       ['?', 'Keyboard shortcuts'],
-      [shortcut('T', { shift: true }), 'Reopen closed tab'],
+      [`${shortcut('T', { shift: true, alt: true, mod: false })}  or  ${shortcut('T', { shift: true })}`, 'Reopen closed tab'],
       ['Esc', 'Close dialogs and popovers'],
     ],
   },

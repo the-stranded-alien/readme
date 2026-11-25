@@ -13,9 +13,14 @@ function offlinePrecacheManifest() {
     name: 'readme-offline-precache-manifest',
     apply: 'build',
     generateBundle(_options, bundle) {
-      const files = Object.keys(bundle)
-        .filter(fileName => fileName !== 'sw.js' && !fileName.endsWith('.map'))
-        .map(fileName => `/${fileName}`)
+      // Export-only libraries (PDF, math, Word) aren't precached: the service
+      // worker caches them on first use, keeping the offline install small.
+      const EXPORT_ONLY = /node_modules\/(pdfmake|mathjax-full|docx)\/|\/src\/(pdfExport|docxExport|htmlExport)\.js$/
+      const isExportOnly = item => item.type === 'chunk' && Object.keys(item.modules).length > 0
+        && Object.keys(item.modules).every(id => EXPORT_ONLY.test(id.replace(/\\/g, '/')))
+      const files = Object.entries(bundle)
+        .filter(([fileName, item]) => fileName !== 'sw.js' && !fileName.endsWith('.map') && !isExportOnly(item))
+        .map(([fileName]) => `/${fileName}`)
       files.push(...catSoundFiles)
       this.emitFile({
         type: 'asset',

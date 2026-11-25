@@ -1,4 +1,4 @@
-const CACHE_NAME = 'readme-shell-v2'
+const CACHE_NAME = 'readme-shell-v3'
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME)
@@ -23,15 +23,21 @@ self.addEventListener('fetch', event => {
       const copy = response.clone()
       caches.open(CACHE_NAME).then(cache => cache.put('/index.html', copy))
       return response
-    }).catch(async () => (await caches.match(request)) || caches.match('/index.html')))
+    }).catch(async () => (await caches.match(request, { ignoreVary: true })) || caches.match('/index.html', { ignoreVary: true })))
     return
   }
   event.respondWith((async () => {
-    const cached = await caches.match(request)
+    // ignoreVary: module scripts are requested with an Origin header that the
+    // precache requests didn't have, so "Vary: Origin" would otherwise miss.
+    const cached = await caches.match(request, { ignoreVary: true })
     if (cached) return cached
     try {
       const response = await fetch(request)
-      if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone()))
+      // Clone before handing the response to the page (its body can only be read once).
+      if (response.ok) {
+        const copy = response.clone()
+        event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.put(request, copy)))
+      }
       return response
     } catch {
       return Response.error()

@@ -5,8 +5,6 @@ import { IDBFactory } from 'fake-indexeddb'
 
 beforeEach(() => {
   localStorage.clear()
-  // Most tests drive the plain textarea editor; CodeMirror tests opt in explicitly.
-  localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'plain' }))
   const database = new IDBFactory()
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: database })
   vi.stubGlobal('indexedDB', database)

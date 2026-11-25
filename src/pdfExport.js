@@ -350,12 +350,29 @@ export function inlineSvgStyles(markup) {
       if (computed.display === 'none') return null
       return INLINE_SVG_PROPS.map(prop => [prop, computed.getPropertyValue(prop)])
     })
+    // Edge-label backgrounds must stay solid, or labels sit on top of the arrow line.
+    const edgeLabelBackgrounds = new Set(svg.querySelectorAll('.edgeLabel rect, .edgeLabel .background, .labelBkg rect'))
     elements.forEach((el, index) => {
       const values = styles[index]
       if (!values) { el.setAttribute('display', 'none'); return }
       for (const [prop, raw] of values) {
         if (!raw || raw === 'normal' || raw === 'auto') continue
+        // The PDF SVG renderer ignores rgba(); split it into a colour + opacity.
+        const rgba = /^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/.exec(raw)
+        if (rgba && (prop === 'fill' || prop === 'stroke')) {
+          el.setAttribute(prop, `rgb(${rgba[1]}, ${rgba[2]}, ${rgba[3]})`)
+          const opacityProp = `${prop}-opacity`
+          const existing = Number(values.find(([name]) => name === opacityProp)?.[1] ?? 1)
+          el.setAttribute(opacityProp, String(Number(rgba[4]) * (Number.isFinite(existing) ? existing : 1)))
+          continue
+        }
+        if (rgba === null && /-opacity$/.test(prop) && el.hasAttribute(prop)) continue
         el.setAttribute(prop, prop === 'font-family' ? 'Helvetica' : raw)
+      }
+      if (edgeLabelBackgrounds.has(el)) {
+        el.setAttribute('fill', '#ffffff')
+        el.setAttribute('fill-opacity', '1')
+        el.setAttribute('opacity', '1')
       }
       el.removeAttribute('style')
       el.removeAttribute('class')
