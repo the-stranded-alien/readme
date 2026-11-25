@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { shortcut } from '../platform'
+import { useHoverTooltip } from '../useHoverTooltip'
 import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedFromDisk, labelColor } from '../fileUtils'
 import {
   Check, Command, CopyPlus, Download, FilePlus, FileText, FolderTree, GitCompare, HardDrive, ListTree,
@@ -210,6 +211,8 @@ export default function FileTabBar({
   onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, fileTreeOpen, onToggleFileTree,
   searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette,
 }) {
+  // Labels for the small duplicate / close icons, in the app's tooltip style (the strip scrolls, so CSS tooltips would be clipped).
+  const [tipHandlers, tabTooltip] = useHoverTooltip()
   const tabRefs = useRef({})
   const scrollRef = useRef(null)
   const countRef = useRef(null)
@@ -271,7 +274,7 @@ export default function FileTabBar({
           <FolderTree size={14} />
         </button>
       )}
-      <button type="button" onClick={onCreate} className="file-tab-add" title="New file" aria-label="New file">
+      <button type="button" onClick={onCreate} className="file-tab-add tooltip-start" data-tooltip="New file" aria-label="New file">
         <FilePlus size={12} />
         <span>New</span>
       </button>
@@ -280,12 +283,14 @@ export default function FileTabBar({
         className={`file-tabs-scroll${fades.left ? ' fade-left' : ''}${fades.right ? ' fade-right' : ''}`}
         role="tablist"
         aria-label="Open files"
-        onScroll={updateFades}
+        {...tipHandlers}
+        onScroll={event => { updateFades(event); tipHandlers.onScroll() }}
         onWheel={event => {
           // Let a vertical mouse wheel scroll the tab strip horizontally.
           if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY
         }}
       >
+        {tabTooltip}
         {files.map((file, index) => {
           const isActive = file.id === activeFileId
           const isEditing = editingId === file.id
@@ -391,7 +396,7 @@ export default function FileTabBar({
                 <span
                   onClick={event => { event.stopPropagation(); onDuplicate(file.id) }}
                   className="file-tab-duplicate"
-                  title={`Duplicate ${file.name}`}
+                  data-tip={`Duplicate ${file.name}`}
                   aria-hidden="true"
                 >
                   <CopyPlus size={11} />
@@ -403,7 +408,7 @@ export default function FileTabBar({
                 <span
                   onClick={event => { event.stopPropagation(); onClose(file.id) }}
                   className={`file-tab-close${modified ? ' is-modified' : ''}`}
-                  title={modified ? `Close ${file.name} (unsaved changes)` : `Close ${file.name}`}
+                  data-tip={modified ? `Close ${file.name} (unsaved changes)` : `Close ${file.name}`}
                   // Keyboard users close with Delete and reach other actions via Shift+F10.
                   aria-hidden="true"
                 >

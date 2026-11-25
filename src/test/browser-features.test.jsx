@@ -93,7 +93,7 @@ describe('advanced browser features', () => {
 
   it('duplicates an open file into a new independent tab', async () => {
     installApp()
-    fireEvent.click(screen.getByTitle('Duplicate Welcome.md'))
+    fireEvent.click(document.querySelector('[data-tip="Duplicate Welcome.md"]'))
     await waitFor(() => expect(screen.getAllByText('Welcome copy.md').length).toBeGreaterThan(0))
     const editor = screen.getByRole('textbox')
     const sourceText = editor.value

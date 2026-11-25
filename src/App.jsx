@@ -45,6 +45,7 @@ import StorageDialog from './components/StorageDialog'
 import SettingsDialog, { FolderSyncCard, ThemePicker } from './components/SettingsDialog'
 import HelpDialog from './components/HelpDialog'
 import EmptyState from './components/EmptyState'
+import { useHoverTooltip as useToolbarTooltip } from './useHoverTooltip'
 import { MARK_COLORS, rehypeMarks } from './rehypeMarks'
 import { CONTENT_FILTERS, applyContentFilter, clearContentFilter, filterLabel } from './contentFilter'
 import { ALL_THEME_CLASSES, THEME_IDS, availableThemes, nextTheme, themeById, themeClasses } from './themes'
@@ -1014,44 +1015,6 @@ const FMT_GROUPS = FMT_ACTIONS.reduce((groups, action) => {
   else groups[groups.length - 1].actions.push(action)
   return groups
 }, [{ label: FMT_GROUP_LABELS[0], actions: [] }])
-
-// Hover/focus labels for the editor toolbar. The toolbar scrolls sideways,
-// which would clip CSS tooltips, so the label is drawn in a portal.
-function useToolbarTooltip() {
-  const [tip, setTip] = useState(null)
-  const timerRef = useRef(null)
-  const shownRef = useRef(false)
-  const show = useCallback((target, immediate) => {
-    clearTimeout(timerRef.current)
-    const run = () => {
-      const rect = target.getBoundingClientRect()
-      shownRef.current = true
-      setTip({ text: target.dataset.tip, x: rect.left + rect.width / 2, y: rect.bottom + 7 })
-    }
-    if (immediate || shownRef.current) run()
-    else timerRef.current = setTimeout(run, 350)
-  }, [])
-  const hide = useCallback(() => {
-    clearTimeout(timerRef.current)
-    setTip(null)
-    // Moving straight to a neighbouring button shows its label without the delay.
-    timerRef.current = setTimeout(() => { shownRef.current = false }, 250)
-  }, [])
-  useEffect(() => () => clearTimeout(timerRef.current), [])
-  const handlers = {
-    onPointerOver: event => { const target = event.target.closest?.('[data-tip]'); if (target && event.currentTarget.contains(target)) show(target) },
-    onPointerOut: event => { const target = event.target.closest?.('[data-tip]'); if (target && !target.contains(event.relatedTarget)) hide() },
-    onFocus: event => { const target = event.target.closest?.('[data-tip]'); if (target?.matches(':focus-visible')) show(target, true) },
-    onBlur: hide,
-    onPointerDown: hide,
-    onScroll: hide,
-  }
-  const element = tip && createPortal(
-    <div className="fmt-tooltip no-print" role="tooltip" style={{ left: Math.min(Math.max(tip.x, 70), window.innerWidth - 70), top: tip.y }}>{tip.text}</div>,
-    document.body,
-  )
-  return [handlers, element]
-}
 
 function HighlightPicker({ position, onPick, onClose }) {
   const menuRef = useRef(null)
@@ -4920,11 +4883,11 @@ ${fontCss}
                     onGoalChange={handleSetWordGoal}
                   />
                   <button type="button" onClick={openHistory} data-tooltip="Version history" aria-label="Version history"
-                    className="cursor-pointer transition-colors history-trigger">
+                    className="cursor-pointer transition-colors history-trigger editor-icon-btn">
                     <History size={11} />
                   </button>
                   <button onClick={() => updateActiveContent('')} data-tooltip="Clear editor" aria-label="Clear editor"
-                    className="cursor-pointer transition-colors"
+                    className="cursor-pointer transition-colors editor-icon-btn is-danger"
                     style={{ color: 'var(--text-4)' }}
                     onMouseOver={e => e.currentTarget.style.color = '#f38ba8'}
                     onMouseOut={e  => e.currentTarget.style.color = 'var(--text-4)'}>
@@ -5361,6 +5324,7 @@ ${fontCss}
                       onClick={() => setReaderOpen(o => !o)}
                       data-tooltip="Reader comfort settings"
                       aria-label="Reader comfort settings"
+                      aria-expanded={readerOpen}
                       className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
                       style={{
                         fontSize: 10, fontWeight: 600,

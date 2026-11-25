@@ -3036,3 +3036,52 @@ html.high-contrast .presentation-slide.rm-prose { background: var(--bg-preview);
 @media (max-width: 640px) { .presentation-stage { padding: 14px; } }
 .presentation-controls { bottom: 52px; }
 @media (max-width: 640px) { .presentation-controls { bottom: 32px; } }
+
+
+/* ── One hover style for every icon button: a circle with an accent tint ──────────
+   Icon-only controls get a square hit area so the hover is a true circle; buttons with
+   a text label get the same tint as a pill. */
+:root { --icon-hover-bg: color-mix(in srgb, var(--accent) 15%, transparent); --icon-hover-fg: var(--accent); }
+html.high-contrast { --icon-hover-bg: color-mix(in srgb, var(--accent) 24%, transparent); }
+
+:is(.btn-icon, .reading-pet-trigger, .file-tree-toggle, .file-tabs-command-button, .fmt-btn, .editor-options-trigger,
+    .editor-icon-btn, .quality-trigger, .section-toggle, .heading-tool, .wrap-btn, .heading-anchor, .toc-star, .toc-toggle,
+    .section-summary-actions button, .summary-card-actions button, .file-tab-duplicate, .file-tab-close, .file-tab-add,
+    .presentation-controls button, .reader-preview-toolbar button:not(.reader-popover *), .copy-btn, .diff-edit-toggle) {
+  border-radius: 999px !important;
+  transition: background-color .15s, color .15s, opacity .15s;
+}
+:is(.btn-icon, .reading-pet-trigger, .file-tree-toggle, .file-tabs-command-button, .fmt-btn, .editor-options-trigger,
+    .editor-icon-btn, .quality-trigger, .section-toggle, .heading-tool, .wrap-btn, .heading-anchor, .toc-star, .toc-toggle,
+    .section-summary-actions button, .summary-card-actions button, .file-tab-duplicate, .file-tab-close, .file-tab-add,
+    .presentation-controls button, .reader-preview-toolbar button:not(.reader-popover *), .copy-btn, .diff-edit-toggle):hover:not(:disabled) {
+  background-color: var(--icon-hover-bg) !important;
+  color: var(--icon-hover-fg) !important;
+}
+.editor-icon-btn.is-danger:hover { --icon-hover-bg: rgba(239, 68, 68, .14); --icon-hover-fg: #ef4444; }
+
+/* Square hit areas for icon-only controls (so the hover is round, not oval). */
+.file-tree-toggle, .file-tabs-command-button { width: 28px !important; height: 28px !important; padding: 0 !important; }
+.editor-options-trigger, .editor-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0 !important; }
+.file-tab-duplicate, .file-tab-close { width: 20px; height: 20px; }
+.heading-anchor { width: 26px; height: 26px; justify-content: center; margin-left: 4px; vertical-align: middle; }
+.toc-item .toc-star { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.toc-toggle { width: 18px; height: 18px; }
+.section-summary-actions button, .summary-card-actions button { width: 26px; height: 26px; }
+.reader-preview-toolbar.is-icons-only button:not(.reader-popover *) { width: 26px; height: 26px; padding: 0 !important; justify-content: center; }
+.reader-preview-toolbar.is-icons-only .quality-trigger { width: 26px; height: 26px; }
+
+/* Groups take the buttons' full height (so round hovers aren't clipped by the scroll area);
+   the short divider is drawn separately. */
+.fmt-group { height: auto !important; position: relative; }
+.fmt-group + .fmt-group { border-left: 0 !important; }
+.fmt-group + .fmt-group::before {
+  content: ''; position: absolute; left: 0; top: 50%; width: 1px; height: 18px; margin-top: -9px; background: var(--border);
+}
+.high-contrast .fmt-group + .fmt-group::before { background: var(--border-strong); }
+.fmt-scroll { padding-block: 2px; }
+
+/* Reader comfort: options in a row share the width equally. */
+.reader-popover .flex > .reader-chip { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; }
+.reader-popover .reader-chip:hover:not(.active) { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.reader-popover:not(.quality-popover) { width: 304px; padding: 16px; }
