@@ -16,7 +16,7 @@ import {
   List, AlignLeft, PanelLeftOpen, PanelLeftClose,
   Bold, Italic, Strikethrough, Link, Code, Minus,
   WrapText, ArrowUp, Heading1, Heading2, Quote,
-  FileDown, Loader2, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, ChevronsDownUp, ChevronsUpDown,
+  FileDown, Loader2, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
 } from 'lucide-react'
 
@@ -31,6 +31,16 @@ function useIsDark() {
     return () => obs.disconnect()
   }, [])
   return dark
+}
+
+function useIsSepia() {
+  const [sepia, setSepia] = useState(() => document.documentElement.classList.contains('sepia'))
+  useEffect(() => {
+    const observer = new MutationObserver(() => setSepia(document.documentElement.classList.contains('sepia')))
+    observer.observe(document.documentElement, { attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
+  return sepia
 }
 
 // ── Custom view icons ──────────────────────────────────────────
@@ -53,6 +63,9 @@ const VIEW_MODES = [
   { id: 'focus',   label: 'Focus',   Icon: SplitWideIcon,  edW: '25%',  pvW: '75%'  },
   { id: 'preview', label: 'Preview', Icon: Eye,            edW: '0%',   pvW: '100%' },
 ]
+
+// Keep the parchment color mode out of the UI until it is ready to ship.
+const ENABLE_SEPIA_THEME = false
 
 // ── Sample markdown ────────────────────────────────────────────
 const SAMPLE_MD = `# Welcome to ReadMe
@@ -177,8 +190,16 @@ function normalizeLang(lang) {
 }
 
 // ── CodeBlock ──────────────────────────────────────────────────
+const sepiaCodeTheme = {
+  ...oneLight,
+  comment: { color: '#62697a', fontStyle: 'italic' },
+  prolog: { color: '#62697a' },
+  cdata: { color: '#62697a' },
+}
+
 function CodeBlock({ rawLang, code }) {
   const dark = useIsDark()
+  const sepia = useIsSepia()
   const [wrapped, setWrapped] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -237,13 +258,14 @@ function CodeBlock({ rawLang, code }) {
       <div className="code-body">
         <SyntaxHighlighter
           language={prismLang}
-          style={dark ? oneDark : oneLight}
+          style={dark ? oneDark : sepia ? sepiaCodeTheme : oneLight}
           showLineNumbers={lineCount > 4}
           wrapLongLines={wrapped}
           customStyle={{
             margin: 0,
             padding: lineCount > 4 ? '16px 20px 16px 12px' : '16px 20px',
             background: 'var(--code-bg)',
+            color: dark ? '#d8dee9' : '#383a42',
             fontSize: '0.86rem',
             lineHeight: '1.75',
             fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
@@ -260,6 +282,7 @@ function CodeBlock({ rawLang, code }) {
             style: {
               fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
               background: 'transparent',
+              color: dark ? '#d8dee9' : '#383a42',
             },
           }}
         >
@@ -331,7 +354,6 @@ function MarkdownRenderer({ content, dark }) {
     },
 
     hr() { return <hr /> },
-
     // Headings with hover-anchor links
     h1({ children }) {
       const id = String(children).toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')
@@ -785,6 +807,15 @@ function loadReaderPrefs() {
   return DEFAULT_READER_PREFS
 }
 
+function loadReadingBookmarks() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('readme-reading-bookmarks') || '{}')
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
 function ReaderSettingsPopover({ prefs, onChange, onClose }) {
   const ref = useRef(null)
   useEffect(() => {
@@ -1117,8 +1148,8 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
       </div>
 
       <span
-        className="hidden sm:inline shrink-0 pb-1"
-        style={{ fontSize: 10, color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}
+        className="file-tab-count hidden sm:inline shrink-0 pb-1"
+        style={{ fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
       >
         {files.length} {files.length === 1 ? 'file' : 'files'}
       </span>
@@ -1130,12 +1161,12 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
 export default function App() {
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('readme-theme')
-    return ['light', 'dark', 'sepia'].includes(saved)
+    return ['light', 'dark'].includes(saved) || (ENABLE_SEPIA_THEME && saved === 'sepia')
       ? saved
       : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
   const isDark = theme === 'dark'
-  const isSepia = theme === 'sepia'
+  const isSepia = ENABLE_SEPIA_THEME && theme === 'sepia'
   const [highContrast, setHighContrast] = useState(
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
@@ -1153,6 +1184,7 @@ export default function App() {
   const [copyAllDone, setCopyAllDone] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
   const [readerPrefs, setReaderPrefs] = useState(loadReaderPrefs)
+  const [readingBookmarks, setReadingBookmarks] = useState(loadReadingBookmarks)
   const [readerOpen, setReaderOpen]   = useState(false)
   const [readProgress, setReadProgress] = useState(0)
   const [searchOpen, setSearchOpen]   = useState(false)
@@ -1202,7 +1234,10 @@ export default function App() {
   }, [highContrast])
 
   const toggleTheme = useCallback(() => {
-    setTheme(t => t === 'light' ? 'dark' : t === 'dark' ? 'sepia' : 'light')
+    setTheme(t => {
+      if (!ENABLE_SEPIA_THEME) return t === 'dark' ? 'light' : 'dark'
+      return t === 'light' ? 'dark' : t === 'dark' ? 'sepia' : 'light'
+    })
     setThemeKey(k => k + 1)
   }, [])
 
@@ -1223,6 +1258,34 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('readme-reader-prefs', JSON.stringify(readerPrefs)) } catch { /* ignore */ }
   }, [readerPrefs])
+
+  useEffect(() => {
+    try { localStorage.setItem('readme-reading-bookmarks', JSON.stringify(readingBookmarks)) } catch { /* ignore */ }
+  }, [readingBookmarks])
+
+  const activeBookmark = activeFileId ? readingBookmarks[activeFileId] : null
+  const saveReadingBookmark = useCallback(() => {
+    if (!activeFileId || !previewScrollRef.current) return
+    const scroller = previewScrollRef.current
+    const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+    const ratio = maxScroll > 0 ? scroller.scrollTop / maxScroll : 0
+    setReadingBookmarks(prev => ({
+      ...prev,
+      [activeFileId]: { ratio, progress: Math.round(ratio * 100), savedAt: Date.now() },
+    }))
+  }, [activeFileId])
+
+  const jumpToReadingBookmark = useCallback(() => {
+    if (!activeFileId) return
+    const bookmark = readingBookmarks[activeFileId]
+    if (!bookmark) return
+    requestAnimationFrame(() => {
+      const scroller = previewScrollRef.current
+      if (!scroller) return
+      const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+      scroller.scrollTo({ top: maxScroll * bookmark.ratio, behavior: 'smooth' })
+    })
+  }, [activeFileId, readingBookmarks])
 
   // Cmd/Ctrl + K opens Command Palette; Cmd/Ctrl + F opens in-document search; Esc closes overlays
   useEffect(() => {
@@ -1717,7 +1780,7 @@ export default function App() {
     { id: 'wide', label: readerPrefs.width === 'full' ? 'Switch to Book page width' : 'Expand to Wide mode', hint: 'Reader', icon: UnfoldHorizontal, run: () => setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' })) },
     { id: 'sepia', label: readerPrefs.paper === 'sepia' ? 'Paper tone: Ivory' : 'Paper tone: Sepia', hint: 'Reader', icon: BookOpen, run: () => setReaderPrefs(p => ({ ...p, paper: p.paper === 'sepia' ? 'ivory' : 'sepia' })) },
     { id: 'contrast', label: highContrast ? 'Disable High Contrast' : 'Enable High Contrast', hint: 'Theme', icon: Contrast, run: () => setHighContrast(h => !h) },
-    { id: 'theme', label: `Switch to ${theme === 'light' ? 'Dark' : theme === 'dark' ? 'Sepia' : 'Light'} mode`, hint: 'Theme', icon: theme === 'sepia' ? BookOpen : isDark ? Sun : Moon, run: toggleTheme },
+    { id: 'theme', label: `Switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'Sepia' : isDark ? 'Light' : 'Dark'} mode`, hint: 'Theme', icon: ENABLE_SEPIA_THEME && theme === 'sepia' ? BookOpen : isDark ? Sun : Moon, run: toggleTheme },
     { id: 'sync', label: syncScroll ? 'Disable Synchronized Scroll' : 'Enable Synchronized Scroll', hint: 'Editor', icon: Link2, run: () => setSyncScroll(s => !s) },
     ...(activeFile ? [
       { id: 'dl-md', label: 'Download Markdown (.md)', hint: 'Export', icon: Download, run: handleDownload },
@@ -1747,7 +1810,7 @@ export default function App() {
   return (
     <div
       ref={appRef}
-      className="h-screen flex flex-col app-shell overflow-hidden anim-fade-in"
+      className={`h-screen flex flex-col app-shell overflow-hidden anim-fade-in${isSepia ? ' sepia' : ''}${isSepia && highContrast ? ' high-contrast' : ''}`}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -1832,8 +1895,8 @@ export default function App() {
             >
               <Contrast size={15} />
             </button>
-            <button onClick={toggleTheme} title={`Color mode: ${theme[0].toUpperCase()}${theme.slice(1)} (click to change)`} aria-label={`Color mode ${theme}. Click to switch to ${theme === 'light' ? 'dark' : theme === 'dark' ? 'sepia' : 'light'} mode.`} className="btn-icon" key={themeKey}>
-              {theme === 'sepia'
+            <button onClick={toggleTheme} title={`Color mode: ${theme[0].toUpperCase()}${theme.slice(1)} (click to change)`} aria-label={`Color mode ${theme}. Click to switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'sepia' : isDark ? 'light' : 'dark'} mode.`} className="btn-icon" key={themeKey}>
+              {ENABLE_SEPIA_THEME && theme === 'sepia'
                 ? <BookOpen size={15} className="theme-icon-enter" style={{ color: '#a16207' }} />
                 : isDark
                   ? <Sun size={15} className="theme-icon-enter" style={{ color: '#f59e0b' }} />
@@ -2016,6 +2079,34 @@ export default function App() {
                     <span className="status-badge">
                       {readProgress > 0 ? `${readProgress}% · ` : ''}~{readingTime} min read
                     </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={saveReadingBookmark}
+                    disabled={!activeFile}
+                    title={activeBookmark ? 'Update saved reading position' : 'Bookmark this reading position'}
+                    aria-label={activeBookmark ? 'Update bookmark at current reading position' : 'Bookmark current reading position'}
+                    className="btn-icon !p-1 disabled:opacity-40"
+                    style={{
+                      color: activeBookmark ? 'var(--accent)' : 'var(--text-4)',
+                      background: activeBookmark ? 'var(--accent-soft)' : 'transparent',
+                    }}
+                  >
+                    <BookmarkPlus size={12} />
+                    {view === 'preview' && <span className="text-[10px] font-medium whitespace-nowrap">{activeBookmark ? 'Update spot' : 'Save spot'}</span>}
+                  </button>
+                  {activeBookmark && (
+                    <button
+                      type="button"
+                      onClick={jumpToReadingBookmark}
+                      title={`Return to saved reading position (${activeBookmark.progress}%)`}
+                      aria-label={`Return to saved reading position at ${activeBookmark.progress} percent`}
+                      className="btn-icon !p-1"
+                      style={{ color: 'var(--accent)' }}
+                    >
+                      <BookmarkCheck size={12} />
+                      {view === 'preview' && <span className="text-[10px] font-medium whitespace-nowrap">Resume {activeBookmark.progress}%</span>}
+                    </button>
                   )}
                   <button
                     onClick={() =>
