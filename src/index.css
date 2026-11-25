@@ -1653,3 +1653,41 @@ button[data-tooltip]:not(:focus-visible)::after {
 .focus-section-status .tabular-nums { color: var(--accent); font-weight: 650; }
 .focus-section-title { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-1); font-weight: 600; }
 .high-contrast .focus-section-bar { background: var(--bg-preview); backdrop-filter: none; }
+
+/* ── Writing goal & session stats (editor status bar) ─────── */
+.writing-goal { position: relative; display: inline-flex; }
+.writing-goal-trigger {
+  display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px;
+  border: 1px solid transparent; border-radius: 999px; background: transparent;
+  font-size: 10px; font-weight: 500; color: var(--text-4); cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.writing-goal-trigger:hover, .writing-goal-trigger[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+.writing-goal-trigger.has-goal { color: var(--text-3); border-color: var(--border-light); }
+.writing-goal-trigger.is-complete { color: #1a7f37; border-color: color-mix(in srgb, #1a7f37 35%, transparent); }
+.dark .writing-goal-trigger.is-complete { color: #3fb950; }
+.writing-goal-ring-track { stroke: var(--border); }
+.writing-goal-ring-value { stroke: var(--accent); transition: stroke-dasharray .3s ease; }
+.is-complete .writing-goal-ring-value { stroke: currentColor; }
+.writing-goal-popover {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; width: 250px; padding: 12px;
+  border-radius: 12px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-lg);
+  font-size: 12px; color: var(--text-2);
+}
+.writing-goal-form label { display: block; margin-bottom: 6px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-4); }
+.writing-goal-form > div { display: flex; gap: 6px; }
+.writing-goal-form input {
+  flex: 1; min-width: 0; height: 28px; padding: 0 8px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--bg-editor); color: var(--text-1); font-size: 12px; outline: none;
+}
+.writing-goal-form input:focus { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-soft); }
+.writing-goal-progress { display: grid; gap: 5px; margin-top: 10px; font-size: 11px; color: var(--text-3); }
+.writing-goal-bar { height: 6px; border-radius: 999px; background: var(--border-light); overflow: hidden; }
+.writing-goal-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s ease; }
+.writing-goal-stats { display: grid; gap: 6px; margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--border-light); }
+.writing-goal-stats > div { display: flex; justify-content: space-between; gap: 10px; }
+.writing-goal-stats dt { color: var(--text-4); }
+.writing-goal-stats dd { margin: 0; font-weight: 600; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.writing-goal-stats dd.is-positive { color: #1a7f37; }
+.dark .writing-goal-stats dd.is-positive { color: #3fb950; }
+.writing-goal-stats dd.is-negative { color: #cf222e; }

@@ -1,6 +1,6 @@
 import { createContext, createElement, useContext, useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import remarkGfm from 'remark-gfm'
@@ -13,6 +13,7 @@ import CommandPalette from './components/CommandPalette'
 import { MD_TEMPLATES, parseFrontmatter } from './templates'
 import { rehypeHeadingSections, headingSlug, headingText } from './headingSections'
 import { rehypeCallouts, rehypeStandaloneImages } from './rehypeCallouts'
+import { IMAGE_DATA_URL_RE, autoPair, continueMarkup, countWords, deletePair, formatMarkdownTables, imageFileToDataUrl, imageReferenceMarkdown } from './editorAssist'
 import {
   Sun, Moon, Upload, Copy, CopyPlus, Check, FileText, FilePlus, Eye, Code2,
   X, Download, Maximize2, Minimize2, Hash, ChevronRight,
@@ -451,6 +452,12 @@ const SECTION_COMPONENTS = {
   img: MarkdownImage,
 }
 
+// Allow embedded (pasted / dropped) images; everything else uses the safe default.
+function markdownUrlTransform(url, key, node) {
+  if (key === 'src' && node?.tagName === 'img' && IMAGE_DATA_URL_RE.test(url)) return url
+  return defaultUrlTransform(url)
+}
+
 function MarkdownRenderer({ content, dark }) {
   const components = useMemo(() => ({
     pre({ children }) { return <>{children}</> },
@@ -496,6 +503,7 @@ function MarkdownRenderer({ content, dark }) {
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
       rehypePlugins={[rehypeKatex, rehypeCallouts, rehypeStandaloneImages, rehypeHeadingSections]}
+      urlTransform={markdownUrlTransform}
       components={components}
     >
       {content}
@@ -1669,8 +1677,98 @@ function orderPinnedFirst(list) {
   return [...list.filter(file => file.pinned), ...list.filter(file => !file.pinned)]
 }
 // Fields that are safe to persist in localStorage and share with other browser tabs.
-function syncableFile({ id, name, content, pinned, color }) {
-  return { id, name, content, ...(pinned ? { pinned: true } : {}), ...(color ? { color } : {}) }
+function syncableFile({ id, name, content, pinned, color, wordGoal }) {
+  return { id, name, content, ...(pinned ? { pinned: true } : {}), ...(color ? { color } : {}), ...(wordGoal > 0 ? { wordGoal } : {}) }
+}
+
+// Applies an edit to the textarea through the browser's editing commands so
+// native undo / redo keep working; falls back to setRangeText.
+function applyTextareaEdit(textarea, edit) {
+  textarea.focus()
+  textarea.setSelectionRange(edit.from, edit.to)
+  let applied = false
+  try {
+    applied = edit.text
+      ? document.execCommand('insertText', false, edit.text)
+      : edit.from === edit.to || document.execCommand('delete', false)
+  } catch { applied = false }
+  if (!applied) {
+    textarea.setRangeText(edit.text, edit.from, edit.to, 'end')
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  textarea.setSelectionRange(edit.cursor, edit.cursorEnd ?? edit.cursor)
+}
+
+function formatDuration(ms) {
+  const minutes = Math.round(ms / 60000)
+  if (minutes < 1) return 'under a minute'
+  if (minutes < 60) return `${minutes} min`
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`
+}
+
+function WritingGoal({ words, goal, sessionWords, activeMs, onGoalChange }) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState('')
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return undefined
+    const onDown = event => { if (!ref.current?.contains(event.target)) setOpen(false) }
+    const onKey = event => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+  const progress = goal > 0 ? Math.min(1, words / goal) : 0
+  const wpm = activeMs > 60000 ? Math.max(0, Math.round(sessionWords / (activeMs / 60000))) : null
+  const commit = () => {
+    const value = Math.round(Number(draft))
+    onGoalChange(Number.isFinite(value) && value > 0 ? Math.min(value, 1_000_000) : null)
+  }
+  return (
+    <div className="writing-goal" ref={ref}>
+      <button
+        type="button"
+        className={`writing-goal-trigger${goal > 0 ? ' has-goal' : ''}${progress >= 1 ? ' is-complete' : ''}`}
+        onClick={() => { setDraft(goal > 0 ? String(goal) : ''); setOpen(value => !value) }}
+        aria-label={goal > 0 ? `${words} of ${goal} words. Writing goal and session stats` : `${words} words. Set a writing goal`}
+        aria-expanded={open}
+        title="Writing goal & session stats"
+      >
+        {goal > 0 && (
+          <svg width="12" height="12" viewBox="0 0 36 36" aria-hidden="true" className="writing-goal-ring">
+            <circle cx="18" cy="18" r="15" fill="none" strokeWidth="5" className="writing-goal-ring-track" />
+            <circle cx="18" cy="18" r="15" fill="none" strokeWidth="5" className="writing-goal-ring-value"
+              strokeDasharray={`${progress * 94.25} 94.25`} transform="rotate(-90 18 18)" strokeLinecap="round" />
+          </svg>
+        )}
+        <span className="tabular-nums">{goal > 0 ? `${words.toLocaleString()} / ${goal.toLocaleString()}` : `${words.toLocaleString()} words`}</span>
+      </button>
+      {open && (
+        <div className="writing-goal-popover anim-drop-in" role="dialog" aria-label="Writing goal">
+          <form onSubmit={event => { event.preventDefault(); commit(); setOpen(false) }} className="writing-goal-form">
+            <label htmlFor="writing-goal-input">Word goal for this file</label>
+            <div>
+              <input id="writing-goal-input" type="number" min="1" step="1" inputMode="numeric" placeholder="e.g. 1000"
+                value={draft} onChange={event => setDraft(event.target.value)} autoFocus />
+              <button type="submit" className="reader-chip active">Set</button>
+              {goal > 0 && <button type="button" className="reader-chip" onClick={() => { onGoalChange(null); setOpen(false) }}>Clear</button>}
+            </div>
+          </form>
+          {goal > 0 && (
+            <div className="writing-goal-progress">
+              <div className="writing-goal-bar"><span style={{ width: `${progress * 100}%` }} /></div>
+              <span>{progress >= 1 ? 'Goal reached 🎉' : `${Math.max(0, goal - words).toLocaleString()} words to go`}</span>
+            </div>
+          )}
+          <dl className="writing-goal-stats">
+            <div><dt>This session</dt><dd className={sessionWords > 0 ? 'is-positive' : sessionWords < 0 ? 'is-negative' : ''}>{sessionWords > 0 ? '+' : ''}{sessionWords.toLocaleString()} words</dd></div>
+            <div><dt>Writing time</dt><dd>{formatDuration(activeMs)}</dd></div>
+            <div><dt>Pace</dt><dd>{wpm === null ? '—' : `${wpm} words/min`}</dd></div>
+          </dl>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── App ────────────────────────────────────────────────────────
@@ -1732,6 +1830,7 @@ export default function App() {
   )
   const content = activeFile?.content ?? ''
   const [recentIds, setRecentIds] = useState(() => (activeFileId ? [activeFileId] : []))
+  const currentWords = useMemo(() => countWords(content), [content])
   if (activeFileId && recentIds[0] !== activeFileId) {
     setRecentIds([activeFileId, ...recentIds.filter(id => id !== activeFileId)].slice(0, 30))
   }
@@ -1793,6 +1892,12 @@ export default function App() {
   const diskHandlesRef = useRef(new Map())
   const closedFilesRef = useRef([])
   const [canReopen, setCanReopen] = useState(false)
+  const [writingStats, setWritingStats] = useState({})
+  if (activeFileId && workspaceReady && !writingStats[activeFileId]) {
+    setWritingStats(prev => ({ ...prev, [activeFileId]: { baseWords: currentWords, activeMs: 0, lastEditAt: 0 } }))
+  }
+  const activeWritingStats = activeFileId ? writingStats[activeFileId] : null
+
   const [diffCompareId, setDiffCompareId] = useState(null)
   const speechRef = useRef(null)
   const broadcastRef = useRef(null)
@@ -2274,7 +2379,80 @@ export default function App() {
     if (!activeFileId) return
     markWorkspaceEdit()
     setFiles(prev => prev.map(f => (f.id === activeFileId ? { ...f, content: nextContent } : f)))
+    // Writing-session time: edits less than a minute apart count as active writing.
+    const now = Date.now()
+    setWritingStats(prev => {
+      const current = prev[activeFileId]
+      if (!current) return prev
+      const gap = current.lastEditAt ? now - current.lastEditAt : 0
+      return { ...prev, [activeFileId]: { ...current, activeMs: current.activeMs + (gap > 0 && gap < 60000 ? gap : 0), lastEditAt: now } }
+    })
   }, [activeFileId, markWorkspaceEdit])
+
+  const handleSetWordGoal = useCallback(goal => {
+    if (!activeFileId) return
+    markWorkspaceEdit()
+    setFiles(prev => prev.map(f => (f.id === activeFileId ? { ...f, wordGoal: goal || undefined } : f)))
+  }, [activeFileId, markWorkspaceEdit])
+
+  const handleFormatTables = useCallback(() => {
+    const ta = textareaRef.current
+    const formatted = formatMarkdownTables(content)
+    if (formatted === content) return
+    if (ta) queueMicrotask(() => applyTextareaEdit(ta, { from: 0, to: content.length, text: formatted, cursor: Math.min(ta.selectionStart, formatted.length) }))
+    else updateActiveContent(formatted)
+  }, [content, updateActiveContent])
+
+  // Smart Enter (list / quote continuation), bracket auto-pairing and pair deletion.
+  const handleEditorKeyDown = useCallback(event => {
+    if (event.nativeEvent.isComposing || event.metaKey || event.ctrlKey || event.altKey) return
+    const ta = event.currentTarget
+    const { value, selectionStart, selectionEnd } = ta
+    let edit = null
+    if (event.key === 'Enter' && !event.shiftKey) edit = continueMarkup(value, selectionStart, selectionEnd)
+    else if (event.key === 'Backspace') edit = deletePair(value, selectionStart, selectionEnd)
+    else if (event.key.length === 1) edit = autoPair(value, selectionStart, selectionEnd, event.key)
+    if (!edit) return
+    event.preventDefault()
+    applyTextareaEdit(ta, edit)
+  }, [])
+
+  // Paste / drop images into the editor: embed them as data URLs (reference-style,
+  // with the definitions appended at the end so the text stays readable).
+  const insertImages = useCallback(async (imageFiles, textarea) => {
+    if (!imageFiles.length || !textarea) return
+    const entries = await Promise.all(imageFiles.map(async file => ({ name: file.name || 'pasted-image.png', dataUrl: await imageFileToDataUrl(file) })))
+    const { inline, definitions } = imageReferenceMarkdown(entries, textarea.value)
+    const at = textarea.selectionStart
+    const before = textarea.value.slice(0, at)
+    const after = textarea.value.slice(textarea.selectionEnd)
+    const lead = !before ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'
+    const trail = !after ? '\n' : after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n'
+    const insertText = `${lead}${inline}${trail}`
+    applyTextareaEdit(textarea, { from: at, to: textarea.selectionEnd, text: insertText, cursor: at + insertText.length })
+    const caret = textarea.selectionStart
+    const end = textarea.value.length
+    const tail = textarea.value.endsWith('\n') ? '\n' : '\n\n'
+    applyTextareaEdit(textarea, { from: end, to: end, text: `${tail}${definitions}\n`, cursor: caret })
+  }, [])
+  const handleEditorPaste = useCallback(event => {
+    const images = Array.from(event.clipboardData?.files || []).filter(file => file.type.startsWith('image/'))
+    if (!images.length) return
+    event.preventDefault()
+    insertImages(images, event.currentTarget)
+  }, [insertImages])
+  const handleEditorDrop = useCallback(event => {
+    const images = Array.from(event.dataTransfer?.files || []).filter(file => file.type.startsWith('image/'))
+    if (!images.length) return
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragging(false)
+    const ta = event.currentTarget
+    // Place the caret where the image was dropped when the browser supports it.
+    const position = document.caretPositionFromPoint?.(event.clientX, event.clientY)
+    if (position?.offsetNode === ta || position?.offsetNode?.parentNode === ta) ta.setSelectionRange(position.offset, position.offset)
+    insertImages(images, ta)
+  }, [insertImages])
 
   const handleNewFile = useCallback(() => {
     markWorkspaceEdit()
@@ -2527,16 +2705,18 @@ export default function App() {
         alert('Allow file access to save this document in place.')
         return
       }
+      // Align table pipes on save.
+      const savedContent = formatMarkdownTables(content)
+      if (savedContent !== content) updateActiveContent(savedContent)
       const writable = await handle.createWritable()
-      await writable.write(content)
+      await writable.write(savedContent)
       await writable.close()
       const savedId = activeFile.id
-      const savedContent = content
       setFiles(prev => prev.map(f => (f.id === savedId ? { ...f, diskHandle: handle, diskSavedContent: savedContent } : f)))
     } catch (error) {
       if (error?.name !== 'AbortError') { console.error('Save file failed', error); alert('Could not save this file. Use Download as a fallback.') }
     }
-  }, [activeFile, content, fileName])
+  }, [activeFile, content, fileName, updateActiveContent])
 
   const handleImportUrl = useCallback(async () => {
     const url = window.prompt('Paste a public Markdown file URL (the server must allow CORS):')
@@ -2789,6 +2969,7 @@ export default function App() {
     { id: 'url-import', label: 'Import Markdown from URL…', hint: 'Action', icon: Globe, run: handleImportUrl },
     { id: 'quality', label: 'Check document quality', hint: 'Document', icon: TriangleAlert, run: () => { setQualityOpen(true); if (view === 'editor') setView('split') } },
     ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => { setDiffCompareId(null); setDiffOpen(true) } }] : []),
+    ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
     ...(headings.length > 0 ? [{ id: 'focus-section', label: focusSection ? 'Exit section focus' : 'Focus on current section', hint: 'Reader', icon: Crosshair, run: focusSection ? exitSectionFocus : startSectionFocus }] : []),
     ...(canReopen ? [{ id: 'reopen', label: 'Reopen closed tab', hint: 'Tabs', icon: RotateCcw, run: handleReopenClosed }] : []),
     ...(activeFile ? [
@@ -2811,7 +2992,7 @@ export default function App() {
     handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, handleExportPdf, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
-    headings.length, focusSection, exitSectionFocus, startSectionFocus,
+    headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
   ])
 
   const wordCount   = analysis.wordCount
@@ -3077,8 +3258,15 @@ export default function App() {
                     <span>Sync</span>
                   </button>
                   <span style={{ fontSize: 10, color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
-                    {lineCount} lines · {wordCount} words
+                    {lineCount} lines ·
                   </span>
+                  <WritingGoal
+                    words={wordCount}
+                    goal={activeFile?.wordGoal || 0}
+                    sessionWords={activeWritingStats ? currentWords - activeWritingStats.baseWords : 0}
+                    activeMs={activeWritingStats?.activeMs || 0}
+                    onGoalChange={handleSetWordGoal}
+                  />
                   <button onClick={() => updateActiveContent('')} data-tooltip="Clear editor" aria-label="Clear editor"
                     className="cursor-pointer transition-colors"
                     style={{ color: 'var(--text-4)' }}
@@ -3100,7 +3288,10 @@ export default function App() {
                   className="editor-textarea"
                   value={content}
                   onChange={e => updateActiveContent(e.target.value)}
-                  placeholder={'# Start typing Markdown…\n\nOr drag & drop .md files anywhere.'}
+                  onKeyDown={handleEditorKeyDown}
+                  onPaste={handleEditorPaste}
+                  onDrop={handleEditorDrop}
+                  placeholder={'# Start typing Markdown…\n\nOr drag & drop .md files anywhere. Paste or drop images to embed them.'}
                   spellCheck={false}
                 />
               </div>

@@ -8,6 +8,7 @@ import App from '../App.jsx'
 import { analyzeDocument, checkMarkdownQuality } from '../documentAnalysis.js'
 import { diffLines } from '../documentDiff.js'
 import { fuzzyScore, isModifiedFromDisk, makeDuplicateFileName } from '../fileUtils.js'
+import { autoPair, continueMarkup, deletePair, formatMarkdownTables, imageReferenceMarkdown } from '../editorAssist.js'
 import { readWorkspace, writeWorkspace } from '../workspaceDb.js'
 
 function installApp(root = document.body) {
@@ -502,6 +503,54 @@ describe('advanced browser features', () => {
     const prose = document.querySelector('.rm-prose')
     expect(prose.style.getPropertyValue('--rm-line-height')).toBe('2.05')
     expect(prose.style.getPropertyValue('--rm-para-space')).toBe('1.3rem')
+  })
+
+  it('continues lists, tasks and quotes on Enter and ends them on an empty item', () => {
+    const apply = (value, edit) => value.slice(0, edit.from) + edit.text + value.slice(edit.to)
+    let value = '- one'
+    expect(apply(value, continueMarkup(value, 5, 5))).toBe('- one\n- ')
+    value = '3. three'
+    expect(apply(value, continueMarkup(value, 8, 8))).toBe('3. three\n4. ')
+    value = '- [x] done'
+    expect(apply(value, continueMarkup(value, 10, 10))).toBe('- [x] done\n- [ ] ')
+    value = '> quote'
+    expect(apply(value, continueMarkup(value, 7, 7))).toBe('> quote\n> ')
+    value = '- one\n- '
+    expect(apply(value, continueMarkup(value, value.length, value.length))).toBe('- one\n\n')
+    value = '- one\n  - '
+    expect(apply(value, continueMarkup(value, value.length, value.length))).toBe('- one\n- ')
+    value = '```\n- not a list'
+    expect(continueMarkup(value, value.length, value.length)).toBeNull()
+  })
+
+  it('auto-pairs brackets, wraps selections and steps over closers', () => {
+    expect(autoPair('', 0, 0, '(')).toMatchObject({ text: '()', cursor: 1 })
+    expect(autoPair('word', 0, 4, '[')).toMatchObject({ text: '[word]', cursor: 1, cursorEnd: 5 })
+    expect(autoPair('()', 1, 1, ')')).toMatchObject({ from: 1, to: 2, text: ')', cursor: 2 })
+    expect(autoPair('abc', 1, 1, '(')).toBeNull()
+    expect(autoPair("it", 2, 2, '`')).toBeNull()
+    expect(deletePair('()', 1, 1)).toMatchObject({ from: 0, to: 2, text: '' })
+  })
+
+  it('aligns table pipes and keeps column alignment markers', () => {
+    const table = ['| Name | Qty |', '|:--|--:|', '| Apple | 3 |', '| Kiwi | 12 |'].join('\n')
+    expect(formatMarkdownTables(table)).toBe(['| Name  | Qty |', '| :---- | --: |', '| Apple |   3 |', '| Kiwi  |  12 |'].join('\n'))
+    const fenced = ['```', '| a | b |', '|---|---|', '```'].join('\n')
+    expect(formatMarkdownTables(fenced)).toBe(fenced)
+  })
+
+  it('builds unique reference-style markdown for embedded images', () => {
+    const { inline, definitions } = imageReferenceMarkdown([{ name: 'Screen Shot.png', dataUrl: 'data:image/png;base64,AAA' }], '[img-screen-shot]: data:x')
+    expect(inline).toBe('![Screen Shot][img-screen-shot-2]')
+    expect(definitions).toBe('[img-screen-shot-2]: data:image/png;base64,AAA')
+  })
+
+  it('sets a per-file word goal from the editor status bar', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: /words\. Set a writing goal/ }))
+    fireEvent.change(screen.getByLabelText('Word goal for this file'), { target: { value: '1000' } })
+    fireEvent.submit(screen.getByLabelText('Word goal for this file').closest('form'))
+    expect(document.querySelector('.writing-goal-trigger').getAttribute('aria-label')).toMatch(/of 1000 words/)
   })
 
   it('collapses and expands heading sections, individually and all at once', async () => {
