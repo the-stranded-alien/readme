@@ -237,3 +237,123 @@ export const TRANSLATION_LANGUAGES = [
   ['id', 'Indonesian'], ['it', 'Italian'], ['ja', 'Japanese'], ['ko', 'Korean'], ['nl', 'Dutch'], ['pl', 'Polish'], ['pt', 'Portuguese'],
   ['ru', 'Russian'], ['th', 'Thai'], ['tr', 'Turkish'], ['uk', 'Ukrainian'], ['vi', 'Vietnamese'], ['zh', 'Chinese (Simplified)'],
 ]
+
+// ── README writer ─────────────────────────────────────────────
+export const canWriteWithAi = () => 'Writer' in scope || 'LanguageModel' in scope
+
+const README_GUIDE = 'You write clear, friendly README.md files in GitHub-flavoured Markdown. '
+  + 'Use: a "# Title" line, a one-sentence description, then "## Features" (bullets), "## Installation", '
+  + '"## Usage" (with a fenced code example), "## Contributing" and "## License". Keep it concise. '
+  + 'Output only the Markdown, without surrounding code fences or commentary.'
+
+/** Streams a README for `prompt` from the on-device Writer / Prompt API. */
+export async function writeReadmeWithAi(prompt, { onChunk, onStatus, onProgress, signal } = {}) {
+  const request = `Write a README.md for this project: ${prompt.trim()}`
+  const collect = async stream => {
+    let text = ''
+    for await (const chunk of stream) {
+      text = chunk.startsWith(text) ? chunk : text + chunk
+      onChunk?.(stripOuterFence(text))
+    }
+    return stripOuterFence(text)
+  }
+  if ('Writer' in scope) {
+    const writer = await createSession(scope.Writer, {
+      tone: 'neutral', format: 'markdown', length: 'long', sharedContext: README_GUIDE,
+      expectedInputLanguages: ['en'], outputLanguage: 'en',
+    }, { onProgress, onStatus, signal })
+    try {
+      return writer.writeStreaming ? await collect(writer.writeStreaming(request, { signal })) : stripOuterFence(await writer.write(request, { signal }))
+    } finally {
+      writer.destroy?.()
+    }
+  }
+  const session = await createSession(scope.LanguageModel, {
+    initialPrompts: [{ role: 'system', content: README_GUIDE }],
+    expectedInputs: [{ type: 'text', languages: ['en'] }],
+    expectedOutputs: [{ type: 'text', languages: ['en'] }],
+  }, { onProgress, onStatus, signal })
+  try {
+    return session.promptStreaming ? await collect(session.promptStreaming(request, { signal })) : stripOuterFence(await session.prompt(request, { signal }))
+  } finally {
+    session.destroy?.()
+  }
+}
+
+/** Models sometimes wrap the whole answer in ```markdown fences; unwrap that. */
+function stripOuterFence(text) {
+  const match = /^\s*```(?:markdown|md)?\s*\n([\s\S]*?)(?:\n```\s*)?$/.exec(text)
+  return match ? match[1] : text
+}
+
+// ── README from a description, without AI ─────────────────────
+const TECH = [
+  { test: /\b(react|vue|svelte|next\.?js|vite|node|npm|javascript|typescript|js|ts|express|angular)\b/i, install: 'npm install', run: 'npm run dev', lang: 'bash', stack: 'JavaScript / Node.js' },
+  { test: /\b(python|django|flask|fastapi|pip|pandas|pytorch|tensorflow)\b/i, install: 'pip install -r requirements.txt', run: 'python main.py', lang: 'bash', stack: 'Python' },
+  { test: /\b(rust|cargo)\b/i, install: 'cargo build --release', run: 'cargo run', lang: 'bash', stack: 'Rust' },
+  { test: /\b(go|golang)\b/i, install: 'go mod download', run: 'go run .', lang: 'bash', stack: 'Go' },
+  { test: /\b(java|spring|maven|gradle|kotlin)\b/i, install: './gradlew build', run: './gradlew run', lang: 'bash', stack: 'Java / Kotlin' },
+  { test: /\b(swift|ios|xcode)\b/i, install: 'open the project in Xcode', run: 'press ⌘R in Xcode', lang: 'text', stack: 'Swift' },
+]
+
+const titleCase = text => text.replace(/\b([a-z])/g, char => char.toUpperCase())
+
+export function readmeFromPrompt(prompt) {
+  const text = prompt.trim().replace(/\s+/g, ' ')
+  // Name: quoted text, "called X" / "named X", or the first few words.
+  const quoted = /["“'`]([^"”'`]{2,40})["”'`]/.exec(text)?.[1]
+  const called = /\b(?:called|named)\s+([A-Z0-9][\w.-]*(?:\s+[A-Z0-9][\w.-]*){0,2})/.exec(text)?.[1]
+  const fallback = text.replace(/^(?:an?|the|build|create|make|write)\s+/i, '').split(/[,.:;]|\s+(?:that|which|for|to|with)\s+/i)[0].split(' ').slice(0, 4).join(' ')
+  const name = (quoted || called || titleCase(fallback) || 'My Project').trim()
+  let sentence = text.endsWith('.') ? text : `${text}.`
+  // "A React app called TaskFlow that …" → "TaskFlow is a React app that …"
+  if (called) {
+    const without = sentence.replace(new RegExp(`\\s+(?:called|named)\\s+${called.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'), '')
+    sentence = `${called} is ${without.charAt(0).toLowerCase()}${without.slice(1)}`
+  }
+  const description = sentence.charAt(0).toUpperCase() + sentence.slice(1)
+
+  // Features: clauses after "that / which / with / to", split on commas and "and".
+  const featureSource = (/\b(?:that|which|with|to|so|for)\b\s+(.+)/i.exec(text)?.[1] || text).replace(/\.$/, '')
+  const features = featureSource.split(/,|;|\band\b|\bplus\b/i)
+    .map(part => part.trim().replace(/^(?:it\s+|can\s+|also\s+|lets?\s+(?:you|users)\s+)/i, ''))
+    .filter(part => part.length > 3)
+    .slice(0, 6)
+    .map(part => `- ${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+  const tech = TECH.find(item => item.test.test(text))
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'my-project'
+
+  return [
+    `# ${name}`,
+    '',
+    `> ${description}`,
+    '',
+    '## Features',
+    '',
+    ...(features.length ? features : ['- Describe the main features here']),
+    '',
+    ...(tech ? ['## Tech stack', '', `- ${tech.stack}`, ''] : []),
+    '## Installation',
+    '',
+    `\`\`\`${tech?.lang || 'bash'}`,
+    `git clone https://github.com/your-username/${slug}.git`,
+    `cd ${slug}`,
+    tech ? tech.install : '# install dependencies',
+    '```',
+    '',
+    '## Usage',
+    '',
+    `\`\`\`${tech?.lang || 'bash'}`,
+    tech ? tech.run : '# run the project',
+    '```',
+    '',
+    '## Contributing',
+    '',
+    'Contributions are welcome! Open an issue to discuss what you would like to change, then submit a pull request.',
+    '',
+    '## License',
+    '',
+    'MIT',
+    '',
+  ].join('\n')
+}

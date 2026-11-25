@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { FilePlus, LayoutTemplate, Settings2 } from 'lucide-react'
+import { BookOpenText, FilePlus, LayoutTemplate, Settings2 } from 'lucide-react'
 
 /**
  * Template picker rendered in a portal (so toolbars with overflow can't clip
  * it), positioned under `anchorRef` and kept inside the viewport.
  */
-export default function TemplateMenu({ anchorRef, templates, onPick, onBlank, onManage, onClose, align = 'right', label = 'Templates' }) {
+export default function TemplateMenu({ anchorRef, templates, onPick, onBlank, onWriteReadme, onManage, onClose, align = 'right', label = 'Templates' }) {
   const ref = useRef(null)
 
   useLayoutEffect(() => {
@@ -49,14 +49,18 @@ export default function TemplateMenu({ anchorRef, templates, onPick, onBlank, on
   return createPortal(
     <div ref={ref} className="template-menu anim-drop-in" role="menu" aria-label={label} style={{ left: -9999, top: 0 }}>
       {onBlank && (
-        <>
-          <button type="button" role="menuitem" className="template-menu-item" onClick={() => { onClose(); onBlank() }}>
-            <span className="template-menu-icon is-blank"><FilePlus size={14} /></span>
-            <span className="template-menu-text"><strong>Blank file</strong><span>Start from an empty document</span></span>
-          </button>
-          <div className="template-menu-heading">From a template</div>
-        </>
+        <button type="button" role="menuitem" className="template-menu-item" onClick={() => { onClose(); onBlank() }}>
+          <span className="template-menu-icon is-blank"><FilePlus size={14} /></span>
+          <span className="template-menu-text"><strong>Blank file</strong><span>Start from an empty document</span></span>
+        </button>
       )}
+      {onWriteReadme && (
+        <button type="button" role="menuitem" className="template-menu-item" onClick={() => { onClose(); onWriteReadme() }}>
+          <span className="template-menu-icon is-write"><BookOpenText size={14} /></span>
+          <span className="template-menu-text"><strong>Write a README…</strong><span>Describe your project and get a README</span></span>
+        </button>
+      )}
+      {(onBlank || onWriteReadme) && <div className="template-menu-heading">From a template</div>}
       {templates.map(template => (
         <button key={template.id} type="button" role="menuitem" className="template-menu-item" onClick={() => { onClose(); onPick(template) }}>
           <span className="template-menu-icon"><LayoutTemplate size={14} /></span>

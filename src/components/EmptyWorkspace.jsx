@@ -1,4 +1,4 @@
-import { FilePlus, FolderOpen, Globe, LayoutTemplate, RotateCcw } from 'lucide-react'
+import { BookOpenText, FilePlus, FolderOpen, Globe, LayoutTemplate, RotateCcw } from 'lucide-react'
 
 function PagesIllustration() {
   return (
@@ -29,10 +29,11 @@ function PagesIllustration() {
   )
 }
 
-export default function EmptyWorkspace({ templates, canReopen, onNew, onOpen, onImportUrl, onReopen, onTemplate }) {
+export default function EmptyWorkspace({ templates, canReopen, onNew, onOpen, onImportUrl, onReopen, onTemplate, onWriteReadme }) {
   const actions = [
     { id: 'new', icon: FilePlus, title: 'New blank file', text: 'Start writing from scratch', run: onNew, primary: true },
     { id: 'open', icon: FolderOpen, title: 'Open files', text: 'Markdown files or a whole folder', run: onOpen },
+    ...(onWriteReadme ? [{ id: 'write', icon: BookOpenText, title: 'Write a README', text: 'Describe a project, get a README', run: onWriteReadme }] : []),
     { id: 'url', icon: Globe, title: 'Import from URL', text: 'Fetch a public .md file', run: onImportUrl },
     ...(canReopen ? [{ id: 'reopen', icon: RotateCcw, title: 'Reopen closed tab', text: 'Bring back what you just closed', run: onReopen }] : []),
   ]

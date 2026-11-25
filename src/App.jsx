@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
@@ -46,7 +46,8 @@ import FindReplacePanel from './components/FindReplacePanel'
 import PresentationMode from './components/PresentationMode'
 import FileTree from './components/FileTree'
 import AiToolsDialog from './components/AiToolsDialog'
-import { aiSupport, detectLanguage, hasAnyAi, summarize } from './onDeviceAi'
+import { aiSupport, canWriteWithAi, detectLanguage, hasAnyAi, readmeFromPrompt, summarize, writeReadmeWithAi } from './onDeviceAi'
+import WriteReadmeDialog from './components/WriteReadmeDialog'
 import { detectSlash, editorCaretRect, expandSnippet, filterSlashCommands, textareaCaretRect } from './slashCommands'
 import { findMatches, replaceAllIn } from './findReplace'
 import { requestPersistentStorage, sharedItemToFiles, takeSharedItems } from './pwaIntegration'
@@ -769,7 +770,7 @@ const FMT_ACTIONS = [
   { label: 'Divider',   Icon: Minus,       mode: 'insert', text: '\n---\n' },
 ]
 
-function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace }) {
+function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme }) {
   const [tplOpen, setTplOpen] = useState(false)
   const tplRef = useRef(null)
   const closeTemplates = useCallback(() => setTplOpen(false), [])
@@ -839,7 +840,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
           <span className="hidden lg:inline text-[10px] font-semibold">Templates</span>
         </button>
         {tplOpen && (
-          <TemplateMenu anchorRef={tplRef} templates={templates} onPick={onCreateFromTemplate} onManage={onManageTemplates} onClose={closeTemplates} />
+          <TemplateMenu anchorRef={tplRef} templates={templates} onPick={onCreateFromTemplate} onWriteReadme={onWriteReadme} onManage={onManageTemplates} onClose={closeTemplates} />
         )}
       </div>
     </div>
@@ -1165,7 +1166,7 @@ function DocumentQualityPopover({ issues, onClose, onFix, onGoToLine }) {
 }
 
 // Header "New" split button: blank file, or pick a template from the caret.
-function NewFileButton({ onNew, onTemplate, templates = MD_TEMPLATES, onManageTemplates }) {
+function NewFileButton({ onNew, onTemplate, templates = MD_TEMPLATES, onManageTemplates, onWriteReadme }) {
   const [open, setOpen] = useState(false)
   const caretRef = useRef(null)
   const close = useCallback(() => setOpen(false), [])
@@ -1187,7 +1188,7 @@ function NewFileButton({ onNew, onTemplate, templates = MD_TEMPLATES, onManageTe
         <ChevronDown size={13} />
       </button>
       {open && (
-        <TemplateMenu anchorRef={caretRef} templates={templates} onBlank={onNew} onPick={onTemplate} onManage={onManageTemplates} onClose={close} align="left" label="New file" />
+        <TemplateMenu anchorRef={caretRef} templates={templates} onBlank={onNew} onWriteReadme={onWriteReadme} onPick={onTemplate} onManage={onManageTemplates} onClose={close} align="left" label="New file" />
       )}
     </div>
   )
@@ -3230,6 +3231,88 @@ export default function App() {
   }, [activeFileId, summaries, markdownBody, runSummary])
   useEffect(() => () => summaryAbortRef.current?.abort(), [])
 
+  // ── Write a README from a description ───────────────────────
+  const [writeReadmeOpen, setWriteReadmeOpen] = useState(false)
+  const [readmeWriting, setReadmeWriting] = useState(null) // { fileId, preparing, progress }
+  const readmeAbortRef = useRef(null)
+  const readmeQuickRef = useRef(false) // "Use quick version": skip the AI and use the generator
+  const [aiWriter] = useState(() => canWriteWithAi())
+  const handleWriteReadme = useCallback(async prompt => {
+    readmeAbortRef.current?.abort()
+    const controller = new AbortController()
+    readmeAbortRef.current = controller
+    readmeQuickRef.current = false
+    const id = createFileId()
+    markWorkspaceEdit()
+    setFiles(prev => {
+      const taken = new Set(prev.map(file => file.name.toLowerCase()))
+      const name = taken.has('readme.md') ? makeDuplicateFileName('README.md', prev.map(file => file.name)) : 'README.md'
+      return [...prev, { id, name, content: '' }]
+    })
+    setActiveFileId(id)
+    setActiveHeadingId(null)
+    if (view === 'editor' || view === 'preview') setView('split')
+    setMobileTab('preview')
+    setReadmeWriting({ fileId: id, preparing: false, progress: null, streaming: false, ai: aiWriter })
+
+    // Batch streamed text into ~10 updates per second so typing the file stays smooth.
+    let pending = null
+    let timer = null
+    const write = text => setFiles(prev => prev.map(file => (file.id === id ? { ...file, content: text } : file)))
+    const schedule = text => {
+      pending = text
+      if (!timer) timer = setTimeout(() => { timer = null; write(pending) }, 100)
+    }
+    const reveal = async (text, signal = controller.signal) => {
+      // Without AI the README is ready at once; reveal it line by line so it visibly fills in.
+      const lines = text.split('\n')
+      for (let count = 4; count < lines.length; count += 4) {
+        if (signal.aborted) return
+        write(lines.slice(0, count).join('\n'))
+        await new Promise(resolve => setTimeout(resolve, 30))
+      }
+      write(text)
+    }
+    try {
+      if (aiWriter) {
+        try {
+          const text = await writeReadmeWithAi(prompt, {
+            signal: controller.signal,
+            onStatus: status => setReadmeWriting(current => current && { ...current, preparing: status === 'preparing' }),
+            onProgress: loaded => setReadmeWriting(current => current && { ...current, progress: loaded < 1 ? loaded : null }),
+            onChunk: partial => { setReadmeWriting(current => current && { ...current, preparing: false, progress: null, streaming: true }); schedule(partial) },
+          })
+          clearTimeout(timer)
+          write(text.trim() ? `${text.trim()}\n` : readmeFromPrompt(prompt))
+        } catch (error) {
+          if (error?.name === 'AbortError' && readmeQuickRef.current) {
+            // The user chose the quick version while the AI was still getting ready.
+            clearTimeout(timer)
+            setReadmeWriting(current => current && { ...current, ai: false, preparing: false, progress: null })
+            await reveal(readmeFromPrompt(prompt), new AbortController().signal)
+            setToast({ message: 'README ready — edit it like any other file.', tone: 'success' })
+            return
+          }
+          if (error?.name === 'AbortError') throw error
+          clearTimeout(timer)
+          setToast({ message: 'The on-device AI writer is unavailable right now, so the README was generated from your description.', tone: 'warning', duration: 5000 })
+          await reveal(readmeFromPrompt(prompt))
+        }
+      } else {
+        await reveal(readmeFromPrompt(prompt))
+      }
+      if (!controller.signal.aborted) setToast({ message: 'README ready — edit it like any other file.', tone: 'success' })
+    } catch {
+      clearTimeout(timer)
+      if (pending) write(pending)
+      setToast({ message: 'Stopped writing. What was written so far is kept.', tone: 'info' })
+    } finally {
+      if (readmeAbortRef.current === controller) readmeAbortRef.current = null
+      setReadmeWriting(current => (current?.fileId === id ? null : current))
+    }
+  }, [aiWriter, markWorkspaceEdit, view])
+  useEffect(() => () => readmeAbortRef.current?.abort(), [])
+
   // ── Backup / restore ─────────────────────────────────────────
   const restoreInputRef = useRef(null)
   const handleBackup = useCallback(async () => {
@@ -3839,6 +3922,7 @@ ${fontCss}
     ...(activeFile && aiAvailable ? [{ id: 'ai-tools', label: 'AI tools: summarize, translate, proofread…', hint: 'On-device', icon: Sparkles, run: () => setAiOpen(true) }] : []),
     ...(activeFile ? [{ id: 'present', label: 'Present as slides', hint: 'Reader', icon: Presentation, run: () => setPresenting(true) }] : []),
     { id: 'file-tree', label: fileTreeOpen ? 'Hide file tree' : 'Show file tree', hint: 'Files', icon: FolderTree, run: () => setFileTreeOpen(open => !open) },
+    { id: 'write-readme', label: 'Write a README from a description…', hint: aiWriter ? 'AI' : 'Generator', icon: BookOpenText, run: () => setWriteReadmeOpen(true) },
     { id: 'templates', label: 'Manage templates…', hint: 'Templates', icon: LayoutTemplate, run: () => setTemplatesOpen(true) },
     { id: 'storage', label: 'Storage & backup…', hint: 'Workspace', icon: HardDrive, run: () => setStorageOpen(true) },
     { id: 'backup', label: 'Back up workspace (.zip)', hint: 'Workspace', icon: DatabaseBackup, run: handleBackup },
@@ -3868,7 +3952,7 @@ ${fontCss}
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
-    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary,
+    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter,
   ])
 
   const qualityIssues = useMemo(() => {
@@ -3956,7 +4040,7 @@ ${fontCss}
           <div className="flex items-center gap-1 justify-self-end shrink-0">
             <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt" multiple className="hidden"
               onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
-            <NewFileButton onNew={handleNewFile} onTemplate={handleCreateFromTemplate} templates={allTemplates} onManageTemplates={() => setTemplatesOpen(true)} />
+            <NewFileButton onNew={handleNewFile} onTemplate={handleCreateFromTemplate} templates={allTemplates} onManageTemplates={() => setTemplatesOpen(true)} onWriteReadme={() => setWriteReadmeOpen(true)} />
             <button onClick={handleOpenDiskFiles} className="btn-header" data-tooltip="Open Markdown files or folders" aria-label="Open Markdown files or folders">
               <Upload size={13} /><span className="hidden sm:inline">Upload</span>
             </button>
@@ -4084,6 +4168,7 @@ ${fontCss}
             onImportUrl={handleImportUrl}
             onReopen={handleReopenClosed}
             onTemplate={handleCreateFromTemplate}
+            onWriteReadme={() => setWriteReadmeOpen(true)}
           />
         ) : (
           <>
@@ -4119,6 +4204,7 @@ ${fontCss}
                 templates={allTemplates}
                 onManageTemplates={() => setTemplatesOpen(true)}
                 onFindReplace={() => { setFindOpen(true); setFindKey(k => k + 1) }}
+                onWriteReadme={() => setWriteReadmeOpen(true)}
                 content={content}
                 onChange={updateActiveContent}
                 onCreateFromTemplate={handleCreateFromTemplate}
@@ -4174,6 +4260,23 @@ ${fontCss}
                 </div>
               </div>
 
+              {readmeWriting?.fileId === activeFileId && (
+                <div className="ai-writing-banner no-print" role="status" aria-live="polite">
+                  <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                  <span>
+                    {readmeWriting.progress != null
+                      ? `Downloading the on-device model… ${Math.round(readmeWriting.progress * 100)}%`
+                      : readmeWriting.preparing
+                        ? 'Preparing the on-device writer… the first use downloads it, which can take a few minutes.'
+                        : 'Writing your README…'}
+                  </span>
+                  {readmeWriting.ai && !readmeWriting.streaming && (
+                    <button type="button" onClick={() => { readmeQuickRef.current = true; readmeAbortRef.current?.abort() }}
+                      title="Skip the AI and build the README from your description now">Use quick version</button>
+                  )}
+                  <button type="button" onClick={() => readmeAbortRef.current?.abort()}>Stop</button>
+                </div>
+              )}
               {diskConflicts[activeFileId] && (
                 <div className="disk-conflict no-print" role="alert">
                   <FileWarning size={15} aria-hidden="true" />
@@ -4902,6 +5005,10 @@ ${fontCss}
           renderMarkdown={markdown => <MarkdownRenderer content={markdown} dark={isDark} />}
           onClose={() => setPresenting(false)}
         />
+      )}
+
+      {writeReadmeOpen && (
+        <WriteReadmeDialog withAi={aiWriter} onGenerate={handleWriteReadme} onClose={() => setWriteReadmeOpen(false)} />
       )}
 
       {templatesOpen && (

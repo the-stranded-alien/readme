@@ -989,6 +989,56 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toMatch(/^> \[!NOTE\] Summary\n> - First point/))
   })
 
+  it('writes a README from a description without AI and fills the editor and page', async () => {
+    const { readmeFromPrompt } = await import('../onDeviceAi.js')
+    const readme = readmeFromPrompt('A React app called TaskFlow that tracks daily habits, shows streaks and sends reminders')
+    expect(readme).toMatch(/^# TaskFlow\n\n> TaskFlow is a React app that tracks daily habits/)
+    expect(readme).toContain('- Shows streaks')
+    expect(readme).toContain('npm install')
+
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'New file options' }))
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'New file' })).getByRole('menuitem', { name: /Write a README/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Write a README' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Project description' }), { target: { value: 'A Python CLI tool called PhotoSort for renaming photos by date' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Write README/ }))
+    await waitFor(() => expect(screen.getByRole('tab', { selected: true })).toHaveAttribute('aria-label', 'README.md'))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toContain('pip install -r requirements.txt'), { timeout: 4000 })
+    expect(document.querySelector('.rm-prose h1')).toHaveTextContent('PhotoSort')
+  })
+
+  it('streams a README from the on-device AI writer into a new file', async () => {
+    vi.stubGlobal('Writer', {
+      availability: async () => 'available',
+      create: async () => ({
+        async *writeStreaming() { yield '```markdown\n# Orbit\n\nA tiny'; yield ' space game.\n\n## Features\n\n- Planets\n```' },
+        destroy() {},
+      }),
+    })
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'New file options' }))
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'New file' })).getByRole('menuitem', { name: /Write a README/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Write a README' })
+    expect(dialog).toHaveTextContent('on-device AI')
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Project description' }), { target: { value: 'A space game called Orbit' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Write README/ }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toBe('# Orbit\n\nA tiny space game.\n\n## Features\n\n- Planets\n'), { timeout: 4000 })
+    expect(document.querySelector('.rm-prose h1')).toHaveTextContent('Orbit')
+  })
+
+  it('offers a quick README while the on-device writer is still preparing', async () => {
+    vi.stubGlobal('Writer', { availability: async () => 'downloadable', create: () => new Promise(() => {}) })
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'New file options' }))
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'New file' })).getByRole('menuitem', { name: /Write a README/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Write a README' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Project description' }), { target: { value: 'A Go service called Relay that forwards webhooks' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Write README/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use quick version' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toMatch(/^# Relay\n\n> Relay is a Go service/), { timeout: 4000 })
+    expect(screen.queryByRole('status', { name: '' })?.textContent || '').not.toContain('Preparing')
+  })
+
   it('collapses and expands heading sections, individually and all at once', async () => {
     installApp()
     const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })
