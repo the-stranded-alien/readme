@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
@@ -46,7 +46,7 @@ import FindReplacePanel from './components/FindReplacePanel'
 import PresentationMode from './components/PresentationMode'
 import FileTree from './components/FileTree'
 import AiToolsDialog from './components/AiToolsDialog'
-import { hasAnyAi } from './onDeviceAi'
+import { aiSupport, detectLanguage, hasAnyAi, summarize } from './onDeviceAi'
 import { detectSlash, editorCaretRect, expandSnippet, filterSlashCommands, textareaCaretRect } from './slashCommands'
 import { findMatches, replaceAllIn } from './findReplace'
 import { requestPersistentStorage, sharedItemToFiles, takeSharedItems } from './pwaIntegration'
@@ -1831,6 +1831,11 @@ function withThemeTransition(update) {
 // Smooth scrolling unless the user prefers reduced motion.
 const scrollBehavior = () => (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth')
 
+// True for drags that carry files from the operating system (not in-app drags).
+function isExternalFileDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes('Files')
+}
+
 // Pinned tabs always sit before the others; order inside each group is kept.
 function orderPinnedFirst(list) {
   return [...list.filter(file => file.pinned), ...list.filter(file => !file.pinned)]
@@ -2151,6 +2156,10 @@ export default function App() {
   const [presenting, setPresenting] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
   const [aiAvailable] = useState(() => hasAnyAi())
+  const [canSummarize] = useState(() => aiSupport().summarizer)
+  // On-page summaries, one per file: { status, text, error, progress, preparing, source, visible }
+  const [summaries, setSummaries] = useState({})
+  const summaryAbortRef = useRef(null)
   // File tree sidebar (folders come from "folder/file.md" names).
   const [fileTreeOpen, setFileTreeOpen] = useState(() => { try { return localStorage.getItem('readme-file-tree-open') === 'true' } catch { return false } })
   const [treeCollapsed, setTreeCollapsed] = useState(() => { try { return JSON.parse(localStorage.getItem('readme-file-tree-collapsed') || '[]') } catch { return [] } })
@@ -3182,6 +3191,45 @@ export default function App() {
     setDiskConflicts(current => { const next = { ...current }; delete next[fileId]; return next })
   }, [diskConflicts, files, activeFileId, takeSnapshot])
 
+  // ── Summary card at the top of the page ──────────────────────
+  const runSummary = useCallback(async () => {
+    if (!activeFile || !markdownBody.trim()) return
+    const fileId = activeFile.id
+    const source = markdownBody
+    summaryAbortRef.current?.abort()
+    const controller = new AbortController()
+    summaryAbortRef.current = controller
+    const update = patch => setSummaries(current => ({ ...current, [fileId]: { ...current[fileId], ...patch } }))
+    update({ status: 'loading', text: '', error: '', progress: null, preparing: false, source, visible: true })
+    try {
+      const language = await detectLanguage(source).catch(() => null)
+      const text = await summarize(source, {
+        type: 'key-points', length: 'medium', language: language || 'en', signal: controller.signal,
+        onStatus: status => update({ preparing: status === 'preparing' }),
+        onProgress: loaded => update({ progress: loaded < 1 ? loaded : null }),
+        onChunk: partial => update({ text: partial, preparing: false, progress: null }),
+      })
+      update({ status: 'ready', text, preparing: false, progress: null })
+    } catch (error) {
+      if (error?.name === 'AbortError') update({ status: 'idle', visible: false })
+      else update({ status: 'error', error: error?.message || 'Could not create a summary.', preparing: false, progress: null })
+    }
+  }, [activeFile, markdownBody])
+  const activeSummary = activeFileId ? summaries[activeFileId] : null
+  const toggleSummary = useCallback(() => {
+    if (!activeFileId) return
+    const current = summaries[activeFileId]
+    if (current?.visible && current.status !== 'error') {
+      if (current.status === 'loading') summaryAbortRef.current?.abort()
+      setSummaries(all => ({ ...all, [activeFileId]: { ...all[activeFileId], visible: false } }))
+    } else if (current?.status === 'ready' && current.source === markdownBody) {
+      setSummaries(all => ({ ...all, [activeFileId]: { ...all[activeFileId], visible: true } }))
+    } else {
+      runSummary()
+    }
+  }, [activeFileId, summaries, markdownBody, runSummary])
+  useEffect(() => () => summaryAbortRef.current?.abort(), [])
+
   // ── Backup / restore ─────────────────────────────────────────
   const restoreInputRef = useRef(null)
   const handleBackup = useCallback(async () => {
@@ -3366,6 +3414,9 @@ export default function App() {
   }, [markWorkspaceEdit])
 
   const handleDrop = useCallback(async (e) => {
+    // Only files dragged in from the computer are imported; in-app drags
+    // (tab reordering, moving files in the tree) are handled by their targets.
+    if (!isExternalFileDrag(e)) { setIsDragging(false); return }
     e.preventDefault()
     setIsDragging(false)
     const items = Array.from(e.dataTransfer.items || [])
@@ -3389,7 +3440,11 @@ export default function App() {
       handleFiles(e.dataTransfer.files)
     }
   }, [handleFiles])
-  const handleDragOver  = useCallback(e => { e.preventDefault(); setIsDragging(true)  }, [])
+  const handleDragOver  = useCallback(e => {
+    if (!isExternalFileDrag(e)) return
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
   const handleDragLeave = useCallback(e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false) }, [])
 
   const handleOpenDiskFiles = useCallback(async () => {
@@ -3656,7 +3711,7 @@ export default function App() {
     if (!article) return
     const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
     const clone = article.cloneNode(true)
-    clone.querySelectorAll('.heading-anchor, .section-toggle, .code-actions, .book-folio-footer, .focus-section-bar').forEach(el => el.remove())
+    clone.querySelectorAll('.heading-anchor, .section-toggle, .code-actions, .book-folio-footer, .focus-section-bar, .summary-card').forEach(el => el.remove())
     // Collapsed / focus-hidden sections are part of the document: export everything.
     clone.querySelectorAll('[data-collapsed]').forEach(el => el.removeAttribute('data-collapsed'))
     const fontCss = await embeddedFontCss(activeFont.family)
@@ -3780,6 +3835,7 @@ ${fontCss}
       { id: 'snapshot', label: 'Save a snapshot of this file', hint: 'File', icon: History, run: () => takeSnapshot(activeFile.id, content, 'Manual snapshot').then(list => list && setToast({ message: 'Snapshot saved to version history.', tone: 'success' })) },
     ] : []),
     ...(activeFile ? [{ id: 'find-replace', label: 'Find & replace in editor', hint: shortcut('F', { alt: true }), icon: Replace, run: () => { setFindOpen(true); setFindKey(k => k + 1) } }] : []),
+    ...(activeFile && canSummarize ? [{ id: 'summarize', label: 'Summarize this document', hint: 'On-device', icon: ScrollText, run: toggleSummary }] : []),
     ...(activeFile && aiAvailable ? [{ id: 'ai-tools', label: 'AI tools: summarize, translate, proofread…', hint: 'On-device', icon: Sparkles, run: () => setAiOpen(true) }] : []),
     ...(activeFile ? [{ id: 'present', label: 'Present as slides', hint: 'Reader', icon: Presentation, run: () => setPresenting(true) }] : []),
     { id: 'file-tree', label: fileTreeOpen ? 'Hide file tree' : 'Show file tree', hint: 'Files', icon: FolderTree, run: () => setFileTreeOpen(open => !open) },
@@ -3812,7 +3868,7 @@ ${fontCss}
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
-    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable,
+    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary,
   ])
 
   const qualityIssues = useMemo(() => {
@@ -4394,6 +4450,24 @@ ${fontCss}
                     {readerPrefs.width === 'full' ? <FoldHorizontal size={11} /> : <UnfoldHorizontal size={11} />}
                     <span className="hidden md:inline reader-toolbar-label">{readerPrefs.width === 'full' ? 'Compact' : 'Wide'}</span>
                   </button>
+                  {canSummarize && markdownBody.trim() && (
+                    <button
+                      type="button"
+                      onClick={toggleSummary}
+                      data-tooltip={activeSummary?.visible ? 'Hide summary' : 'Summarize this document (on-device)'}
+                      aria-label={activeSummary?.visible ? 'Hide summary' : 'Summarize document'}
+                      aria-pressed={Boolean(activeSummary?.visible)}
+                      className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
+                      style={{
+                        fontSize: 10, fontWeight: 500,
+                        color: activeSummary?.visible ? 'var(--accent)' : 'var(--text-4)',
+                        background: activeSummary?.visible ? 'var(--accent-soft)' : 'transparent',
+                      }}
+                    >
+                      {activeSummary?.status === 'loading' ? <Loader2 size={11} className="animate-spin" /> : <ScrollText size={11} />}
+                      <span className="hidden xl:inline reader-toolbar-label">Summarize</span>
+                    </button>
+                  )}
                   {aiAvailable && markdownBody.trim() && (
                     <button
                       type="button"
@@ -4615,6 +4689,53 @@ ${fontCss}
                           <span className="truncate">{fileName || 'Document'}</span>
                           <span className="shrink-0">{wordCount} words · ~{readingTime} min read</span>
                         </div>
+
+                        {activeSummary?.visible && (
+                          <section className="summary-card no-print anim-drop-in" aria-label="Document summary" aria-busy={activeSummary.status === 'loading'}>
+                            <div className="summary-card-header">
+                              <span className="summary-card-title"><Sparkles size={14} aria-hidden="true" />Summary</span>
+                              <span className="summary-card-note">On-device</span>
+                              <span className="summary-card-actions">
+                                {activeSummary.status === 'ready' && (
+                                  <>
+                                    <button type="button" onClick={() => navigator.clipboard?.writeText(activeSummary.text).then(() => setToast({ message: 'Summary copied.', tone: 'success' })).catch(() => {})} title="Copy summary" aria-label="Copy summary"><Copy size={13} /></button>
+                                    <button type="button" onClick={() => {
+                                      const ta = textareaRef.current
+                                      const frontmatterEnd = /^---\n[\s\S]*?\n---\n/.exec(content)?.[0].length ?? 0
+                                      const block = `> [!NOTE] Summary\n${activeSummary.text.trim().split('\n').map(line => `> ${line}`.trimEnd()).join('\n')}\n\n`
+                                      if (ta) applyTextareaEdit(ta, { from: frontmatterEnd, to: frontmatterEnd, text: block, cursor: frontmatterEnd + block.length })
+                                      else updateActiveContent(content.slice(0, frontmatterEnd) + block + content.slice(frontmatterEnd))
+                                      setSummaries(all => ({ ...all, [activeFileId]: { ...all[activeFileId], visible: false } }))
+                                    }} title="Insert into the document as a callout" aria-label="Insert summary into document"><FilePlus size={13} /></button>
+                                  </>
+                                )}
+                                {activeSummary.status !== 'loading' && (
+                                  <button type="button" onClick={runSummary} title="Summarize again" aria-label="Summarize again"><RefreshCw size={13} /></button>
+                                )}
+                                <button type="button" onClick={toggleSummary} title="Hide summary" aria-label="Hide summary"><X size={13} /></button>
+                              </span>
+                            </div>
+                            {activeSummary.status === 'error' ? (
+                              <p className="summary-card-error" role="alert">{activeSummary.error}</p>
+                            ) : activeSummary.text ? (
+                              <div className="summary-card-body rm-prose">
+                                <MarkdownRenderer content={activeSummary.text} dark={isDark} />
+                              </div>
+                            ) : (
+                              <p className="summary-card-status" aria-live="polite">
+                                <Loader2 size={13} className="animate-spin" />
+                                {activeSummary.progress != null
+                                  ? `Downloading the on-device model… ${Math.round(activeSummary.progress * 100)}%`
+                                  : activeSummary.preparing
+                                    ? 'Preparing the on-device model… the first use downloads it, which can take a few minutes.'
+                                    : 'Summarizing…'}
+                              </p>
+                            )}
+                            {activeSummary.status === 'ready' && activeSummary.source !== markdownBody && (
+                              <p className="summary-card-stale">The document has changed since this summary. <button type="button" onClick={runSummary}>Refresh</button></p>
+                            )}
+                          </section>
+                        )}
 
                         <FrontmatterCard meta={frontmatterMeta} />
 

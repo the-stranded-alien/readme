@@ -357,7 +357,7 @@ describe('advanced browser features', () => {
     }
     const item = { getAsFileSystemHandle: vi.fn(async () => directory) }
     installApp()
-    fireEvent.drop(document.querySelector('.app-shell'), { dataTransfer: { items: [item], files: [] } })
+    fireEvent.drop(document.querySelector('.app-shell'), { dataTransfer: { items: [item], files: [], types: ['Files'] } })
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('# Folder import'))
   })
 
@@ -964,6 +964,29 @@ describe('advanced browser features', () => {
     await within(dialog).findByRole('list', { name: 'Suggested corrections' })
     fireEvent.click(within(dialog).getByRole('button', { name: /Apply 1 correction/ }))
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toBe('# Title\n\nThis is the text.\n\n```js\nconst teh = 1\n```'))
+  })
+
+  it('shows an on-device summary at the top of the page from the Summarize button', async () => {
+    vi.stubGlobal('Summarizer', { availability: async () => 'available', create: async () => ({ summarize: async () => '- First point\n- Second point', destroy() {} }) })
+    await writeWorkspace({ activeId: 'sm', files: [{ id: 'sm', name: 'Doc.md', content: '# Doc\n\nSome long text.' }] })
+    installApp()
+    await screen.findByRole('tab', { name: 'Doc.md' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Summarize document' }))
+    const card = await screen.findByRole('region', { name: 'Document summary' })
+    await within(card).findByText('First point', {}, { timeout: 4000 })
+    // The card sits at the top of the page, before the document content.
+    const page = card.closest('.book-page')
+    expect(page).toBeTruthy()
+    expect(card.compareDocumentPosition(page.querySelector('.rm-prose:not(.summary-card-body) h1')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Hide summary', pressed: true }))
+    expect(screen.queryByRole('region', { name: 'Document summary' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Summarize document' }))
+    expect(await screen.findByRole('region', { name: 'Document summary' })).toHaveTextContent('Second point')
+    // Editing marks the summary as out of date; inserting adds it as a callout.
+    fireEvent.change(document.querySelector('textarea.editor-textarea'), { target: { value: '# Doc\n\nSome long text. More.' } })
+    expect(await screen.findByText(/changed since this summary/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Insert summary into document' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toMatch(/^> \[!NOTE\] Summary\n> - First point/))
   })
 
   it('collapses and expands heading sections, individually and all at once', async () => {

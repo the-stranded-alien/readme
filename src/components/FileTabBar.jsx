@@ -316,6 +316,7 @@ export default function FileTabBar({
                 const source = files.find(item => item.id === sourceId)
                 if (source && Boolean(source.pinned) !== Boolean(file.pinned)) return
                 event.preventDefault()
+                event.stopPropagation()
                 event.dataTransfer.dropEffect = 'move'
                 const rect = event.currentTarget.getBoundingClientRect()
                 const after = event.clientX > rect.left + rect.width / 2
@@ -326,6 +327,7 @@ export default function FileTabBar({
               }}
               onDrop={event => {
                 event.preventDefault()
+                event.stopPropagation()
                 const sourceId = dragIdFrom(event)
                 if (sourceId && sourceId !== file.id) onReorder(sourceId, file.id, Boolean(dropTarget?.after))
                 endDrag()

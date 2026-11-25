@@ -88,15 +88,20 @@ export async function summarize(markdown, { type = 'key-points', length = 'mediu
   }
 }
 
-export async function detectLanguage(text) {
-  if (!('LanguageDetector' in scope)) return null
-  const detector = await scope.LanguageDetector.create()
-  try {
-    const [best] = await detector.detect(proseForModel(text).slice(0, 4000))
-    return best && best.confidence > 0.4 ? best.detectedLanguage : null
-  } finally {
-    detector.destroy?.()
-  }
+/** Best-effort language detection; gives up after `timeout` ms (the model may still be downloading). */
+export async function detectLanguage(text, { timeout = 1500 } = {}) {
+  if (!('LanguageDetector' in scope) || typeof scope.LanguageDetector?.create !== 'function') return null
+  const attempt = (async () => {
+    const detector = await scope.LanguageDetector.create()
+    try {
+      const [best] = await detector.detect(proseForModel(text).slice(0, 4000))
+      return best && best.confidence > 0.4 ? best.detectedLanguage : null
+    } finally {
+      detector.destroy?.()
+    }
+  })()
+  attempt.catch(() => {})
+  return Promise.race([attempt, new Promise(resolve => setTimeout(() => resolve(null), timeout))])
 }
 
 /** Number of lines taken by leading YAML frontmatter (0 when there is none). */
