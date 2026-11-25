@@ -467,6 +467,43 @@ describe('advanced browser features', () => {
     expect(isModifiedFromDisk({ content: 'ab' })).toBe(false)
   })
 
+  it('renders callouts, captioned standalone images and inline images without captions', async () => {
+    const doc = ['# Doc', '', '> [!WARNING]', '> Careful here', '', '> [!TIP] Pro tip', '> Use shortcuts', '', '![A cat](https://example.test/cat.png)', '', 'Badge ![build](https://example.test/b.svg) inline'].join('\n')
+    await writeWorkspace({ activeId: 'c', files: [{ id: 'c', name: 'Callouts.md', content: doc }] })
+    installApp()
+    const warning = await screen.findByRole('note', { name: 'Warning' })
+    expect(warning).toHaveTextContent('Careful here')
+    expect(warning).not.toHaveTextContent('[!WARNING]')
+    expect(screen.getByRole('note', { name: 'Pro tip' })).toHaveTextContent('Use shortcuts')
+    expect(document.querySelector('.md-figure .md-figcaption')).toHaveTextContent('A cat')
+    expect(document.querySelectorAll('.md-figure')).toHaveLength(1)
+  })
+
+  it('focuses one section at a time with previous / next navigation', async () => {
+    const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body', '', '## Three', '', 'Third body'].join('\n')
+    await writeWorkspace({ activeId: 'f', files: [{ id: 'f', name: 'Focus.md', content: doc }] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Focus on section' }))
+    const prose = document.querySelector('.rm-prose')
+    await waitFor(() => expect(prose.className).toContain('focus-section-mode'))
+    expect(document.querySelector('.focus-target h2')).toHaveTextContent('One')
+    expect(screen.getByRole('navigation', { name: 'Section focus' })).toHaveTextContent('1 / 3')
+    fireEvent.click(screen.getByRole('button', { name: 'Next section' }))
+    expect(document.querySelector('.focus-target h2')).toHaveTextContent('Two')
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Section focus' })).getByRole('button', { name: 'Exit section focus' }))
+    expect(prose.className).not.toContain('focus-section-mode')
+  })
+
+  it('applies line height and paragraph spacing from Reader Comfort', async () => {
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Reader comfort settings' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Relaxed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Airy' }))
+    const prose = document.querySelector('.rm-prose')
+    expect(prose.style.getPropertyValue('--rm-line-height')).toBe('2.05')
+    expect(prose.style.getPropertyValue('--rm-para-space')).toBe('1.3rem')
+  })
+
   it('collapses and expands heading sections, individually and all at once', async () => {
     installApp()
     const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })

@@ -12,6 +12,7 @@ import MermaidBlock from './components/MermaidBlock'
 import CommandPalette from './components/CommandPalette'
 import { MD_TEMPLATES, parseFrontmatter } from './templates'
 import { rehypeHeadingSections, headingSlug, headingText } from './headingSections'
+import { rehypeCallouts, rehypeStandaloneImages } from './rehypeCallouts'
 import {
   Sun, Moon, Upload, Copy, CopyPlus, Check, FileText, FilePlus, Eye, Code2,
   X, Download, Maximize2, Minimize2, Hash, ChevronRight,
@@ -20,7 +21,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { readWorkspace, writeWorkspace } from './workspaceDb'
@@ -28,6 +29,8 @@ import { analyzeDocument } from './documentAnalysis'
 import { makeDuplicateFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
 import FileTabBar from './components/FileTabBar'
+import ImageLightbox from './components/ImageLightbox'
+import LinkPreview from './components/LinkPreview'
 
 // ── Custom view icons ──────────────────────────────────────────
 const SplitEqualIcon = () => (
@@ -356,14 +359,17 @@ function isSectionCollapsed(state, properties) {
   return state.overrides.has(key) ? !base : base
 }
 
-function CollapsibleSection({ node, children }) {
+function CollapsibleSection({ node, children, ...rest }) {
   const state = useContext(SectionCollapseContext)
   const properties = node?.properties ?? {}
+  // Sections that are not heading sections (e.g. the GFM footnotes block) render unchanged.
+  if (!properties.dataSectionKey) return <section {...rest}>{children}</section>
   const collapsed = isSectionCollapsed(state, properties)
   return (
     <section
-      className="md-section"
+      className={`md-section${state?.focusKey && state.focusKey === properties.dataSectionKey ? ' focus-target' : ''}`}
       data-section-key={properties.dataSectionKey}
+      data-title-section={properties.dataTitleSection ? 'true' : undefined}
       data-collapsed={collapsed ? 'true' : undefined}
     >
       {children}
@@ -371,16 +377,18 @@ function CollapsibleSection({ node, children }) {
   )
 }
 
-function SectionHeading({ as, iconSize, node, children }) {
+function SectionHeading({ as, iconSize, node, children, ...rest }) {
   const state = useContext(SectionCollapseContext)
   const properties = node?.properties ?? {}
   const text = headingText(node)
   const id = headingSlug(text)
   const key = properties.dataSectionKey
+  // Headings outside the section structure (e.g. the hidden footnotes label) keep their own attributes.
+  if (!key) return createElement(as, { ...rest, id: rest.id || id }, children)
   const canToggle = Boolean(state && key && !properties.dataEmpty)
   const collapsed = isSectionCollapsed(state, properties)
   return (
-    createElement(as, { id, className: canToggle ? `has-section-toggle${collapsed ? ' is-collapsed' : ''}` : undefined }, <>
+    createElement(as, { id, 'aria-label': text.trim() || undefined, className: canToggle ? `has-section-toggle${collapsed ? ' is-collapsed' : ''}` : undefined }, <>
       {canToggle && (
         <button
           type="button"
@@ -401,6 +409,35 @@ function SectionHeading({ as, iconSize, node, children }) {
   )
 }
 
+// Images get a caption from their alt text (rendered inline-safe inside paragraphs).
+function MarkdownImage({ node, src, alt, title }) {
+  const caption = (alt || '').trim()
+  if (!node?.properties?.dataStandalone) return <img src={src} alt={alt || ''} title={title} loading="lazy" decoding="async" />
+  return (
+    <span className={`md-figure${caption ? ' has-caption' : ''}`}>
+      <img src={src} alt={alt || ''} title={title} loading="lazy" decoding="async" />
+      {caption && <span className="md-figcaption" aria-hidden="true">{caption}</span>}
+    </span>
+  )
+}
+
+const CALLOUT_ICONS = { note: Info, tip: Lightbulb, important: MessageSquareWarning, warning: TriangleAlert, caution: OctagonAlert }
+
+function Blockquote({ node, children }) {
+  const type = node?.properties?.dataCallout
+  if (!type) return <blockquote>{children}</blockquote>
+  const Icon = CALLOUT_ICONS[type] ?? Info
+  return (
+    <div className={`callout callout-${type}`} role="note" aria-label={node.properties.dataCalloutTitle}>
+      <div className="callout-title">
+        <Icon size={16} aria-hidden="true" />
+        <span>{node.properties.dataCalloutTitle}</span>
+      </div>
+      <div className="callout-body">{children}</div>
+    </div>
+  )
+}
+
 // Stable component types, so a theme switch never remounts document sections.
 const SECTION_COMPONENTS = {
   h1: props => <SectionHeading as="h1" iconSize={14} {...props} />,
@@ -410,6 +447,8 @@ const SECTION_COMPONENTS = {
   h5: props => <SectionHeading as="h5" iconSize={11} {...props} />,
   h6: props => <SectionHeading as="h6" iconSize={11} {...props} />,
   section: CollapsibleSection,
+  blockquote: Blockquote,
+  img: MarkdownImage,
 }
 
 function MarkdownRenderer({ content, dark }) {
@@ -428,9 +467,14 @@ function MarkdownRenderer({ content, dark }) {
       return <code>{children}</code>
     },
 
-    a({ href, children }) {
+    a(props) {
+      // Keep ids / data attributes (footnote refs and back-links rely on them).
+      const { href, children } = props
+      const rest = { ...props }
+      delete rest.node
+      delete rest.children
       return (
-        <a href={href}
+        <a {...rest} href={href}
           target={href?.startsWith('http') ? '_blank' : undefined}
           rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
         >{children}</a>
@@ -451,7 +495,7 @@ function MarkdownRenderer({ content, dark }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-      rehypePlugins={[rehypeKatex, rehypeHeadingSections]}
+      rehypePlugins={[rehypeKatex, rehypeCallouts, rehypeStandaloneImages, rehypeHeadingSections]}
       components={components}
     >
       {content}
@@ -844,8 +888,18 @@ const READER_WIDTHS = {
   wide:   { label: 'Wide',    maxW: '960px' },
   full:   { label: 'Full',    maxW: '100%'  },
 }
+const READER_LINE_HEIGHTS = {
+  compact: { label: 'Compact', value: 1.6 },
+  normal:  { label: 'Normal',  value: 1.82 },
+  relaxed: { label: 'Relaxed', value: 2.05 },
+}
+const READER_PARAGRAPH_SPACING = {
+  tight:  { label: 'Tight',  value: '0.45rem' },
+  normal: { label: 'Normal', value: '0.8rem' },
+  airy:   { label: 'Airy',   value: '1.3rem' },
+}
 const READER_PREFS_VERSION = 2
-const DEFAULT_READER_PREFS = { fontIndex: 0, size: 'md', width: 'full', version: READER_PREFS_VERSION }
+const DEFAULT_READER_PREFS = { fontIndex: 0, size: 'md', width: 'full', lineHeight: 'normal', paragraphSpacing: 'normal', version: READER_PREFS_VERSION }
 
 function loadReaderPrefs() {
   try {
@@ -926,6 +980,40 @@ function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityCha
               <button key={id}
                 onClick={() => onChange({ ...prefs, size: id })}
                 className={`reader-chip ${prefs.size === id ? 'active' : ''}`}
+              >
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-4)' }}>
+            Line Height
+          </div>
+          <div className="flex gap-1.5">
+            {Object.entries(READER_LINE_HEIGHTS).map(([id, cfg]) => (
+              <button key={id} type="button"
+                onClick={() => onChange({ ...prefs, lineHeight: id })}
+                className={`reader-chip ${prefs.lineHeight === id ? 'active' : ''}`}
+                aria-pressed={prefs.lineHeight === id}
+              >
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-4)' }}>
+            Paragraph Spacing
+          </div>
+          <div className="flex gap-1.5">
+            {Object.entries(READER_PARAGRAPH_SPACING).map(([id, cfg]) => (
+              <button key={id} type="button"
+                onClick={() => onChange({ ...prefs, paragraphSpacing: id })}
+                className={`reader-chip ${prefs.paragraphSpacing === id ? 'active' : ''}`}
+                aria-pressed={prefs.paragraphSpacing === id}
               >
                 {cfg.label}
               </button>
@@ -1540,6 +1628,42 @@ function ReadingPetFooter() {
   )
 }
 
+// Per-file reading state (collapsed sections + preview scroll position),
+// cached in memory and persisted to localStorage.
+const READING_STATE_KEY = 'readme-reading-state'
+let readingStateCache = null
+function readingState() {
+  if (!readingStateCache) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(READING_STATE_KEY) || '{}')
+      readingStateCache = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch {
+      readingStateCache = {}
+    }
+  }
+  return readingStateCache
+}
+let readingStateTimer = null
+function updateReadingState(fileId, patch) {
+  if (!fileId) return
+  const all = readingState()
+  all[fileId] = { ...all[fileId], ...patch, at: Date.now() }
+  clearTimeout(readingStateTimer)
+  readingStateTimer = setTimeout(() => {
+    const entries = Object.entries(all).sort((a, b) => (b[1].at || 0) - (a[1].at || 0)).slice(0, 200)
+    readingStateCache = Object.fromEntries(entries)
+    try { localStorage.setItem(READING_STATE_KEY, JSON.stringify(readingStateCache)) } catch { /* storage is optional */ }
+  }, 250)
+}
+function initialSectionState(docKey, fileId, isLong) {
+  const saved = fileId ? readingState()[fileId] : null
+  return {
+    docKey,
+    mode: saved?.mode === 'collapsed' || saved?.mode === 'expanded' ? saved.mode : (isLong ? 'collapsed' : 'expanded'),
+    overrides: new Set(Array.isArray(saved?.overrides) ? saved.overrides : []),
+  }
+}
+
 // Pinned tabs always sit before the others; order inside each group is kept.
 function orderPinnedFirst(list) {
   return [...list.filter(file => file.pinned), ...list.filter(file => !file.pinned)]
@@ -1584,7 +1708,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
   const [searchCount, setSearchCount] = useState(0)
-  const [lightboxImg, setLightboxImg] = useState(null)
+  const [lightbox, setLightbox] = useState(null)
   const [syncScroll, setSyncScroll]   = useState(true)
   const [cmdOpen, setCmdOpen]         = useState(false)
   const [cmdQuery, setCmdQuery]       = useState('')
@@ -1618,18 +1742,21 @@ export default function App() {
   )
 
   // Collapsible heading sections. Long documents (> 5 min read) start
-  // collapsed; the state resets whenever another document is opened.
+  // collapsed; each file remembers its own collapse state across reloads.
   const isLongDocument = useMemo(
     () => Math.ceil((markdownBody.match(/\S+/g)?.length ?? 0) / 220) > 5,
     [markdownBody]
   )
   const sectionDocKey = `${activeFileId}:${workspaceReady}`
-  const [sectionCollapse, setSectionCollapse] = useState(() => ({
-    docKey: sectionDocKey, mode: isLongDocument ? 'collapsed' : 'expanded', overrides: new Set(),
-  }))
+  const [sectionCollapse, setSectionCollapse] = useState(() => initialSectionState(sectionDocKey, activeFileId, isLongDocument))
   if (sectionCollapse.docKey !== sectionDocKey) {
-    setSectionCollapse({ docKey: sectionDocKey, mode: isLongDocument ? 'collapsed' : 'expanded', overrides: new Set() })
+    setSectionCollapse(initialSectionState(sectionDocKey, activeFileId, isLongDocument))
   }
+  useEffect(() => {
+    if (!workspaceReady || !sectionCollapse.docKey.endsWith(':true')) return
+    const fileId = sectionCollapse.docKey.slice(0, sectionCollapse.docKey.lastIndexOf(':'))
+    if (fileId && fileId !== 'null') updateReadingState(fileId, { mode: sectionCollapse.mode, overrides: [...sectionCollapse.overrides] })
+  }, [sectionCollapse, workspaceReady])
   const toggleSection = useCallback(key => {
     setSectionCollapse(state => {
       const overrides = new Set(state.overrides)
@@ -1641,13 +1768,18 @@ export default function App() {
   const toggleAllSections = useCallback(() => {
     setSectionCollapse(state => ({ ...state, mode: state.mode === 'collapsed' ? 'expanded' : 'collapsed', overrides: new Set() }))
   }, [])
+  // "Focus on section" mode: only one chapter-level section is shown at a time.
+  const [focusSection, setFocusSection] = useState(null)
+  if (focusSection && focusSection.docKey !== sectionDocKey) setFocusSection(null)
+  const searchingDocument = Boolean(searchOpen && searchQuery.trim())
   const sectionCollapseValue = useMemo(() => ({
     mode: sectionCollapse.mode,
     overrides: sectionCollapse.overrides,
     // Show everything while searching so every hit is visible.
-    forceExpanded: Boolean(searchOpen && searchQuery.trim()),
+    forceExpanded: searchingDocument,
+    focusKey: searchingDocument ? null : focusSection?.key ?? null,
     toggle: toggleSection,
-  }), [sectionCollapse.mode, sectionCollapse.overrides, searchOpen, searchQuery, toggleSection])
+  }), [sectionCollapse.mode, sectionCollapse.overrides, searchingDocument, focusSection, toggleSection])
 
   const fileInputRef    = useRef(null)
   const appRef          = useRef(null)
@@ -1871,13 +2003,12 @@ export default function App() {
         requestAnimationFrame(() => searchInputRef.current?.focus())
       } else if (e.key === 'Escape') {
         if (cmdOpen) setCmdOpen(false)
-        else if (lightboxImg) setLightboxImg(null)
         else if (searchOpen) setSearchOpen(false)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [view, activeFile, cmdOpen, lightboxImg, searchOpen])
+  }, [view, activeFile, cmdOpen, searchOpen])
 
   // Fullscreen
   useEffect(() => {
@@ -1894,25 +2025,99 @@ export default function App() {
   // TOC (computed from body without YAML frontmatter)
   const headings = analysis.headings
 
-  // Active heading via IntersectionObserver
+  // Remember each file's preview scroll position and restore it when the file is shown again.
   useEffect(() => {
-    if (!previewScrollRef.current) return
-    const els = previewScrollRef.current.querySelectorAll('h1[id],h2[id],h3[id]')
-    if (!els.length) return
-    const obs = new IntersectionObserver(
-      entries => {
-        const vis = entries.filter(e => e.isIntersecting)
-        if (vis.length) setActiveHeadingId(vis[0].target.id)
-      },
-      { root: previewScrollRef.current, rootMargin: '-8% 0% -72% 0%', threshold: 0 }
-    )
-    els.forEach(el => obs.observe(el))
-    return () => obs.disconnect()
-  }, [activeFileId, content, view, mobileTab])
+    const el = previewScrollRef.current
+    if (!el || !activeFileId || !workspaceReady) return undefined
+    const saved = readingState()[activeFileId]?.scrollTop
+    const frame = requestAnimationFrame(() => { el.scrollTop = Number.isFinite(saved) ? saved : 0 })
+    const onScroll = () => updateReadingState(activeFileId, { scrollTop: Math.round(el.scrollTop) })
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => { cancelAnimationFrame(frame); el.removeEventListener('scroll', onScroll) }
+  }, [activeFileId, workspaceReady, view, mobileTab])
+
+  // Active heading: the last visible h1–h3 whose top has passed the upper quarter of the preview.
+  // Computed from scroll position so jumps (TOC, search, restore) are tracked too.
+  useEffect(() => {
+    const container = previewScrollRef.current
+    if (!container) return undefined
+    let frame = 0
+    const update = () => {
+      frame = 0
+      const limit = container.getBoundingClientRect().top + container.clientHeight * 0.25
+      let current = null
+      for (const heading of container.querySelectorAll('.rm-prose h1[id], .rm-prose h2[id], .rm-prose h3[id]')) {
+        if (!heading.offsetParent) continue
+        if (heading.getBoundingClientRect().top <= limit) current = heading.id
+        else break
+      }
+      setActiveHeadingId(previous => (previous === current ? previous : current))
+    }
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(update) }
+    schedule()
+    container.addEventListener('scroll', schedule, { passive: true })
+    return () => { container.removeEventListener('scroll', schedule); if (frame) cancelAnimationFrame(frame) }
+  }, [activeFileId, content, view, mobileTab, sectionCollapseValue])
+
+  // Chapter-level sections: children of a lone title section, otherwise the top-level sections.
+  const getFocusUnits = useCallback(() => {
+    const prose = previewScrollRef.current?.querySelector('.rm-prose')
+    if (!prose) return []
+    const sectionsOf = parent => Array.from(parent.children).filter(child => child.matches('section[data-section-key]'))
+    const top = sectionsOf(prose)
+    const units = top.length === 1 && top[0].dataset.titleSection ? sectionsOf(top[0]) : top
+    return (units.length ? units : top).map(section => {
+      const heading = section.firstElementChild?.cloneNode(true)
+      heading?.querySelectorAll('.heading-anchor, .section-toggle').forEach(el => el.remove())
+      return { key: section.dataset.sectionKey, title: heading?.textContent.trim() || 'Section', el: section }
+    })
+  }, [])
+  const showFocusUnit = useCallback((units, index) => {
+    const unit = units[index]
+    if (!unit) return
+    setFocusSection({ docKey: sectionDocKey, key: unit.key, index, total: units.length, title: unit.title })
+    requestAnimationFrame(() => { if (previewScrollRef.current) previewScrollRef.current.scrollTop = 0 })
+  }, [sectionDocKey])
+  const startSectionFocus = useCallback(() => {
+    const units = getFocusUnits()
+    if (!units.length) return
+    if (view === 'editor') setView('split')
+    const active = activeHeadingId ? previewScrollRef.current?.querySelector(`[id="${CSS.escape(activeHeadingId)}"]`) : null
+    const index = Math.max(0, units.findIndex(unit => active && unit.el.contains(active)))
+    showFocusUnit(units, index)
+  }, [getFocusUnits, showFocusUnit, activeHeadingId, view])
+  const stepSectionFocus = useCallback(step => {
+    const units = getFocusUnits()
+    if (!units.length || !focusSection) return
+    const current = units.findIndex(unit => unit.key === focusSection.key)
+    const next = Math.min(units.length - 1, Math.max(0, (current === -1 ? 0 : current) + step))
+    if (next !== current) showFocusUnit(units, next)
+  }, [getFocusUnits, showFocusUnit, focusSection])
+  const exitSectionFocus = useCallback(() => setFocusSection(null), [])
+  useEffect(() => {
+    if (!focusSection) return undefined
+    const onKeyDown = event => {
+      if (event.target.closest?.('input, textarea, [contenteditable="true"], .cm-editor')) return
+      if (event.altKey && event.key === 'ArrowRight') { event.preventDefault(); stepSectionFocus(1) }
+      else if (event.altKey && event.key === 'ArrowLeft') { event.preventDefault(); stepSectionFocus(-1) }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [focusSection, stepSectionFocus])
 
   const navigateToHeading = useCallback((id) => {
     const el = previewScrollRef.current?.querySelector(`[id="${id}"]`)
     if (!el) return
+    // In section focus mode, jump to the chapter that contains the heading first.
+    let switchedFocus = false
+    if (focusSection) {
+      const units = getFocusUnits()
+      const index = units.findIndex(unit => unit.el.contains(el))
+      if (index !== -1 && units[index].key !== focusSection.key) {
+        setFocusSection({ docKey: sectionDocKey, key: units[index].key, index, total: units.length, title: units[index].title })
+        switchedFocus = true
+      }
+    }
     const container = previewScrollRef.current
     const scrollToHeading = () => {
       const elTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top
@@ -1923,17 +2128,19 @@ export default function App() {
     for (let section = el.closest('section[data-section-key]'); section; section = section.parentElement?.closest('section[data-section-key]')) {
       if (section.dataset.collapsed === 'true') collapsedKeys.push(section.dataset.sectionKey)
     }
-    if (!collapsedKeys.length) {
+    if (!collapsedKeys.length && !switchedFocus) {
       scrollToHeading()
       return
     }
-    setSectionCollapse(state => {
-      const overrides = new Set(state.overrides)
-      collapsedKeys.forEach(key => (overrides.has(key) ? overrides.delete(key) : overrides.add(key)))
-      return { ...state, overrides }
-    })
+    if (collapsedKeys.length) {
+      setSectionCollapse(state => {
+        const overrides = new Set(state.overrides)
+        collapsedKeys.forEach(key => (overrides.has(key) ? overrides.delete(key) : overrides.add(key)))
+        return { ...state, overrides }
+      })
+    }
     requestAnimationFrame(() => requestAnimationFrame(scrollToHeading))
-  }, [])
+  }, [focusSection, getFocusUnits, sectionDocKey])
 
   // Scroll-to-top & reading progress in preview
   useEffect(() => {
@@ -2101,7 +2308,6 @@ export default function App() {
     setActiveFileId(id)
     setActiveHeadingId(null)
     setShowScrollTop(false)
-    previewScrollRef.current?.scrollTo({ top: 0 })
   }, [activeFileId, markWorkspaceEdit])
 
   // Closes several tabs at once and remembers them so they can be reopened.
@@ -2583,6 +2789,7 @@ export default function App() {
     { id: 'url-import', label: 'Import Markdown from URL…', hint: 'Action', icon: Globe, run: handleImportUrl },
     { id: 'quality', label: 'Check document quality', hint: 'Document', icon: TriangleAlert, run: () => { setQualityOpen(true); if (view === 'editor') setView('split') } },
     ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => { setDiffCompareId(null); setDiffOpen(true) } }] : []),
+    ...(headings.length > 0 ? [{ id: 'focus-section', label: focusSection ? 'Exit section focus' : 'Focus on current section', hint: 'Reader', icon: Crosshair, run: focusSection ? exitSectionFocus : startSectionFocus }] : []),
     ...(canReopen ? [{ id: 'reopen', label: 'Reopen closed tab', hint: 'Tabs', icon: RotateCcw, run: handleReopenClosed }] : []),
     ...(activeFile ? [
       { id: 'pin', label: activeFile.pinned ? 'Unpin current tab' : 'Pin current tab', hint: 'Tabs', icon: activeFile.pinned ? PinOff : Pin, run: () => handleTogglePin(activeFile.id) },
@@ -2604,11 +2811,25 @@ export default function App() {
     handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, handleExportPdf, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
+    headings.length, focusSection, exitSectionFocus, startSectionFocus,
   ])
 
   const wordCount   = analysis.wordCount
   const lineCount   = analysis.lineCount
   const readingTime = useMemo(() => Math.max(1, Math.ceil(wordCount / 220)), [wordCount])
+  const minutesLeft = Math.max(1, Math.ceil(readingTime * (1 - readProgress / 100)))
+  // Heading trail (H1 › H2 › H3) leading to the heading currently being read.
+  const headingTrail = useMemo(() => {
+    const index = headings.findIndex(heading => heading.id === activeHeadingId)
+    if (index === -1) return []
+    const trail = []
+    for (let i = 0; i <= index; i += 1) {
+      const heading = headings[i]
+      while (trail.length && trail[trail.length - 1].level >= heading.level) trail.pop()
+      trail.push(heading)
+    }
+    return trail
+  }, [headings, activeHeadingId])
 
   const showEditor  = view !== 'preview'
   const showPreview = view !== 'editor'
@@ -2919,10 +3140,10 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-2.5 reader-toolbar-controls">
                   {wordCount > 0 && (
-                    <span className="status-badge" title={`${readProgress}% read · ~${readingTime} min read`}>
+                    <span className="status-badge" title={`${readProgress}% read · ~${minutesLeft} of ${readingTime} min left`}>
                       <span className="tabular-nums">{readProgress}%</span><span className="reader-toolbar-label"> · </span>
-                      <span className="reader-toolbar-full-time reader-toolbar-label">~{readingTime} min read</span>
-                      <span className="reader-toolbar-compact-time">~{readingTime}m</span>
+                      <span className="reader-toolbar-full-time reader-toolbar-label">{readProgress >= 99 ? 'Finished' : `~${minutesLeft} min left`}</span>
+                      <span className="reader-toolbar-compact-time">{readProgress >= 99 ? 'Done' : `~${minutesLeft}m`}</span>
                     </span>
                   )}
                   <div className="relative quality-control">
@@ -3043,6 +3264,24 @@ export default function App() {
                     {readerPrefs.width === 'full' ? <FoldHorizontal size={11} /> : <UnfoldHorizontal size={11} />}
                     <span className="hidden md:inline reader-toolbar-label">{readerPrefs.width === 'full' ? 'Compact' : 'Wide'}</span>
                   </button>
+                  {headings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={focusSection ? exitSectionFocus : startSectionFocus}
+                      data-tooltip={focusSection ? 'Show the whole document' : 'Focus on one section at a time'}
+                      aria-label={focusSection ? 'Exit section focus' : 'Focus on section'}
+                      aria-pressed={Boolean(focusSection)}
+                      className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
+                      style={{
+                        fontSize: 10, fontWeight: 500,
+                        color: focusSection ? 'var(--accent)' : 'var(--text-4)',
+                        background: focusSection ? 'var(--accent-soft)' : 'transparent',
+                      }}
+                    >
+                      <Crosshair size={11} />
+                      <span className="hidden lg:inline reader-toolbar-label">Section</span>
+                    </button>
+                  )}
                   {headings.length > 0 && (
                     <button
                       type="button"
@@ -3183,15 +3422,37 @@ export default function App() {
                   onScroll={handleSyncPreviewScroll}
                   className="flex-1 overflow-auto surface-preview"
                 >
+                  {content.trim() && headingTrail.length > 0 && (
+                    <div className="reading-breadcrumb-anchor no-print">
+                      <nav className={`reading-breadcrumb${showScrollTop ? ' is-visible' : ''}`} aria-label="Current section" aria-hidden={!showScrollTop}>
+                        {headingTrail.map((heading, i) => (
+                          <span key={heading.id} className="reading-breadcrumb-item">
+                            {i > 0 && <ChevronRight size={11} aria-hidden="true" />}
+                            <button
+                              type="button"
+                              tabIndex={showScrollTop ? 0 : -1}
+                              onClick={() => navigateToHeading(heading.id)}
+                              aria-current={i === headingTrail.length - 1 ? 'location' : undefined}
+                              title={heading.text}
+                            >
+                              {heading.text}
+                            </button>
+                          </span>
+                        ))}
+                      </nav>
+                    </div>
+                  )}
                   {content.trim() ? (
                     <div className={readerPrefs.width === 'full' ? 'px-2 sm:px-4 py-3 sm:py-5' : 'px-4 sm:px-8 md:px-10 py-6 sm:py-9'}>
                       <article
                         className="book-page px-6 sm:px-11 md:px-14 py-8 sm:py-11 anim-slide-up"
                         style={{ maxWidth: READER_WIDTHS[readerPrefs.width]?.maxW ?? '740px' }}
                         onClick={e => {
-                          if (e.target.tagName === 'IMG' && e.target.src) {
-                            setLightboxImg({ src: e.target.src, alt: e.target.alt || '' })
-                          }
+                          if (e.target.tagName !== 'IMG' || !e.target.src || !e.target.closest('.rm-prose')) return
+                          const images = Array.from(e.currentTarget.querySelectorAll('.rm-prose img'))
+                            .filter(img => img.src && !img.closest('.mermaid-svg'))
+                          const index = Math.max(0, images.indexOf(e.target))
+                          setLightbox({ images: images.map(img => ({ src: img.currentSrc || img.src, alt: img.alt || '' })), index })
                         }}
                       >
                         <div className="book-folio-header">
@@ -3202,17 +3463,37 @@ export default function App() {
                         <FrontmatterCard meta={frontmatterMeta} />
 
                         <div
-                          className={`rm-prose ${activeFont.isSerif ? 'font-book' : ''}`}
+                          className={`rm-prose ${activeFont.isSerif ? 'font-book' : ''}${sectionCollapseValue.focusKey ? ' focus-section-mode' : ''}`}
                           style={{
                             fontSize: READER_SIZES[readerPrefs.size]?.px ?? '17px',
                             maxWidth: 'none',
                             fontFamily: activeFont.family,
+                            '--rm-line-height': READER_LINE_HEIGHTS[readerPrefs.lineHeight]?.value ?? 1.82,
+                            '--rm-para-space': READER_PARAGRAPH_SPACING[readerPrefs.paragraphSpacing]?.value ?? '0.8rem',
                           }}
                         >
                           <SectionCollapseContext.Provider value={sectionCollapseValue}>
                             <MarkdownRenderer content={markdownBody} dark={isDark} />
                           </SectionCollapseContext.Provider>
                         </div>
+
+                        {focusSection && !searchingDocument && (
+                          <nav className="focus-section-bar no-print" aria-label="Section focus">
+                            <button type="button" onClick={() => stepSectionFocus(-1)} disabled={focusSection.index === 0} aria-label="Previous section" title="Previous section (Alt+←)">
+                              <ChevronLeft size={15} /><span className="hidden sm:inline">Previous</span>
+                            </button>
+                            <span className="focus-section-status">
+                              <span className="tabular-nums">{focusSection.index + 1} / {focusSection.total}</span>
+                              <span className="focus-section-title">{focusSection.title}</span>
+                            </span>
+                            <button type="button" onClick={() => stepSectionFocus(1)} disabled={focusSection.index >= focusSection.total - 1} aria-label="Next section" title="Next section (Alt+→)">
+                              <span className="hidden sm:inline">Next</span><ChevronRight size={15} />
+                            </button>
+                            <button type="button" className="focus-section-exit" onClick={exitSectionFocus} aria-label="Exit section focus" title="Show the whole document">
+                              <X size={14} />
+                            </button>
+                          </nav>
+                        )}
 
                         <div className="book-folio-footer">
                           <span style={{ color: 'var(--accent)', fontSize: 13 }}>❦</span>
@@ -3278,29 +3559,16 @@ export default function App() {
         <FileDiffView files={files} activeFileId={activeFileId} compareWithId={diffCompareId} onClose={() => setDiffOpen(false)} />
       )}
 
+      <LinkPreview rootRef={previewScrollRef} disabled={!content.trim()} />
+
       {/* ── Image lightbox ────────────────────────────── */}
-      {lightboxImg && (
-        <div
-          className="lightbox-backdrop anim-fade-in no-print"
-          onClick={() => setLightboxImg(null)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <button
-            onClick={() => setLightboxImg(null)}
-            className="btn-icon absolute top-5 right-5"
-            style={{ background: 'rgba(255,255,255,0.12)', color: '#fff' }}
-            aria-label="Close image preview"
-          >
-            <X size={18} />
-          </button>
-          <img
-            src={lightboxImg.src}
-            alt={lightboxImg.alt}
-            onClick={e => e.stopPropagation()}
-            className="max-w-full max-h-[88vh] rounded-xl shadow-2xl anim-pop-in"
-          />
-        </div>
+      {lightbox && (
+        <ImageLightbox
+          images={lightbox.images}
+          index={lightbox.index}
+          onIndexChange={index => setLightbox(current => (current ? { ...current, index } : current))}
+          onClose={() => setLightbox(null)}
+        />
       )}
     </div>
   )

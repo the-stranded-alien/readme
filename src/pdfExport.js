@@ -6,6 +6,7 @@ import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
+import { CALLOUT_TYPES, parseCalloutMarker } from './rehypeCallouts'
 
 const COLORS = {
   text: '#1f2433',
@@ -18,6 +19,24 @@ const COLORS = {
   quoteBg: '#f6f3fd',
   tableHeadBg: '#f1f2f8',
 }
+const CALLOUT_COLORS = { note: '#0969da', tip: '#1a7f37', important: '#8250df', warning: '#9a6700', caution: '#cf222e' }
+
+// Returns { type, title, children } when a blockquote starts with a [!TYPE] marker.
+function detectCallout(node) {
+  const paragraph = node.children[0]
+  const first = paragraph?.type === 'paragraph' ? paragraph.children[0] : null
+  if (first?.type !== 'text') return null
+  const marker = parseCalloutMarker(first.value)
+  if (!marker) return null
+  const rest = first.value.slice(marker.length).replace(/^\n/, '')
+  const paragraphChildren = [...(rest ? [{ ...first, value: rest }] : []), ...paragraph.children.slice(1)]
+  const children = [
+    ...(paragraphChildren.length ? [{ ...paragraph, children: paragraphChildren }] : []),
+    ...node.children.slice(1),
+  ]
+  return { type: marker.type, title: marker.title || CALLOUT_TYPES[marker.type], children }
+}
+
 const HEADING_SIZES = [22, 17, 14, 12.5, 11.5, 11]
 const BASE_SIZE = 10.5
 const CODE_SIZE = 9
@@ -188,7 +207,24 @@ function createConverter({ images, footnoteOrder }) {
       }
       case 'paragraph':
         return paragraph(node)
-      case 'blockquote':
+      case 'blockquote': {
+        const callout = detectCallout(node)
+        if (callout) {
+          const color = CALLOUT_COLORS[callout.type]
+          return {
+            table: { widths: ['*'], body: [[{
+              stack: [{ text: cleanText(callout.title), bold: true, color, margin: [0, 0, 0, 4] }, ...blocks(callout.children)],
+              fillColor: '#f7f8fb',
+            }]] },
+            layout: {
+              hLineWidth: () => 0,
+              vLineWidth: index => (index === 0 ? 3 : 0),
+              vLineColor: () => color,
+              paddingLeft: () => 11, paddingRight: () => 9, paddingTop: () => 7, paddingBottom: () => 1,
+            },
+            margin: [0, 2, 0, 10],
+          }
+        }
         return {
           table: { widths: ['*'], body: [[{ stack: blocks(node.children), fillColor: COLORS.quoteBg, color: COLORS.muted, italics: true }]] },
           layout: {
@@ -202,6 +238,7 @@ function createConverter({ images, footnoteOrder }) {
           },
           margin: [0, 2, 0, 10],
         }
+      }
       case 'code':
         return codeBlock(node.value, node.lang)
       case 'math':

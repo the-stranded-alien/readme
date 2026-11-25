@@ -25,6 +25,11 @@ export function rehypeHeadingSections() {
 
     for (const node of tree.children) {
       const level = headingLevel(node)
+      // The GFM footnotes block belongs to the whole document, not the last section.
+      if (node.type === 'element' && node.tagName === 'section' && node.properties?.dataFootnotes !== undefined) {
+        root.children.push(node)
+        continue
+      }
       if (!level) {
         stack[stack.length - 1].node.children.push(node)
         continue
@@ -48,7 +53,7 @@ export function rehypeHeadingSections() {
 
     // A single top-level section (typically the document title) is never
     // collapsed by default, otherwise the whole document would disappear.
-    const topLevel = root.children.filter(child => child.tagName === 'section')
+    const topLevel = root.children.filter(child => child.tagName === 'section' && child.properties?.dataSectionKey)
     if (topLevel.length === 1) {
       topLevel[0].properties.dataTitleSection = true
       topLevel[0].children[0].properties.dataTitleSection = true
