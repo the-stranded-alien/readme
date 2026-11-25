@@ -687,7 +687,8 @@ mark.rm-search-hit.current {
   position: relative; display: flex; align-items: center; gap: 6px;
   height: 32px; padding: 0 8px 0 11px;
   border-radius: 9px 9px 0 0;
-  border: 1px solid transparent; border-bottom: none;
+  /* Inactive tabs get a faint outline; the active tab uses the full border colour. */
+  border: 1px solid var(--border-light); border-bottom: none;
   font-size: 12px; font-weight: 500;
   color: var(--text-3); background: transparent;
   cursor: pointer; user-select: none; flex-shrink: 0; max-width: 195px;
@@ -695,6 +696,7 @@ mark.rm-search-hit.current {
 }
 .file-tab:hover {
   background: rgba(109, 40, 217, 0.05);
+  border-color: var(--border);
   color: var(--text-2);
 }
 .dark .file-tab:hover {

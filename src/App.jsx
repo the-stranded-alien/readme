@@ -1258,7 +1258,7 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
       </div>
 
       <span
-        className="file-tab-count hidden sm:inline shrink-0 pb-1"
+        className="file-tab-count hidden sm:inline-flex items-center self-center shrink-0"
         style={{ fontSize: 10, fontVariantNumeric: 'tabular-nums', color: 'var(--text-3)', fontWeight: 600 }}
       >
         {files.length} {files.length === 1 ? 'file' : 'files'}
