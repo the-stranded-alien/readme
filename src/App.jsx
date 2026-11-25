@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
@@ -43,6 +43,10 @@ import StorageDialog from './components/StorageDialog'
 import TemplatesDialog from './components/TemplatesDialog'
 import SlashMenu from './components/SlashMenu'
 import FindReplacePanel from './components/FindReplacePanel'
+import PresentationMode from './components/PresentationMode'
+import FileTree from './components/FileTree'
+import AiToolsDialog from './components/AiToolsDialog'
+import { hasAnyAi } from './onDeviceAi'
 import { detectSlash, editorCaretRect, expandSnippet, filterSlashCommands, textareaCaretRect } from './slashCommands'
 import { findMatches, replaceAllIn } from './findReplace'
 import { requestPersistentStorage, sharedItemToFiles, takeSharedItems } from './pwaIntegration'
@@ -2127,6 +2131,18 @@ export default function App() {
   const closedFilesRef = useRef([])
   const [canReopen, setCanReopen] = useState(false)
   const [writingStats, setWritingStats] = useState({})
+  const [presenting, setPresenting] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiAvailable] = useState(() => hasAnyAi())
+  // File tree sidebar (folders come from "folder/file.md" names).
+  const [fileTreeOpen, setFileTreeOpen] = useState(() => { try { return localStorage.getItem('readme-file-tree-open') === 'true' } catch { return false } })
+  const [treeCollapsed, setTreeCollapsed] = useState(() => { try { return JSON.parse(localStorage.getItem('readme-file-tree-collapsed') || '[]') } catch { return [] } })
+  useEffect(() => {
+    try {
+      localStorage.setItem('readme-file-tree-open', String(fileTreeOpen))
+      localStorage.setItem('readme-file-tree-collapsed', JSON.stringify(treeCollapsed))
+    } catch { /* storage is optional */ }
+  }, [fileTreeOpen, treeCollapsed])
   const [findOpen, setFindOpen] = useState(false)
   const [findKey, setFindKey] = useState(0)
   const [slash, setSlash] = useState(null) // { from, to, query, rect, highlight }
@@ -3064,6 +3080,91 @@ export default function App() {
   }, [])
   const deleteCustomTemplate = useCallback(id => setCustomTemplates(prev => prev.filter(t => t.id !== id)), [])
 
+  // ── Outside changes to disk files (File System Observer + polling fallback) ──
+  const [diskConflicts, setDiskConflicts] = useState({}) // fileId -> { text, at }
+  const [diskCompare, setDiskCompare] = useState(null)
+  const diskStampRef = useRef(new Map()) // fileId -> lastModified we have seen
+  const filesRef = useRef(files)
+  useEffect(() => { filesRef.current = files }, [files])
+  const checkDiskFile = useCallback(async fileId => {
+    const file = filesRef.current.find(item => item.id === fileId)
+    const handle = file && (diskHandlesRef.current.get(file.id) || file.diskHandle)
+    if (!handle?.getFile) return
+    try {
+      if (handle.queryPermission && await handle.queryPermission({ mode: 'read' }) !== 'granted') return
+      const disk = await handle.getFile()
+      if (diskStampRef.current.get(fileId) === disk.lastModified) return
+      const firstLook = !diskStampRef.current.has(fileId)
+      diskStampRef.current.set(fileId, disk.lastModified)
+      const text = await disk.text()
+      const latest = filesRef.current.find(item => item.id === fileId)
+      if (!latest || typeof latest.diskSavedContent !== 'string' || text === latest.diskSavedContent) return
+      if (latest.content === latest.diskSavedContent || latest.content === text) {
+        // No local edits: just take the new version.
+        setFiles(prev => prev.map(item => (item.id === fileId ? { ...item, content: text, diskSavedContent: text } : item)))
+        if (!firstLook) setToast({ message: `Reloaded “${latest.name}” — it was changed outside ReadMe.`, tone: 'success' })
+      } else {
+        setDiskConflicts(current => ({ ...current, [fileId]: { text, at: Date.now() } }))
+      }
+    } catch { /* file moved or permission revoked */ }
+  }, [])
+  const checkAllDiskFiles = useCallback(() => {
+    for (const file of filesRef.current) {
+      if (file.diskHandle || diskHandlesRef.current.has(file.id)) checkDiskFile(file.id)
+    }
+  }, [checkDiskFile])
+  const diskFileIds = files.filter(file => file.diskHandle || typeof file.diskSavedContent === 'string').map(file => file.id).join('|')
+  useEffect(() => {
+    if (!diskFileIds) return undefined
+    checkAllDiskFiles()
+    const poll = setInterval(() => { if (document.visibilityState === 'visible') checkAllDiskFiles() }, 3000)
+    const onFocus = () => checkAllDiskFiles()
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    // Native change notifications where supported (Chromium's FileSystemObserver).
+    let observer = null
+    if ('FileSystemObserver' in window) {
+      try {
+        observer = new window.FileSystemObserver(() => checkAllDiskFiles())
+        for (const file of filesRef.current) {
+          const handle = diskHandlesRef.current.get(file.id) || file.diskHandle
+          if (handle) observer.observe(handle).catch?.(() => {})
+        }
+      } catch { observer = null }
+    }
+    return () => {
+      clearInterval(poll)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+      observer?.disconnect?.()
+    }
+  }, [diskFileIds, checkAllDiskFiles])
+  const resolveDiskConflict = useCallback(async (fileId, action) => {
+    const conflict = diskConflicts[fileId]
+    const file = files.find(item => item.id === fileId)
+    if (!conflict || !file) return
+    if (action === 'reload') {
+      await takeSnapshot(fileId, file.content, 'Before reloading from disk')
+      if (fileId === activeFileId && textareaRef.current) {
+        applyTextareaEdit(textareaRef.current, { from: 0, to: textareaRef.current.value.length, text: conflict.text, cursor: 0 })
+      }
+      setFiles(prev => prev.map(item => (item.id === fileId ? { ...item, content: conflict.text, diskSavedContent: conflict.text } : item)))
+      setToast({ message: 'Reloaded from disk. Your previous text is in version history.', tone: 'success' })
+    } else if (action === 'keep') {
+      // The disk now holds the other version: your text shows as unsaved until you save.
+      setFiles(prev => prev.map(item => (item.id === fileId ? { ...item, diskSavedContent: conflict.text } : item)))
+    } else if (action === 'compare') {
+      setDiskCompare({
+        files: [
+          { id: 'disk-version', name: `${file.name} — on disk`, content: conflict.text },
+          { id: 'your-version', name: `${file.name} — your version`, content: file.content },
+        ],
+      })
+      return
+    }
+    setDiskConflicts(current => { const next = { ...current }; delete next[fileId]; return next })
+  }, [diskConflicts, files, activeFileId, takeSnapshot])
+
   // ── Backup / restore ─────────────────────────────────────────
   const restoreInputRef = useRef(null)
   const handleBackup = useCallback(async () => {
@@ -3150,6 +3251,55 @@ export default function App() {
     a.click()
     URL.revokeObjectURL(a.href)
   }, [files])
+
+  const uniqueName = (name, taken) => {
+    const lower = new Set(taken.map(item => item.toLowerCase()))
+    if (!lower.has(name.toLowerCase())) return name
+    const slash = name.lastIndexOf('/')
+    const dir = slash === -1 ? '' : name.slice(0, slash + 1)
+    return dir + makeDuplicateFileName(name.slice(slash + 1), taken.filter(item => item.startsWith(dir)).map(item => item.slice(dir.length)))
+  }
+  const moveFileToFolder = useCallback((id, folder) => {
+    setFiles(prev => {
+      const file = prev.find(item => item.id === id)
+      if (!file) return prev
+      const base = file.name.split('/').pop()
+      const target = folder ? `${folder}/${base}` : base
+      if (target === file.name) return prev
+      const name = uniqueName(target, prev.filter(item => item.id !== id).map(item => item.name))
+      return prev.map(item => (item.id === id ? { ...item, name } : item))
+    })
+    markWorkspaceEdit()
+  }, [markWorkspaceEdit])
+  const createFileInFolder = useCallback(folder => {
+    markWorkspaceEdit()
+    const id = createFileId()
+    setFiles(prev => {
+      const inFolder = prev.filter(file => (folder ? file.name.startsWith(`${folder}/`) && !file.name.slice(folder.length + 1).includes('/') : !file.name.includes('/')))
+        .map(file => ({ ...file, name: file.name.split('/').pop() }))
+      const name = `${folder ? `${folder}/` : ''}${getNextUntitledName(inFolder)}`
+      return [...prev, { id, name, content: '' }]
+    })
+    setActiveFileId(id)
+    if (view === 'preview') setView('split')
+    setMobileTab('editor')
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }, [markWorkspaceEdit, view])
+  const createFolder = useCallback(() => {
+    const raw = window.prompt('Folder name (use "/" for nested folders):', 'notes')
+    const folder = raw?.trim().replace(/^\/+|\/+$/g, '').replace(/[\\:*?"<>|]+/g, '-')
+    if (!folder) return
+    setTreeCollapsed(list => list.filter(item => item !== folder))
+    createFileInFolder(folder)
+  }, [createFileInFolder])
+  const renameFolder = useCallback(path => {
+    const raw = window.prompt('Rename folder:', path)
+    const next = raw?.trim().replace(/^\/+|\/+$/g, '').replace(/[\\:*?"<>|]+/g, '-')
+    if (!next || next === path) return
+    markWorkspaceEdit()
+    setFiles(prev => prev.map(file => (file.name.startsWith(`${path}/`) ? { ...file, name: `${next}/${file.name.slice(path.length + 1)}` } : file)))
+    setTreeCollapsed(list => list.map(item => (item === path || item.startsWith(`${path}/`) ? next + item.slice(path.length) : item)))
+  }, [markWorkspaceEdit])
 
   const handleRevealOutline = useCallback(id => {
     setActiveFileId(id)
@@ -3277,6 +3427,7 @@ export default function App() {
       const savedId = activeFile.id
       setFiles(prev => prev.map(f => (f.id === savedId ? { ...f, diskHandle: handle, diskSavedContent: savedContent } : f)))
       takeSnapshot(savedId, savedContent, 'Saved to disk')
+      handle.getFile?.().then(file => diskStampRef.current.set(savedId, file.lastModified)).catch(() => {})
     } catch (error) {
       if (error?.name !== 'AbortError') { console.error('Save file failed', error); alert('Could not save this file. Use Download as a fallback.') }
     }
@@ -3612,6 +3763,9 @@ ${fontCss}
       { id: 'snapshot', label: 'Save a snapshot of this file', hint: 'File', icon: History, run: () => takeSnapshot(activeFile.id, content, 'Manual snapshot').then(list => list && setToast({ message: 'Snapshot saved to version history.', tone: 'success' })) },
     ] : []),
     ...(activeFile ? [{ id: 'find-replace', label: 'Find & replace in editor', hint: shortcut('F', { alt: true }), icon: Replace, run: () => { setFindOpen(true); setFindKey(k => k + 1) } }] : []),
+    ...(activeFile && aiAvailable ? [{ id: 'ai-tools', label: 'AI tools: summarize, translate, proofread…', hint: 'On-device', icon: Sparkles, run: () => setAiOpen(true) }] : []),
+    ...(activeFile ? [{ id: 'present', label: 'Present as slides', hint: 'Reader', icon: Presentation, run: () => setPresenting(true) }] : []),
+    { id: 'file-tree', label: fileTreeOpen ? 'Hide file tree' : 'Show file tree', hint: 'Files', icon: FolderTree, run: () => setFileTreeOpen(open => !open) },
     { id: 'templates', label: 'Manage templates…', hint: 'Templates', icon: LayoutTemplate, run: () => setTemplatesOpen(true) },
     { id: 'storage', label: 'Storage & backup…', hint: 'Workspace', icon: HardDrive, run: () => setStorageOpen(true) },
     { id: 'backup', label: 'Back up workspace (.zip)', hint: 'Workspace', icon: DatabaseBackup, run: handleBackup },
@@ -3641,7 +3795,7 @@ ${fontCss}
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
-    openHistory, takeSnapshot, handleBackup,
+    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable,
   ])
 
   const qualityIssues = useMemo(() => {
@@ -3821,6 +3975,8 @@ ${fontCss}
         onRevealOutline={handleRevealOutline}
         onDownload={handleDownloadFile}
         onReopenClosed={handleReopenClosed}
+        fileTreeOpen={fileTreeOpen}
+        onToggleFileTree={() => setFileTreeOpen(open => !open)}
         searchValue={cmdQuery}
         onSearchChange={value => { setCmdQuery(value); setCmdOpen(true) }}
         onSearchFocus={() => setCmdOpen(true)}
@@ -3858,6 +4014,22 @@ ${fontCss}
           />
         ) : (
           <>
+            {fileTreeOpen && (
+              <FileTree
+                files={files}
+                activeFileId={activeFileId}
+                collapsed={treeCollapsed}
+                onToggleFolder={path => setTreeCollapsed(list => (list.includes(path) ? list.filter(item => item !== path) : [...list, path]))}
+                onSelect={handleSelectFile}
+                onMoveFile={moveFileToFolder}
+                onNewFile={createFileInFolder}
+                onNewFolder={createFolder}
+                onRenameFolder={renameFolder}
+                onCloseFolder={path => closeFiles(files.filter(file => file.name.startsWith(`${path}/`)).map(file => file.id))}
+                onClose={() => setFileTreeOpen(false)}
+              />
+            )}
+            <div className="flex-1 flex min-w-0 min-h-0">
             {/* Editor pane */}
             <div
               className={`flex-col min-h-0 overflow-hidden ${mobileTab === 'editor' ? '!flex w-full' : 'hidden sm:flex'}`}
@@ -3929,6 +4101,17 @@ ${fontCss}
                 </div>
               </div>
 
+              {diskConflicts[activeFileId] && (
+                <div className="disk-conflict no-print" role="alert">
+                  <FileWarning size={15} aria-hidden="true" />
+                  <span><strong>{activeFile.name}</strong> was changed outside ReadMe while you have unsaved edits.</span>
+                  <span className="disk-conflict-actions">
+                    <button type="button" onClick={() => resolveDiskConflict(activeFileId, 'reload')}>Reload from disk</button>
+                    <button type="button" onClick={() => resolveDiskConflict(activeFileId, 'compare')}>Compare</button>
+                    <button type="button" onClick={() => resolveDiskConflict(activeFileId, 'keep')}>Keep mine</button>
+                  </span>
+                </div>
+              )}
               {findOpen && (
                 <FindReplacePanel
                   key={findKey}
@@ -4194,6 +4377,32 @@ ${fontCss}
                     {readerPrefs.width === 'full' ? <FoldHorizontal size={11} /> : <UnfoldHorizontal size={11} />}
                     <span className="hidden md:inline reader-toolbar-label">{readerPrefs.width === 'full' ? 'Compact' : 'Wide'}</span>
                   </button>
+                  {aiAvailable && markdownBody.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setAiOpen(true)}
+                      data-tooltip="On-device AI: summarize, translate, proofread"
+                      aria-label="AI tools"
+                      className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
+                      style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-4)' }}
+                    >
+                      <Sparkles size={11} />
+                      <span className="hidden xl:inline reader-toolbar-label">AI</span>
+                    </button>
+                  )}
+                  {markdownBody.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setPresenting(true)}
+                      data-tooltip="Present as slides (one per heading)"
+                      aria-label="Present document as slides"
+                      className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
+                      style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-4)' }}
+                    >
+                      <Presentation size={11} />
+                      <span className="hidden xl:inline reader-toolbar-label">Present</span>
+                    </button>
+                  )}
                   {headings.length > 0 && (
                     <button
                       type="button"
@@ -4465,6 +4674,7 @@ ${fontCss}
                 )}
               </div>
             </div>
+            </div>
           </>
         )}
       </main>
@@ -4524,6 +4734,38 @@ ${fontCss}
 
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
 
+      {aiOpen && activeFile && (
+        <AiToolsDialog
+          fileName={activeFile.name}
+          markdown={content}
+          renderMarkdown={markdown => <MarkdownRenderer content={markdown} dark={isDark} />}
+          onClose={() => setAiOpen(false)}
+          onCreateFile={(name, text) => addExternalFiles([{ name, content: text }])}
+          onInsertSummary={summary => {
+            const ta = textareaRef.current
+            const frontmatterEnd = /^---\n[\s\S]*?\n---\n/.exec(content)?.[0].length ?? 0
+            const block = `> [!NOTE] Summary\n${summary.trim().split('\n').map(line => `> ${line}`.trimEnd()).join('\n')}\n\n`
+            if (ta) applyTextareaEdit(ta, { from: frontmatterEnd, to: frontmatterEnd, text: block, cursor: frontmatterEnd + block.length })
+            else updateActiveContent(content.slice(0, frontmatterEnd) + block + content.slice(frontmatterEnd))
+          }}
+          onApplyText={async text => {
+            await takeSnapshot(activeFile.id, content, 'Before proofreading fixes')
+            const ta = textareaRef.current
+            if (ta) applyTextareaEdit(ta, { from: 0, to: content.length, text, cursor: 0 })
+            else updateActiveContent(text)
+            setToast({ message: 'Corrections applied. The previous text is in version history.', tone: 'success' })
+          }}
+        />
+      )}
+
+      {presenting && activeFile && (
+        <PresentationMode
+          markdown={markdownBody}
+          renderMarkdown={markdown => <MarkdownRenderer content={markdown} dark={isDark} />}
+          onClose={() => setPresenting(false)}
+        />
+      )}
+
       {templatesOpen && (
         <TemplatesDialog
           builtIn={MD_TEMPLATES}
@@ -4565,6 +4807,9 @@ ${fontCss}
             })
           }}
         />
+      )}
+      {diskCompare && (
+        <FileDiffView files={diskCompare.files} activeFileId="disk-version" compareWithId="your-version" onClose={() => setDiskCompare(null)} />
       )}
       {historyCompare && (
         <FileDiffView files={historyCompare.files} activeFileId="history-snapshot" compareWithId="history-current" onClose={() => setHistoryCompare(null)} />

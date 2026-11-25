@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { useDialogKeys } from '../useDialogKeys'
 import { Copy, FilePlus, LayoutTemplate, Lock, Plus, Save, Trash2, X } from 'lucide-react'
 
 const emptyDraft = { name: '', description: '', fileName: '', content: '' }
@@ -15,12 +16,7 @@ export default function TemplatesDialog({ builtIn, custom, onSave, onDelete, onU
   const selected = all.find(template => template.id === selectedId) ?? null
   const editing = draft ?? (selected && !selected.builtIn ? selected : null)
 
-  useEffect(() => {
-    closeRef.current?.focus()
-    const onKey = event => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useDialogKeys(onClose, { focus: () => closeRef.current?.focus() })
 
   const startNew = (base = emptyDraft) => {
     setSelectedId(null)
@@ -51,7 +47,7 @@ export default function TemplatesDialog({ builtIn, custom, onSave, onDelete, onU
           <button ref={closeRef} type="button" className="btn-icon" onClick={onClose} aria-label="Close templates"><X size={15} /></button>
         </div>
         <div className="templates-body">
-          <div className="templates-list" role="listbox" aria-label="Templates">
+          <div className="templates-list" aria-label="Templates">
             <div className="templates-actions">
               <button type="button" className="reader-chip" onClick={() => startNew()}><Plus size={12} /> New</button>
               {currentFile && (
@@ -63,7 +59,7 @@ export default function TemplatesDialog({ builtIn, custom, onSave, onDelete, onU
             <div className="templates-group">Your templates</div>
             {custom.length === 0 && <p className="templates-empty">None yet — create one or duplicate a built-in template.</p>}
             {custom.map(template => (
-              <button key={template.id} type="button" role="option" aria-selected={selectedId === template.id && !dirty}
+              <button key={template.id} type="button" aria-pressed={selectedId === template.id && !dirty}
                 className={`templates-item${selectedId === template.id && !dirty ? ' is-selected' : ''}`}
                 onClick={() => { setDraft(null); setSelectedId(template.id) }}>
                 <strong>{template.name}</strong>
@@ -72,7 +68,7 @@ export default function TemplatesDialog({ builtIn, custom, onSave, onDelete, onU
             ))}
             <div className="templates-group">Built-in</div>
             {builtIn.map(template => (
-              <button key={template.id} type="button" role="option" aria-selected={selectedId === template.id && !dirty}
+              <button key={template.id} type="button" aria-pressed={selectedId === template.id && !dirty}
                 className={`templates-item${selectedId === template.id && !dirty ? ' is-selected' : ''}`}
                 onClick={() => { setDraft(null); setSelectedId(template.id) }}>
                 <strong><Lock size={10} aria-hidden="true" /> {template.name}</strong>
@@ -112,7 +108,7 @@ export default function TemplatesDialog({ builtIn, custom, onSave, onDelete, onU
                   </div>
                   <button type="button" className="reader-chip" onClick={() => startNew({ ...selected, name: `${selected.name} (copy)` })}><Copy size={12} /> Duplicate</button>
                 </div>
-                <pre className="templates-preview">{selected.content}</pre>
+                <pre className="templates-preview" tabIndex={0} aria-label={`Content of ${selected.name}`}>{selected.content}</pre>
               </>
             ) : <p className="templates-empty">Select a template.</p>}
           </div>

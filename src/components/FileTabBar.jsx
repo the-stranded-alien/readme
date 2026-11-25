@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { shortcut } from '../platform'
 import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedFromDisk, labelColor } from '../fileUtils'
 import {
-  Check, Command, CopyPlus, Download, FilePlus, FileText, GitCompare, HardDrive, ListTree,
+  Check, Command, CopyPlus, Download, FilePlus, FileText, FolderTree, GitCompare, HardDrive, ListTree,
   Pencil, Pin, PinOff, RotateCcw, Search, X, XCircle,
 } from 'lucide-react'
 
@@ -207,7 +207,7 @@ function FileSwitcher({ files, activeFileId, recentIds, onSelect, onClose, ancho
 export default function FileTabBar({
   files, activeFileId, recentIds, canReopen,
   onSelect, onClose, onCreate, onRename, onDuplicate, onCompare, onReorder, onTogglePin, onSetColor,
-  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed,
+  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, fileTreeOpen, onToggleFileTree,
   searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette,
 }) {
   const tabRefs = useRef({})
@@ -265,6 +265,12 @@ export default function FileTabBar({
 
   return (
     <div className="file-tabs-bar no-print">
+      {onToggleFileTree && (
+        <button type="button" onClick={onToggleFileTree} className={`file-tree-toggle${fileTreeOpen ? ' is-active' : ''}`}
+          aria-label={fileTreeOpen ? 'Hide file tree' : 'Show file tree'} aria-pressed={Boolean(fileTreeOpen)} data-tooltip="Files and folders">
+          <FolderTree size={14} />
+        </button>
+      )}
       <button type="button" onClick={onCreate} className="file-tab-add" title="New file" aria-label="New file">
         <FilePlus size={12} />
         <span>New</span>

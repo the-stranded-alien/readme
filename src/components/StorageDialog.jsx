@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useDialogKeys } from '../useDialogKeys'
 import { ArchiveRestore, DatabaseBackup, HardDrive, ShieldCheck, ShieldAlert, X } from 'lucide-react'
 import { formatBytes, requestPersistentStorage, storageStatus } from '../pwaIntegration'
 
@@ -8,13 +9,8 @@ export default function StorageDialog({ fileCount, onBackup, onRestore, onClose 
   const closeRef = useRef(null)
   const refresh = useCallback(() => storageStatus().then(setStatus).catch(() => setStatus({ supported: false })), [])
 
-  useEffect(() => {
-    refresh()
-    closeRef.current?.focus()
-    const onKey = event => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [refresh, onClose])
+  useEffect(() => { refresh() }, [refresh])
+  useDialogKeys(onClose, { focus: () => closeRef.current?.focus() })
 
   const persist = async () => {
     setRequesting(true)

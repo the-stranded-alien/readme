@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { useDialogKeys } from '../useDialogKeys'
 import { GitCompare, History, RotateCcw, X } from 'lucide-react'
 import { diffLines } from '../documentDiff'
 
@@ -27,12 +28,7 @@ export default function HistoryDialog({ fileName, current, snapshots, loading, o
     }
   }, [selected, current])
 
-  useEffect(() => {
-    closeRef.current?.focus()
-    const onKey = event => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useDialogKeys(onClose, { focus: () => closeRef.current?.focus() })
 
   return (
     <div className="pdf-dialog-backdrop anim-fade-in no-print" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useDialogKeys } from '../useDialogKeys'
 import { ArrowLeftRight, Check, ChevronDown, GitCompare, X } from 'lucide-react'
 import { diffLines } from '../documentDiff'
 
@@ -119,11 +120,7 @@ export default function FileDiffView({ files, activeFileId, compareWithId, onClo
     target.current.scrollTop = source.current.scrollTop
     requestAnimationFrame(() => { syncLockRef.current = false })
   }
-  useEffect(() => {
-    const onKeyDown = event => { if (event.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  useDialogKeys(onClose)
 
   return (
     <div className="diff-backdrop no-print" role="dialog" aria-modal="true" aria-label="Compare open files" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>

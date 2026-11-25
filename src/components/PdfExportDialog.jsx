@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { useDialogKeys } from '../useDialogKeys'
 import { FileDown, Loader2, X } from 'lucide-react'
 
 const PAGE_SIZES = [['A4', 'A4'], ['LETTER', 'US Letter']]
@@ -50,12 +51,7 @@ export default function PdfExportDialog({ fileName, hasFrontmatter, hasHeadings,
   const dialogRef = useRef(null)
   const set = (key, value) => setOptions(current => ({ ...current, [key]: value }))
 
-  useEffect(() => {
-    dialogRef.current?.querySelector('button.is-active, button')?.focus()
-    const onKey = event => { if (event.key === 'Escape' && !busy) onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [busy, onClose])
+  useDialogKeys(onClose, { focus: () => dialogRef.current?.querySelector('button.is-active, button')?.focus(), canClose: () => !busy })
 
   const submit = event => {
     event.preventDefault()

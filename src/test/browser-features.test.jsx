@@ -54,6 +54,42 @@ describe('advanced browser features', () => {
     expect(close).toHaveBeenCalledOnce()
   })
 
+  it('reloads untouched disk files and flags conflicting outside changes', async () => {
+    let diskText = '# Version 1'
+    let modified = 1
+    const handle = {
+      kind: 'file', name: 'live.md',
+      queryPermission: vi.fn(async () => 'granted'),
+      createWritable: vi.fn(async () => ({ write: vi.fn(), close: vi.fn() })),
+    }
+    // File.lastModified is read-only in jsdom: expose it through a getter.
+    handle.getFile = vi.fn(async () => {
+      const file = new File([diskText], 'live.md')
+      Object.defineProperty(file, 'lastModified', { value: modified })
+      return file
+    })
+    window.showOpenFilePicker = vi.fn(async () => [handle])
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Markdown files or folders' }))
+    const editor = await screen.findByDisplayValue('# Version 1')
+
+    // Untouched locally → reloads silently.
+    diskText = '# Version 2'; modified = 2
+    fireEvent.focus(window)
+    await waitFor(() => expect(editor).toHaveValue('# Version 2'))
+
+    // Edited locally → conflict banner instead of overwriting.
+    fireEvent.change(editor, { target: { value: '# Version 2\n\nMy edit' } })
+    diskText = '# Version 3'; modified = 3
+    fireEvent.focus(window)
+    const banner = await screen.findByRole('alert')
+    expect(banner).toHaveTextContent('was changed outside ReadMe')
+    expect(editor).toHaveValue('# Version 2\n\nMy edit')
+    fireEvent.click(within(banner).getByRole('button', { name: 'Reload from disk' }))
+    await waitFor(() => expect(editor).toHaveValue('# Version 3'))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('duplicates an open file into a new independent tab', async () => {
     installApp()
     fireEvent.click(screen.getByTitle('Duplicate Welcome.md'))
@@ -855,6 +891,75 @@ describe('advanced browser features', () => {
     expect(document.querySelector('textarea.editor-textarea').value).toBe('# Weekly report\n\n## Wins')
     fireEvent.click(screen.getByRole('button', { name: 'New file options' }))
     expect(within(await screen.findByRole('menu', { name: 'New file' })).getByRole('menuitem', { name: /Weekly report/ })).toBeInTheDocument()
+  })
+
+  it('presents the document as slides split at headings', async () => {
+    const { splitSlides } = await import('../presentation.js')
+    expect(splitSlides('# Deck\n\nIntro\n\n## One\n\nA\n\n```\n## not a slide\n```\n\n## Two\n\nB')).toEqual([
+      '# Deck\n\nIntro', '## One\n\nA\n\n```\n## not a slide\n```', '## Two\n\nB',
+    ])
+    await writeWorkspace({ activeId: 'p', files: [{ id: 'p', name: 'Deck.md', content: '# Deck\n\nIntro\n\n## One\n\nFirst\n\n## Two\n\nSecond' }] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Present document as slides' }))
+    const deck = await screen.findByRole('dialog', { name: /Presentation, slide 1 of 3/ })
+    fireEvent.keyDown(deck, { key: 'ArrowRight' })
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /slide 2 of 3/ })).toHaveTextContent('First'))
+    fireEvent.keyDown(deck, { key: 'End' })
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /slide 3 of 3/ })).toHaveTextContent('Second'))
+    fireEvent.keyDown(deck, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Presentation/ })).toBeNull())
+  })
+
+  it('shows folders in a file tree and moves files between them', async () => {
+    window.prompt = vi.fn(() => 'archive')
+    await writeWorkspace({ activeId: 'a', files: [
+      { id: 'a', name: 'notes/plan.md', content: '# Plan' },
+      { id: 'b', name: 'notes/ideas.md', content: '# Ideas' },
+      { id: 'c', name: 'todo.md', content: '# Todo' },
+    ] })
+    installApp()
+    await screen.findByRole('tab', { name: 'notes/plan.md' })
+    fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
+    const tree = await screen.findByRole('tree', { name: 'Open files' })
+    expect(within(tree).getByRole('treeitem', { name: 'Folder notes' })).toHaveTextContent('2')
+    const data = new Map()
+    const dataTransfer = { setData: (k, v) => data.set(k, v), getData: k => data.get(k) || '', get types() { return [...data.keys()] }, effectAllowed: '', dropEffect: '' }
+    fireEvent.dragStart(within(tree).getByRole('treeitem', { name: 'todo.md' }).querySelector('button'), { dataTransfer })
+    const folderRow = within(tree).getByRole('treeitem', { name: 'Folder notes' }).querySelector('.file-tree-row')
+    fireEvent.dragOver(folderRow, { dataTransfer })
+    fireEvent.drop(folderRow, { dataTransfer })
+    await waitFor(() => expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('aria-label'))).toContain('notes/todo.md'))
+    fireEvent.click(within(tree).getByRole('button', { name: 'Rename folder notes' }))
+    await waitFor(() => expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('aria-label'))).toEqual(expect.arrayContaining(['archive/plan.md', 'archive/ideas.md', 'archive/todo.md'])))
+  })
+
+  it('summarizes, translates and proofreads with on-device AI when the browser supports it', async () => {
+    const created = []
+    vi.stubGlobal('Summarizer', { availability: async () => 'available', create: async () => ({ summarize: async text => `- Summary of ${text.split(' ').length} words`, destroy() {} }) })
+    vi.stubGlobal('Translator', { availability: async () => 'available', create: async options => { created.push(options); return { translate: async text => `[${options.targetLanguage}] ${text}`, destroy() {} } } })
+    vi.stubGlobal('LanguageDetector', { create: async () => ({ detect: async () => [{ detectedLanguage: 'en', confidence: 0.95 }], destroy() {} }) })
+    vi.stubGlobal('Proofreader', { availability: async () => 'available', create: async () => ({ proofread: async text => ({ corrections: text.includes('teh') ? [{ startIndex: text.indexOf('teh'), endIndex: text.indexOf('teh') + 3, correction: 'the' }] : [] }), destroy() {} }) })
+    await writeWorkspace({ activeId: 'ai', files: [{ id: 'ai', name: 'Doc.md', content: '# Title\n\nThis is teh text.\n\n```js\nconst teh = 1\n```' }] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'AI tools' }))
+    const dialog = await screen.findByRole('dialog', { name: 'AI tools' })
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Summarize$/ }))
+    await within(dialog).findByText(/Summary of/, {}, { timeout: 4000 })
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Translate' }))
+    await within(dialog).findByText('English (detected)')
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Translate to' }), { target: { value: 'fr' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Translate to French' }))
+    const translated = await within(dialog).findByText(/\[fr\] Title/, {}, { timeout: 4000 })
+    expect(translated.textContent).toContain('# [fr] Title')
+    expect(translated.textContent).toContain('const teh = 1')
+    expect(created[0]).toMatchObject({ sourceLanguage: 'en', targetLanguage: 'fr' })
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Proofread' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Check document' }))
+    await within(dialog).findByRole('list', { name: 'Suggested corrections' })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Apply 1 correction/ }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toBe('# Title\n\nThis is the text.\n\n```js\nconst teh = 1\n```'))
   })
 
   it('collapses and expands heading sections, individually and all at once', async () => {

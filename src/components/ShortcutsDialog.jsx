@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
+import { useDialogKeys } from '../useDialogKeys'
 import { Keyboard, X } from 'lucide-react'
 import { shortcut } from '../platform'
 
@@ -51,12 +52,7 @@ const GROUPS = [
 
 export default function ShortcutsDialog({ onClose }) {
   const closeRef = useRef(null)
-  useEffect(() => {
-    closeRef.current?.focus()
-    const onKey = event => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useDialogKeys(onClose, { focus: () => closeRef.current?.focus() })
   return (
     <div className="pdf-dialog-backdrop anim-fade-in no-print" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div className="shortcuts-dialog anim-pop-in" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
