@@ -5,11 +5,11 @@ import { runInNewContext } from 'node:vm'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import App from '../App.jsx'
-import { analyzeDocument, checkMarkdownQuality } from '../documentAnalysis.js'
+import { analyzeDocument, applyQualityFix, checkMarkdownQuality } from '../documentAnalysis.js'
 import { diffLines } from '../documentDiff.js'
 import { fuzzyScore, isModifiedFromDisk, makeDuplicateFileName } from '../fileUtils.js'
 import { autoPair, continueMarkup, deletePair, formatMarkdownTables, imageReferenceMarkdown } from '../editorAssist.js'
-import { readWorkspace, writeWorkspace } from '../workspaceDb.js'
+import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from '../workspaceDb.js'
 
 function installApp(root = document.body) {
   return render(<App />, { container: root === document.body ? undefined : root })
@@ -56,7 +56,7 @@ describe('advanced browser features', () => {
 
   it('duplicates an open file into a new independent tab', async () => {
     installApp()
-    fireEvent.click(screen.getByRole('button', { name: 'Duplicate Welcome.md' }))
+    fireEvent.click(screen.getByTitle('Duplicate Welcome.md'))
     await waitFor(() => expect(screen.getAllByText('Welcome copy.md').length).toBeGreaterThan(0))
     const editor = screen.getByRole('textbox')
     const sourceText = editor.value
@@ -401,7 +401,7 @@ describe('advanced browser features', () => {
     fireEvent.click(await screen.findByText('Download PDF…'))
     const dialog = await screen.findByRole('dialog', { name: 'Export PDF' })
     fireEvent.click(within(dialog).getByRole('radio', { name: 'US Letter' }))
-    fireEvent.submit(dialog)
+    fireEvent.submit(dialog.querySelector('form'))
     await waitFor(() => expect(exportMarkdownPdf).toHaveBeenCalledOnce())
     expect(exportMarkdownPdf.mock.calls[0][1].fileName).toMatch(/\.pdf$/)
     expect(exportMarkdownPdf.mock.calls[0][1].options).toMatchObject({ pageSize: 'LETTER', margins: 'normal' })
@@ -593,6 +593,68 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /Shared document/ })).toBeNull())
     expect(screen.getAllByRole('tab').some(tab => tab.getAttribute('aria-label') === 'Friend.md')).toBe(true)
     expect(window.location.hash).toBe('')
+  })
+
+  it('offers one-click fixes for broken anchors, missing alt text and empty links', () => {
+    const md = ['# Getting Started', '', 'See [setup](#getting-startd).', '', '![](images/team-photo.png)', '', 'An [empty]() link.'].join('\n')
+    const issues = checkMarkdownQuality(md)
+    const anchor = issues.find(issue => issue.type === 'broken-anchor')
+    expect(anchor.fix.label).toBe('Change to #getting-started')
+    let fixed = applyQualityFix(md, anchor.fix)
+    const alt = issues.find(issue => issue.type === 'missing-image-alt')
+    expect(alt.fix.replace).toBe('![team photo](images/team-photo.png)')
+    fixed = applyQualityFix(fixed, alt.fix)
+    fixed = applyQualityFix(fixed, issues.find(issue => issue.type === 'empty-link').fix)
+    expect(fixed).toContain('[setup](#getting-started)')
+    expect(fixed).toContain('![team photo](images/team-photo.png)')
+    expect(fixed).toContain('An empty link.')
+    expect(checkMarkdownQuality(fixed)).toHaveLength(0)
+  })
+
+  it('searches all open files and opens a result', async () => {
+    await writeWorkspace({ activeId: 'a', files: [
+      { id: 'a', name: 'Alpha.md', content: '# Alpha\n\nnothing here' },
+      { id: 'b', name: 'Beta.md', content: '# Beta\n\nThe needle is here.\nAnother needle.' },
+    ] })
+    installApp()
+    await screen.findByRole('tab', { name: 'Alpha.md' })
+    fireEvent.keyDown(window, { key: 'f', metaKey: true, shiftKey: true })
+    const dialog = await screen.findByRole('dialog', { name: 'Search in all files' })
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'needle' } })
+    await waitFor(() => expect(within(dialog).getAllByRole('option')).toHaveLength(2))
+    expect(within(dialog).getByText('2 results in 1 file')).toBeInTheDocument()
+    fireEvent.keyDown(within(dialog).getByRole('combobox'), { key: 'Enter' })
+    await waitFor(() => expect(screen.getByRole('tab', { selected: true })).toHaveAttribute('aria-label', 'Beta.md'))
+  })
+
+  it('shows the keyboard shortcut sheet with ?', async () => {
+    installApp()
+    fireEvent.keyDown(document.body, { key: '?' })
+    const dialog = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })
+    expect(dialog).toHaveTextContent('Command palette')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull())
+  })
+
+  it('backs up and reads back files, settings and history', async () => {
+    const { createBackup, readBackup } = await import('../backup.js')
+    localStorage.setItem('readme-theme', 'sepia')
+    await addSnapshot('w1', { content: 'old text', reason: 'Manual snapshot' })
+    const blob = await createBackup({ files: [{ id: 'w1', name: 'notes/Plan.md', content: '# Plan', pinned: true, color: 'green' }], activeId: 'w1' })
+    const backup = await readBackup(blob)
+    expect(backup.files).toEqual([{ id: 'w1', name: 'notes/Plan.md', content: '# Plan', pinned: true, color: 'green' }])
+    expect(backup.settings['readme-theme']).toBe('sepia')
+    expect(backup.history.w1[0].content).toBe('old text')
+    await expect(readBackup(new Blob(['not a zip']))).rejects.toThrow('not a ZIP')
+  })
+
+  it('keeps per-file snapshots, newest first, skipping duplicates', async () => {
+    await addSnapshot('h1', { content: 'one', reason: 'Auto-saved' })
+    await addSnapshot('h1', { content: 'one', reason: 'Auto-saved' })
+    await addSnapshot('h1', { content: 'two', reason: 'Saved to disk' })
+    const history = await readHistory('h1')
+    expect(history.map(entry => entry.content)).toEqual(['two', 'one'])
+    expect(history[0].reason).toBe('Saved to disk')
   })
 
   it('collapses and expands heading sections, individually and all at once', async () => {

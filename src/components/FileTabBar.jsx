@@ -344,6 +344,7 @@ export default function FileTabBar({
               }}
               title={`${file.name}${modified ? ' — unsaved changes' : diskBacked ? ' — saved to disk' : ''}\nDouble-click to rename · right-click for options`}
               aria-label={`${file.name}${file.pinned ? ', pinned' : ''}${modified ? ', unsaved changes' : ''}`}
+              aria-keyshortcuts="Delete F2 Shift+F10"
               className={`file-tab${isActive ? ' active' : ''}${file.pinned ? ' is-pinned' : ''}${color ? ' has-label' : ''}${dragId === file.id ? ' is-dragging' : ''}${groupBreak ? ' group-start' : ''}${dropClass}`}
               style={color ? { '--tab-label': color } : undefined}
             >
@@ -378,29 +379,29 @@ export default function FileTabBar({
                 />
               )}
               {!file.pinned && (
-                <button
-                  type="button"
+                // Mouse shortcut; keyboard users duplicate via the tab menu (Shift+F10).
+                <span
                   onClick={event => { event.stopPropagation(); onDuplicate(file.id) }}
                   className="file-tab-duplicate"
                   title={`Duplicate ${file.name}`}
-                  aria-label={`Duplicate ${file.name}`}
+                  aria-hidden="true"
                 >
                   <CopyPlus size={11} />
-                </button>
+                </span>
               )}
               {file.pinned ? (
                 modified && <span className="file-modified-dot is-pinned-dot" aria-hidden="true" />
               ) : (
-                <button
-                  type="button"
+                <span
                   onClick={event => { event.stopPropagation(); onClose(file.id) }}
                   className={`file-tab-close${modified ? ' is-modified' : ''}`}
                   title={modified ? `Close ${file.name} (unsaved changes)` : `Close ${file.name}`}
-                  aria-label={`Close ${file.name}`}
+                  // Keyboard users close with Delete and reach other actions via Shift+F10.
+                  aria-hidden="true"
                 >
                   <span className="file-modified-dot" aria-hidden="true" />
                   <X size={10} />
-                </button>
+                </span>
               )}
             </div>
           )

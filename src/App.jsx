@@ -22,11 +22,11 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
-import { readWorkspace, writeWorkspace } from './workspaceDb'
-import { analyzeDocument } from './documentAnalysis'
+import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
+import { analyzeDocument, applyQualityFix } from './documentAnalysis'
 import { makeDuplicateFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
 import FileTabBar from './components/FileTabBar'
@@ -34,6 +34,10 @@ import ImageLightbox from './components/ImageLightbox'
 import LinkPreview from './components/LinkPreview'
 import PdfExportDialog from './components/PdfExportDialog'
 import EmptyWorkspace from './components/EmptyWorkspace'
+import ShortcutsDialog from './components/ShortcutsDialog'
+import GlobalSearch from './components/GlobalSearch'
+import HistoryDialog from './components/HistoryDialog'
+import { applyBackup, createBackup, readBackup } from './backup'
 import { shortcut } from './platform'
 import { buildShareUrl, readShareFromHash } from './shareLink'
 import { EXPORT_EXTRA_CSS, embeddedFontCss } from './htmlExport'
@@ -290,6 +294,9 @@ function CodeBlock({ rawLang, code, dark }) {
       {/* Code body */}
       <div className="code-body">
         <SyntaxHighlighter
+          // Scrollable code must be reachable by keyboard.
+          tabIndex={0}
+          aria-label={`Code${language ? `: ${language}` : ''}`}
           language={prismLang}
           style={dark ? oneDark : vibrantLightCodeTheme}
           showLineNumbers={lineCount > 4}
@@ -495,7 +502,7 @@ function MarkdownRenderer({ content, dark }) {
 
     input({ type, checked }) {
       if (type === 'checkbox')
-        return <input type="checkbox" checked={checked} readOnly style={{ marginRight: 6, cursor: 'default' }} />
+        return <input type="checkbox" checked={checked} readOnly aria-label={checked ? 'Completed task' : 'Open task'} style={{ marginRight: 6, cursor: 'default' }} />
       return <input type={type} />
     },
 
@@ -1071,7 +1078,7 @@ function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityCha
   )
 }
 
-function DocumentQualityPopover({ issues, onClose }) {
+function DocumentQualityPopover({ issues, onClose, onFix, onGoToLine }) {
   const ref = useRef(null)
   useEffect(() => {
     const onDown = event => {
@@ -1097,6 +1104,14 @@ function DocumentQualityPopover({ issues, onClose }) {
               <div>
                 <strong>Line {issue.line}: {issue.message}</strong>
                 <span>{issue.suggestion}</span>
+                <div className="quality-issue-actions">
+                  {issue.fix && (
+                    <button type="button" className="quality-fix" onClick={() => onFix(issue)}>
+                      <Check size={11} />{issue.fix.label}
+                    </button>
+                  )}
+                  <button type="button" className="quality-goto" onClick={() => onGoToLine(issue.line)}>Go to line {issue.line}</button>
+                </div>
               </div>
             </li>
           ))}
@@ -1118,6 +1133,8 @@ function DownloadMenuButton({
   onExportDocx,
   onCopyShareLink,
   onExportZip,
+  onBackup,
+  onRestore,
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -1256,6 +1273,20 @@ function DownloadMenuButton({
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
               style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
               .zip
+            </span>
+          </button>
+          <div className="download-menu-separator" role="separator" />
+          <button type="button" role="menuitem" className="download-menu-item" onClick={() => { setOpen(false); onBackup() }}>
+            <span className="flex items-center gap-2">
+              <DatabaseBackup size={13} style={{ color: 'var(--accent)' }} />
+              <span>Back Up Workspace</span>
+            </span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>.zip</span>
+          </button>
+          <button type="button" role="menuitem" className="download-menu-item" onClick={() => { setOpen(false); onRestore() }}>
+            <span className="flex items-center gap-2">
+              <ArchiveRestore size={13} style={{ color: 'var(--accent)' }} />
+              <span>Restore from Backup…</span>
             </span>
           </button>
         </div>
@@ -1944,6 +1975,7 @@ export default function App() {
   const closedFilesRef = useRef([])
   const [canReopen, setCanReopen] = useState(false)
   const [writingStats, setWritingStats] = useState({})
+  const [failedImages, setFailedImages] = useState({ key: '', srcs: [] })
   if (activeFileId && workspaceReady && !writingStats[activeFileId]) {
     setWritingStats(prev => ({ ...prev, [activeFileId]: { baseWords: currentWords, activeMs: 0, lastEditAt: 0 } }))
   }
@@ -2158,7 +2190,7 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setCmdOpen(o => !o)
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f' && view !== 'editor' && activeFile) {
+      } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f' && view !== 'editor' && activeFile) {
         e.preventDefault()
         setSearchOpen(true)
         requestAnimationFrame(() => searchInputRef.current?.focus())
@@ -2185,6 +2217,25 @@ export default function App() {
 
   // TOC (computed from body without YAML frontmatter)
   const headings = analysis.headings
+
+  // Track preview images that fail to load (reported in the document checks).
+  useEffect(() => {
+    const root = previewScrollRef.current
+    if (!root) return undefined
+    const key = `${activeFileId}:${content.length}`
+    const report = src => setFailedImages(prev => {
+      const base = prev.key === key ? prev.srcs : []
+      return base.includes(src) ? (prev.key === key ? prev : { key, srcs: base }) : { key, srcs: [...base, src] }
+    })
+    const onError = event => {
+      if (event.target?.tagName === 'IMG' && event.target.closest('.rm-prose')) report(event.target.getAttribute('src') || '')
+    }
+    root.addEventListener('error', onError, true)
+    const frame = requestAnimationFrame(() => {
+      root.querySelectorAll('.rm-prose img').forEach(img => { if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) report(img.getAttribute('src')) })
+    })
+    return () => { root.removeEventListener('error', onError, true); cancelAnimationFrame(frame) }
+  }, [activeFileId, content, view, mobileTab])
 
   // Remember each file's preview scroll position and restore it when the file is shown again.
   useEffect(() => {
@@ -2451,6 +2502,35 @@ export default function App() {
     setFiles(prev => prev.map(f => (f.id === activeFileId ? { ...f, wordGoal: goal || undefined } : f)))
   }, [activeFileId, markWorkspaceEdit])
 
+  // Select a line in the editor (from quality checks, global search, …).
+  const goToEditorLine = useCallback((line, column = 0, length = 0) => {
+    if (view === 'preview') setView('split')
+    setMobileTab('editor')
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      const lines = ta.value.split('\n')
+      const start = lines.slice(0, Math.max(0, line - 1)).reduce((sum, text) => sum + text.length + 1, 0) + column
+      const end = length ? start + length : start + (lines[line - 1]?.length ?? 0) - column
+      ta.focus()
+      ta.setSelectionRange(start, end)
+      const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 24
+      ta.scrollTop = Math.max(0, (line - 4) * lineHeight)
+    }))
+  }, [view])
+  const handleQualityFix = useCallback(issue => {
+    if (!issue.fix) return
+    const ta = textareaRef.current
+    const next = applyQualityFix(content, issue.fix)
+    if (next === content) return
+    const lines = content.split('\n')
+    const lineStart = lines.slice(0, issue.fix.line - 1).reduce((sum, text) => sum + text.length + 1, 0)
+    const from = lineStart + lines[issue.fix.line - 1].indexOf(issue.fix.search)
+    const edit = { from, to: from + issue.fix.search.length, text: issue.fix.replace, cursor: from + issue.fix.replace.length }
+    if (ta) applyTextareaEdit(ta, edit)
+    else updateActiveContent(next)
+  }, [content, updateActiveContent])
+
   const handleFormatTables = useCallback(() => {
     const ta = textareaRef.current
     const formatted = formatMarkdownTables(content)
@@ -2588,6 +2668,97 @@ export default function App() {
     setActiveFileId(entry.file.id)
     setActiveHeadingId(null)
   }, [markWorkspaceEdit])
+
+  // Global search (Cmd/Ctrl+Shift+F) and the keyboard shortcut sheet (?).
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  useEffect(() => {
+    const onKeyDown = event => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        setGlobalSearchOpen(true)
+        return
+      }
+      if (event.key === '?' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return
+        event.preventDefault()
+        setShortcutsOpen(open => !open)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  // ── Version history ──────────────────────────────────────────
+  const [historyState, setHistoryState] = useState(null) // { fileId, snapshots, loading }
+  const lastSnapshotAtRef = useRef({})
+  const takeSnapshot = useCallback(async (fileId, text, reason) => {
+    if (!fileId || typeof text !== 'string') return null
+    try {
+      const snapshots = await addSnapshot(fileId, { content: text, reason })
+      lastSnapshotAtRef.current[fileId] = Date.now()
+      setHistoryState(state => (state?.fileId === fileId ? { ...state, snapshots } : state))
+      return snapshots
+    } catch {
+      return null
+    }
+  }, [])
+  // Automatic snapshot: after 4s without typing, at most once every 10 minutes per file.
+  useEffect(() => {
+    if (!activeFileId || !workspaceReady || !content.trim()) return undefined
+    const timer = setTimeout(() => {
+      const last = lastSnapshotAtRef.current[activeFileId] ?? 0
+      if (Date.now() - last >= 10 * 60 * 1000) takeSnapshot(activeFileId, content, 'Auto-saved')
+    }, 4000)
+    return () => clearTimeout(timer)
+  }, [activeFileId, content, workspaceReady, takeSnapshot])
+  const openHistory = useCallback(async () => {
+    if (!activeFileId) return
+    setHistoryState({ fileId: activeFileId, snapshots: [], loading: true })
+    const snapshots = await readHistory(activeFileId).catch(() => [])
+    setHistoryState(state => (state?.fileId === activeFileId ? { fileId: activeFileId, snapshots, loading: false } : state))
+  }, [activeFileId])
+  const restoreSnapshot = useCallback(async snapshot => {
+    if (!activeFile || !snapshot) return
+    if (!window.confirm('Restore this version? The current text is saved as a snapshot first, so you can undo this from history.')) return
+    await takeSnapshot(activeFile.id, content, 'Before restore')
+    const ta = textareaRef.current
+    if (ta) applyTextareaEdit(ta, { from: 0, to: ta.value.length, text: snapshot.content, cursor: 0 })
+    else updateActiveContent(snapshot.content)
+    setHistoryState(null)
+    setToast({ message: 'Version restored. The previous text is in history.', tone: 'success' })
+  }, [activeFile, content, takeSnapshot, updateActiveContent])
+  const [historyCompare, setHistoryCompare] = useState(null)
+
+  // ── Backup / restore ─────────────────────────────────────────
+  const restoreInputRef = useRef(null)
+  const handleBackup = useCallback(async () => {
+    try {
+      const blob = await createBackup({ files, activeId: activeFileId })
+      const date = new Date().toISOString().slice(0, 10)
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `ReadMe backup ${date}.zip` })
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+      setToast({ message: `Backup downloaded (${files.length} file${files.length === 1 ? '' : 's'}, settings and history).`, tone: 'success' })
+    } catch (error) {
+      console.error('Backup failed', error)
+      setToast({ message: 'Could not create the backup.', tone: 'warning' })
+    }
+  }, [files, activeFileId])
+  const handleRestoreFile = useCallback(async event => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    try {
+      const backup = await readBackup(file)
+      const when = backup.createdAt ? new Date(backup.createdAt).toLocaleString() : 'an unknown date'
+      if (!window.confirm(`Restore the backup from ${when}?\n\nIt contains ${backup.files.length} file(s). Your current open files and settings will be replaced.`)) return
+      await applyBackup(backup)
+      window.location.reload()
+    } catch (error) {
+      setToast({ message: error?.message || 'Could not restore this backup.', tone: 'warning', duration: 6000 })
+    }
+  }, [])
 
   // Cmd/Ctrl+Shift+T reopens the last closed tab. Browsers may reserve this
   // shortcut in a normal tab; it works in the installed app and via the menu/palette.
@@ -2769,10 +2940,11 @@ export default function App() {
       await writable.close()
       const savedId = activeFile.id
       setFiles(prev => prev.map(f => (f.id === savedId ? { ...f, diskHandle: handle, diskSavedContent: savedContent } : f)))
+      takeSnapshot(savedId, savedContent, 'Saved to disk')
     } catch (error) {
       if (error?.name !== 'AbortError') { console.error('Save file failed', error); alert('Could not save this file. Use Download as a fallback.') }
     }
-  }, [activeFile, content, fileName, updateActiveContent])
+  }, [activeFile, content, fileName, updateActiveContent, takeSnapshot])
 
   const handleImportUrl = useCallback(async () => {
     const url = window.prompt('Paste a public Markdown file URL (the server must allow CORS):')
@@ -3097,6 +3269,14 @@ ${fontCss}
     { id: 'quality', label: 'Check document quality', hint: 'Document', icon: TriangleAlert, run: () => { setQualityOpen(true); if (view === 'editor') setView('split') } },
     ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => { setDiffCompareId(null); setDiffOpen(true) } }] : []),
     ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
+    { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
+    { id: 'shortcuts', label: 'Keyboard shortcuts', hint: '?', icon: Keyboard, run: () => setShortcutsOpen(true) },
+    ...(activeFile ? [
+      { id: 'history', label: 'Version history…', hint: 'File', icon: History, run: openHistory },
+      { id: 'snapshot', label: 'Save a snapshot of this file', hint: 'File', icon: History, run: () => takeSnapshot(activeFile.id, content, 'Manual snapshot').then(list => list && setToast({ message: 'Snapshot saved to version history.', tone: 'success' })) },
+    ] : []),
+    { id: 'backup', label: 'Back up workspace (.zip)', hint: 'Workspace', icon: DatabaseBackup, run: handleBackup },
+    { id: 'restore', label: 'Restore workspace from backup…', hint: 'Workspace', icon: ArchiveRestore, run: () => restoreInputRef.current?.click() },
     ...(headings.length > 0 ? [{ id: 'focus-section', label: focusSection ? 'Exit section focus' : 'Focus on current section', hint: 'Reader', icon: Crosshair, run: focusSection ? exitSectionFocus : startSectionFocus }] : []),
     ...(canReopen ? [{ id: 'reopen', label: 'Reopen closed tab', hint: 'Tabs', icon: RotateCcw, run: handleReopenClosed }] : []),
     ...(activeFile ? [
@@ -3122,8 +3302,24 @@ ${fontCss}
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
+    openHistory, takeSnapshot, handleBackup,
   ])
 
+  const qualityIssues = useMemo(() => {
+    const base = analysis.qualityIssues ?? []
+    const current = failedImages.key === `${activeFileId}:${content.length}` ? failedImages.srcs : []
+    if (!current.length) return base
+    const lines = content.split('\n')
+    const extra = current.flatMap((src, index) => {
+      const lineIndex = lines.findIndex(text => text.includes(src))
+      return src.startsWith('data:') ? [] : [{
+        id: `image-failed-${index}`, type: 'image-failed', line: lineIndex + 1 || 1,
+        message: `Image “${src.length > 60 ? `${src.slice(0, 57)}…` : src}” could not be loaded.`,
+        suggestion: 'Check the URL or path, or embed the image by pasting it into the editor.',
+      }]
+    })
+    return [...base, ...extra].sort((a, b) => a.line - b.line)
+  }, [analysis.qualityIssues, failedImages, activeFileId, content])
   const wordCount   = analysis.wordCount
   const lineCount   = analysis.lineCount
   const readingTime = useMemo(() => Math.max(1, Math.ceil(wordCount / 220)), [wordCount])
@@ -3210,6 +3406,8 @@ ${fontCss}
               onExportDocx={handleExportDocx}
               onCopyShareLink={handleCopyShareLink}
               onExportZip={handleExportZip}
+              onBackup={handleBackup}
+              onRestore={() => restoreInputRef.current?.click()}
             />
             <button onClick={handleImportUrl} className="btn-icon hidden sm:flex" data-tooltip="Import Markdown from URL" aria-label="Import Markdown from URL">
               <Globe size={14} />
@@ -3375,6 +3573,10 @@ ${fontCss}
                     activeMs={activeWritingStats?.activeMs || 0}
                     onGoalChange={handleSetWordGoal}
                   />
+                  <button type="button" onClick={openHistory} data-tooltip="Version history" aria-label="Version history"
+                    className="cursor-pointer transition-colors history-trigger">
+                    <History size={11} />
+                  </button>
                   <button onClick={() => updateActiveContent('')} data-tooltip="Clear editor" aria-label="Clear editor"
                     className="cursor-pointer transition-colors"
                     style={{ color: 'var(--text-4)' }}
@@ -3450,14 +3652,14 @@ ${fontCss}
                       type="button"
                       onClick={() => setQualityOpen(open => !open)}
                       className="btn-icon !p-1 quality-trigger"
-                      data-tooltip={`Document checks: ${analysis.qualityIssues?.length ?? 0} issues`}
-                      aria-label={`Document quality checks, ${analysis.qualityIssues?.length ?? 0} issues`}
+                      data-tooltip={`Document checks: ${qualityIssues.length} issues`}
+                      aria-label={`Document quality checks, ${qualityIssues.length} issues`}
                       aria-expanded={qualityOpen}
                     >
                       <TriangleAlert size={12} />
-                      {(analysis.qualityIssues?.length ?? 0) > 0 && <span>{analysis.qualityIssues.length}</span>}
+                      {qualityIssues.length > 0 && <span>{qualityIssues.length}</span>}
                     </button>
-                    {qualityOpen && <DocumentQualityPopover issues={analysis.qualityIssues ?? []} onClose={() => setQualityOpen(false)} />}
+                    {qualityOpen && <DocumentQualityPopover issues={qualityIssues} onClose={() => setQualityOpen(false)} onFix={handleQualityFix} onGoToLine={goToEditorLine} />}
                   </div>
                   <button
                     type="button"
@@ -3553,6 +3755,8 @@ ${fontCss}
                       setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' }))
                     }
                     data-tooltip={readerPrefs.width === 'full' ? 'Restore book page width' : 'Expand to full width'}
+                    aria-label={readerPrefs.width === 'full' ? 'Restore book page width' : 'Expand to full width'}
+                    aria-pressed={readerPrefs.width === 'full'}
                     className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
                     style={{
                       fontSize: 10, fontWeight: 500,
@@ -3888,6 +4092,48 @@ ${fontCss}
           {toast.tone === 'warning' ? <TriangleAlert size={14} /> : <Check size={14} />}
           <span>{toast.message}</span>
         </div>
+      )}
+
+      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+
+      <input ref={restoreInputRef} type="file" accept=".zip,application/zip" hidden onChange={handleRestoreFile} aria-label="Restore workspace from backup" />
+
+      {historyState && activeFile && historyState.fileId === activeFile.id && (
+        <HistoryDialog
+          fileName={activeFile.name}
+          current={content}
+          snapshots={historyState.snapshots}
+          loading={historyState.loading}
+          onClose={() => setHistoryState(null)}
+          onSnapshot={() => takeSnapshot(activeFile.id, content, 'Manual snapshot')}
+          onRestore={restoreSnapshot}
+          onCompare={snapshot => {
+            setHistoryCompare({
+              files: [
+                { id: 'history-snapshot', name: `${activeFile.name} — ${new Date(snapshot.at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}`, content: snapshot.content },
+                { id: 'history-current', name: `${activeFile.name} — current`, content },
+              ],
+            })
+          }}
+        />
+      )}
+      {historyCompare && (
+        <FileDiffView files={historyCompare.files} activeFileId="history-snapshot" compareWithId="history-current" onClose={() => setHistoryCompare(null)} />
+      )}
+
+      {globalSearchOpen && (
+        <GlobalSearch
+          files={files}
+          activeFileId={activeFileId}
+          onClose={() => setGlobalSearchOpen(false)}
+          onOpen={(fileId, line, column, length, query) => {
+            setGlobalSearchOpen(false)
+            if (fileId !== activeFileId) handleSelectFile(fileId)
+            goToEditorLine(line, column, length)
+            setSearchQuery(query)
+            setSearchOpen(true)
+          }}
+        />
       )}
 
       {pdfDialogOpen && (

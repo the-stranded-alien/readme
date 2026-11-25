@@ -65,7 +65,8 @@ export default function PdfExportDialog({ fileName, hasFrontmatter, hasHeadings,
 
   return (
     <div className="pdf-dialog-backdrop anim-fade-in no-print" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose() }}>
-      <form ref={dialogRef} className="pdf-dialog anim-pop-in" role="dialog" aria-modal="true" aria-labelledby="pdf-dialog-title" onSubmit={submit}>
+      <div ref={dialogRef} className="pdf-dialog anim-pop-in" role="dialog" aria-modal="true" aria-labelledby="pdf-dialog-title">
+      <form onSubmit={submit}>
         <div className="pdf-dialog-header">
           <div>
             <h2 id="pdf-dialog-title">Export PDF</h2>
@@ -92,6 +93,7 @@ export default function PdfExportDialog({ fileName, hasFrontmatter, hasHeadings,
           </button>
         </div>
       </form>
+      </div>
     </div>
   )
 }
