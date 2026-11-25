@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CaseSensitive, ChevronDown, ChevronUp, Regex, Replace, ReplaceAll, WholeWord, X } from 'lucide-react'
+import { CaseSensitive, ChevronDown, ChevronUp, Regex, Replace, ReplaceAll, WholeWord, X } from '../icons'
 import { buildSearchRegex, findMatches, replacementFor } from '../findReplace'
 
 export default function FindReplacePanel({ content, editorRef, files, activeFileId, onSelectMatch, onReplaceCurrent, onReplaceAllHere, onReplaceAllFiles, onClose, initialQuery = '' }) {

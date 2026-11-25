@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Palette, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Palette, X } from '../icons'
 import { slideTitle, splitSlides } from '../presentation'
 
 /**

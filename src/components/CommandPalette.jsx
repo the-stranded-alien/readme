@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, FileText, Hash, ArrowRight, LayoutTemplate, Sparkles, X } from 'lucide-react'
+import { Search, FileText, Hash, ArrowRight, LayoutTemplate, Sparkles, X } from '../icons'
 
 export default function CommandPalette({
   open,

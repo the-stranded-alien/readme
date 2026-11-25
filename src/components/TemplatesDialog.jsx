@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
-import { Copy, FilePlus, LayoutTemplate, Lock, Plus, Save, Trash2, X } from 'lucide-react'
+import { Copy, FilePlus, LayoutTemplate, Lock, Plus, Save, Trash2, X } from '../icons'
 
 const emptyDraft = { name: '', description: '', fileName: '', content: '' }
 

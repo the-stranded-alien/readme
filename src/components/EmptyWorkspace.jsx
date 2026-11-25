@@ -1,4 +1,4 @@
-import { ArchiveRestore, BookOpenText, FilePlus, FolderOpen, Globe, LayoutTemplate, RotateCcw } from 'lucide-react'
+import { ArchiveRestore, BookOpenText, FilePlus, FolderOpen, Globe, LayoutTemplate, RotateCcw } from '../icons'
 
 function PagesIllustration() {
   return (
@@ -48,8 +48,8 @@ export default function EmptyWorkspace({ templates, canReopen, onNew, onOpen, on
         <p>Write, preview and export Markdown — everything stays in your browser. Drop .md files anywhere to open them.</p>
         <div className="empty-actions">
           {actions.map(action => (
-            <button key={action.id} type="button" className={`empty-card${action.primary ? ' is-primary' : ''}`} onClick={action.run}>
-              <span className="empty-card-icon"><action.icon size={17} /></span>
+            <button key={action.id} type="button" data-hue={action.id} className={`empty-card${action.primary ? ' is-primary' : ''}`} onClick={action.run}>
+              <span className="empty-card-icon"><action.icon size={26} /></span>
               <span className="empty-card-text">
                 <strong>{action.title}</strong>
                 <span>{action.text}</span>

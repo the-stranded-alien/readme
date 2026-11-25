@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
-import { ArchiveRestore, DatabaseBackup, HardDrive, ShieldCheck, ShieldAlert, X } from 'lucide-react'
+import { ArchiveRestore, DatabaseBackup, HardDrive, ShieldCheck, ShieldAlert, X } from '../icons'
 import { formatBytes, requestPersistentStorage, storageStatus } from '../pwaIntegration'
 
 /** Storage usage + "keep my data"; shared by the Storage dialog and Settings. */

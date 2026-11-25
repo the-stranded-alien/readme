@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, useCallback } from 'react'
-import { Copy, Check, AlertTriangle } from 'lucide-react'
+import { Copy, Check, AlertTriangle } from '../icons'
 
 let mermaidPromise = null
 function getMermaid() {

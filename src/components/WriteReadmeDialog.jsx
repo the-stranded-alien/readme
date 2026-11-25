@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { BookOpenText, Sparkles, Wand2, X } from 'lucide-react'
+import { BookOpenText, Sparkles, Wand2, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 
 const EXAMPLES = [

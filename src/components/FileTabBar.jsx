@@ -5,7 +5,7 @@ import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedF
 import {
   Check, Command, CopyPlus, Download, FilePlus, FileText, FolderTree, GitCompare, HardDrive, ListTree,
   Pencil, Pin, PinOff, RotateCcw, Search, X, XCircle,
-} from 'lucide-react'
+} from '../icons'
 
 function splitPath(name) {
   const slash = name.lastIndexOf('/')

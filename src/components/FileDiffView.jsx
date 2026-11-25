@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
-import { ArrowLeftRight, Check, ChevronDown, Eye, GitCompare, Pencil, X } from 'lucide-react'
+import { ArrowLeftRight, Check, ChevronDown, Eye, GitCompare, Pencil, X } from '../icons'
 import { diffLines } from '../documentDiff'
 
 function DiffPane({ title, files, selectedId, otherSelectedId, onSelect, rows, side, scrollRef, onSyncScroll, onEdit }) {

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { BookOpenText, FilePlus, LayoutTemplate, Settings2 } from 'lucide-react'
+import { BookOpenText, FilePlus, LayoutTemplate, Settings2 } from '../icons'
 
 /**
  * Template picker rendered in a portal (so toolbars with overflow can't clip

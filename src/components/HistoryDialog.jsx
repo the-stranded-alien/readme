@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
-import { GitCompare, History, RotateCcw, X } from 'lucide-react'
+import { GitCompare, History, RotateCcw, X } from '../icons'
 import { diffLines } from '../documentDiff'
 
 const relativeTime = at => {

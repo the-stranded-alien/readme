@@ -1481,15 +1481,15 @@ button[data-tooltip]:not(:focus-visible)::after {
 .diff-file-select-wrap { position: relative; display: block; width: min(72%, 340px); min-width: 0; z-index: 3; }
 .diff-file-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 9px; width: 100%; height: 32px; padding: 0 9px 0 10px; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-editor); color: var(--text-1); font: inherit; font-weight: 500; text-align: left; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.06); transition: border-color .15s, box-shadow .15s, background .15s; }
 .diff-file-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.diff-file-select-trigger > svg { flex: 0 0 auto; color: var(--text-3); transition: transform .15s; }
+.diff-file-select-trigger > .i-icon { flex: 0 0 auto; color: var(--text-3); transition: transform .15s; }
 .diff-file-select-trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.diff-file-select-trigger[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.diff-file-select-trigger[aria-expanded="true"] > .i-icon { transform: rotate(180deg); }
 .diff-file-select-trigger:hover { border-color: var(--accent-border); background: var(--bg-toolbar); }
 .diff-file-select-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .diff-file-select-menu { position: absolute; top: calc(100% + 5px); right: 0; width: max(100%, 220px); max-width: min(340px, calc(100vw - 36px)); max-height: min(320px, 45vh); overflow-y: auto; padding: 4px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg-preview); box-shadow: 0 12px 32px rgba(15,23,42,.2), 0 2px 6px rgba(15,23,42,.1); animation: anim-drop-in .12s ease-out; }
 .diff-file-select-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; }
 .diff-file-select-option > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.diff-file-select-option > svg { flex: 0 0 auto; color: var(--accent); }
+.diff-file-select-option > .i-icon { flex: 0 0 auto; color: var(--accent); }
 .diff-file-select-option:hover, .diff-file-select-option:focus-visible { outline: none; background: var(--accent-soft); color: var(--text-1); }
 .diff-file-select-option.is-selected { color: var(--accent); font-weight: 600; }
 .diff-lines { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 6px 0; font: 11px/1.8 var(--font-mono); }
@@ -1539,14 +1539,14 @@ button[data-tooltip]:not(:focus-visible)::after {
 .reading-pet-coat { position: relative; width: 100%; }
 .reading-pet-coat-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: 31px; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-editor); color: var(--text-2); font: inherit; font-size: 11px; text-align: left; cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; }
 .reading-pet-coat-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reading-pet-coat-trigger > svg { flex: 0 0 auto; color: var(--text-4); transition: transform .15s; }
+.reading-pet-coat-trigger > .i-icon { flex: 0 0 auto; color: var(--text-4); transition: transform .15s; }
 .reading-pet-coat-trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
-.reading-pet-coat-trigger[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.reading-pet-coat-trigger[aria-expanded="true"] > .i-icon { transform: rotate(180deg); }
 .reading-pet-coat-trigger:hover { border-color: var(--accent-border); background: var(--bg-toolbar); }
 .reading-pet-coat-trigger:focus-visible, .reading-pet-setting input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .reading-pet-coat-menu { position: absolute; top: calc(100% + 5px); right: 0; left: 0; z-index: 72; max-height: 188px; overflow-y: auto; padding: 4px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-preview); box-shadow: var(--shadow-md); }
 .reading-pet-coat-option { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 29px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font: inherit; font-size: 10px; text-align: left; cursor: pointer; }
-.reading-pet-coat-option > svg { flex: 0 0 auto; color: var(--accent); }
+.reading-pet-coat-option > .i-icon { flex: 0 0 auto; color: var(--accent); }
 .reading-pet-coat-option:hover, .reading-pet-coat-option:focus-visible { outline: none; background: var(--accent-soft); color: var(--text-1); }
 .reading-pet-coat-option.is-selected { color: var(--accent); font-weight: 650; }
 .reading-pet-count-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text-3); font-size: 10px; font-weight: 550; }
@@ -1777,8 +1777,8 @@ button[data-tooltip]:not(:focus-visible)::after {
 ::view-transition-new(root) { animation-duration: .32s; animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
 
 /* ── Consistent header icon sizing ────────────────────────── */
-.surface-header .btn-icon > svg.lucide { width: 15px; height: 15px; }
-.surface-header .btn-header > svg.lucide { width: 14px; height: 14px; }
+.surface-header .btn-icon > .i-icon { width: 15px; height: 15px; }
+.surface-header .btn-header > .i-icon { width: 14px; height: 14px; }
 
 /* ── Empty workspace ──────────────────────────────────────── */
 .empty-workspace { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
@@ -1968,10 +1968,10 @@ button[data-tooltip]:not(:focus-visible)::after {
   display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 12px;
   border-radius: 12px; border: 1px solid color-mix(in srgb, #b7791f 40%, transparent); background: color-mix(in srgb, #b7791f 8%, transparent);
 }
-.storage-persist > svg { color: #b7791f; }
+.storage-persist > .i-icon { color: #b7791f; }
 .storage-persist.is-persisted { border-color: color-mix(in srgb, #1a7f37 40%, transparent); background: color-mix(in srgb, #1a7f37 8%, transparent); }
-.storage-persist.is-persisted > svg { color: #1a7f37; }
-.dark .storage-persist.is-persisted > svg { color: #3fb950; }
+.storage-persist.is-persisted > .i-icon { color: #1a7f37; }
+.dark .storage-persist.is-persisted > .i-icon { color: #3fb950; }
 .storage-persist > div { display: grid; gap: 2px; }
 .storage-persist strong { font-size: 13px; color: var(--text-1); }
 .storage-persist span { font-size: 11.5px; color: var(--text-3); }
@@ -2122,7 +2122,7 @@ button[data-tooltip]:not(:focus-visible)::after {
   padding: 0 6px 0 calc(6px + var(--depth, 0) * 14px); border: 0; background: transparent; color: var(--text-2); font-size: 12.5px; text-align: left; cursor: pointer;
 }
 .file-tree-main svg { flex-shrink: 0; color: var(--text-4); }
-.is-folder .file-tree-main > svg:not(.file-tree-chevron) { color: var(--accent); }
+.is-folder .file-tree-main > .i-icon:not(.file-tree-chevron) { color: var(--accent); }
 .file-tree-chevron { transition: transform .15s ease; }
 .file-tree-chevron.is-open { transform: rotate(90deg); }
 .file-tree-chevron-spacer { width: 12px; flex-shrink: 0; }
@@ -2141,7 +2141,7 @@ button[data-tooltip]:not(:focus-visible)::after {
   font-size: 12px; color: var(--text-1);
   background: color-mix(in srgb, #b7791f 12%, var(--bg-toolbar)); border-bottom: 1px solid color-mix(in srgb, #b7791f 40%, transparent);
 }
-.disk-conflict > svg { color: #b7791f; flex-shrink: 0; }
+.disk-conflict > .i-icon { color: #b7791f; flex-shrink: 0; }
 .disk-conflict > span:first-of-type { flex: 1; min-width: 200px; }
 .disk-conflict-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .disk-conflict-actions button {
@@ -2553,7 +2553,7 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 /* ── Folder sync ──────────────────────────────────────────── */
 .folder-sync { display: grid; gap: 10px; padding: 14px; border-radius: 12px; border: 1px solid var(--border-light); background: var(--bg-editor); }
 .folder-sync-head { display: flex; gap: 10px; align-items: flex-start; }
-.folder-sync-head > svg { color: var(--accent); margin-top: 2px; flex-shrink: 0; }
+.folder-sync-head > .i-icon { color: var(--accent); margin-top: 2px; flex-shrink: 0; }
 .folder-sync-head div { display: grid; gap: 3px; }
 .folder-sync-head strong { font-size: 13px; color: var(--text-1); }
 .folder-sync-head span { font-size: 11.5px; line-height: 1.5; color: var(--text-3); }
@@ -2746,3 +2746,85 @@ html.high-contrast:is(.theme-sun, .theme-solarized, .theme-forest) .rm-prose :is
 @media (max-width: 900px) { .empty-actions > .empty-card { flex-basis: calc((100% - 2 * 12px) / 3); } }
 @media (max-width: 560px) { .empty-actions > .empty-card { flex-basis: calc((100% - 12px) / 2); } }
 .empty-card.is-primary { border-color: var(--accent-border); }
+
+/* ── Icons (IconPark) ─────────────────────────────────────────
+   Icons render with placeholder colours (#0a0b01–04); these rules map them to the theme:
+   01 outer stroke · 02 outer fill · 03 inner stroke · 04 inner fill. */
+.ip { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; line-height: 0; vertical-align: middle; }
+.ip svg { display: block; overflow: visible; }
+:root {
+  --ip-stroke: currentColor;                                                 /* small icons follow the text colour */
+  --ip-tone: var(--accent);                                                  /* two-tone tint */
+  --ip-tone-opacity: .32;
+  --ip-on-fill: var(--bg-preview);                                           /* details cut out of filled icons */
+  --ip-pop: #f59e0b;                                                         /* contrasting second colour */
+  --ip-mc-stroke: color-mix(in srgb, var(--accent) 45%, #14102a);            /* multi-colour outline (dark ink) */
+  --ip-mc-fill: var(--accent);                                               /* multi-colour body */
+  --ip-mc-inner-stroke: #ffffff;                                             /* lines drawn on the body */
+  --ip-mc-inner-fill: var(--ip-pop);
+}
+.dark { --ip-mc-stroke: color-mix(in srgb, var(--accent) 35%, #ffffff); --ip-mc-inner-stroke: #15112b; --ip-pop: #fbbf24; --ip-tone-opacity: .4; }
+/* A second colour that contrasts with each theme's accent. */
+.theme-sepia { --ip-pop: #2a9d8f; --ip-mc-stroke: #3b2a17; }
+.theme-forest { --ip-pop: #f59e0b; --ip-mc-stroke: #12301d; }
+.theme-sun { --ip-pop: #0ea5e9; --ip-mc-stroke: #3b1d04; }
+.theme-solarized { --ip-pop: #d33682; --ip-mc-stroke: #002b36; }
+.theme-ocean { --ip-pop: #fb7185; }
+.theme-nord { --ip-pop: #ebcb8b; }
+.theme-monokai { --ip-pop: #a6e22e; }
+.theme-neon { --ip-pop: rgb(var(--neon-2)); --ip-mc-stroke: rgb(var(--neon-2)); }
+
+/* Outer strokes (and filled bodies) */
+.ip [stroke="#0a0b01"] { stroke: var(--ip-stroke); }
+.ip [fill="#0a0b01"] { fill: var(--ip-stroke); }
+/* Two-tone: the second colour is a soft tint of the theme accent */
+.ip-two-tone [fill="#0a0b02"] { fill: var(--ip-tone); fill-opacity: var(--ip-tone-opacity); }
+.ip-two-tone [stroke="#0a0b02"] { stroke: var(--ip-tone); }
+/* Filled: inner details are cut out in the surface colour */
+.ip-filled [fill="#FFF" i] { fill: var(--ip-on-fill); }
+.ip-filled [stroke="#FFF" i] { stroke: var(--ip-on-fill); }
+/* Multi-colour */
+.ip-multi-color [stroke="#0a0b01"] { stroke: var(--ip-mc-stroke); }
+.ip-multi-color [fill="#0a0b01"] { fill: var(--ip-mc-stroke); }
+.ip-multi-color [fill="#0a0b02"] { fill: var(--ip-mc-fill); }
+.ip-multi-color [stroke="#0a0b02"] { stroke: var(--ip-mc-fill); }
+.ip-multi-color [stroke="#0a0b03"] { stroke: var(--ip-mc-inner-stroke); }
+.ip-multi-color [fill="#0a0b03"] { fill: var(--ip-mc-inner-stroke); }
+.ip-multi-color [fill="#0a0b04"] { fill: var(--ip-mc-inner-fill); }
+.ip-multi-color [stroke="#0a0b04"] { stroke: var(--ip-mc-inner-fill); }
+/* Outline (only where asked for) */
+.ip-outline [stroke="#0a0b01"] { stroke: currentColor; }
+
+/* Neon rainbow: multi-colour icons use two different neons. */
+.theme-neon-rainbow { --ip-mc-fill: rgb(var(--neon-1)); --ip-mc-inner-fill: rgb(var(--neon-3)); --ip-mc-stroke: rgb(var(--neon-2)); }
+
+/* High contrast: darker (or, on dark themes, brighter) outer and inner strokes, heavier lines,
+   lighter fills so the strokes stand out. */
+html.high-contrast {
+  --ip-mc-stroke: var(--text-1);
+  --ip-mc-inner-stroke: var(--text-1);
+  --ip-mc-fill: color-mix(in srgb, var(--accent) 28%, var(--bg-preview));
+  --ip-mc-inner-fill: color-mix(in srgb, var(--accent-2) 42%, var(--bg-preview));
+  --ip-tone-opacity: .22;
+}
+html.high-contrast .ip svg :is(path, rect, circle, ellipse, line, polyline, polygon)[stroke-width] { stroke-width: 4.8; }
+
+/* Logo: a filled page on the theme-coloured tile (same look as before). */
+.logo-glow .ip { --ip-stroke: #ffffff; --ip-on-fill: color-mix(in srgb, var(--accent) 70%, #1b1035); }
+html.high-contrast .logo-glow .ip { --ip-on-fill: #000; }
+
+/* Start screen: bigger multi-colour icons. */
+.empty-card-icon { width: 48px; height: 48px; border-radius: 14px; }
+
+/* Each start-screen tile has its own colour (the first follows the theme). */
+html:not(.high-contrast) .empty-card { --tile: var(--accent); }
+html:not(.high-contrast) .empty-card[data-hue="open"] { --tile: #f59e0b; }
+html:not(.high-contrast) .empty-card[data-hue="write"] { --tile: #ec4899; }
+html:not(.high-contrast) .empty-card[data-hue="url"] { --tile: #0ea5e9; }
+html:not(.high-contrast) .empty-card:is([data-hue="reopen"], [data-hue="restore"]) { --tile: #10b981; }
+html:not(.high-contrast) .empty-card-icon {
+  background: color-mix(in srgb, var(--tile) 13%, transparent);
+  border-color: color-mix(in srgb, var(--tile) 35%, transparent);
+}
+html:not(.high-contrast) .empty-card-icon .ip { --ip-mc-fill: var(--tile); --ip-stroke: var(--tile); }
+html:not(.high-contrast) .empty-card:hover { border-color: color-mix(in srgb, var(--tile) 45%, transparent); }

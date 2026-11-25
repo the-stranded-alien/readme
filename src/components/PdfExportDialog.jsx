@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
-import { FileDown, Loader2, X } from 'lucide-react'
+import { FileDown, Loader2, X } from '../icons'
 
 const PAGE_SIZES = [['A4', 'A4'], ['LETTER', 'US Letter']]
 const MARGINS = [['narrow', 'Narrow'], ['normal', 'Normal'], ['wide', 'Wide']]

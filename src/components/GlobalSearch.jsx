@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { CaseSensitive, FileText, Search, X } from 'lucide-react'
+import { CaseSensitive, FileText, Search, X } from '../icons'
 
 const MAX_PER_FILE = 50
 const MAX_TOTAL = 400

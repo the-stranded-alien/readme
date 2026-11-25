@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
-import { Keyboard, X } from 'lucide-react'
+import { Keyboard, X } from '../icons'
 import { shortcut } from '../platform'
 
 const GROUPS = [

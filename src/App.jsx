@@ -23,7 +23,8 @@ import {
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
   Settings, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
-} from 'lucide-react'
+} from './icons'
+import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readSyncFolder, readWorkspace, writeSyncFolder, writeWorkspace } from './workspaceDb'
 import { canSyncToFolder, folderPermission, readFolder, syncPath, writeToFolder } from './folderSync'
@@ -2277,6 +2278,8 @@ export default function App() {
   const isDark = themeById(theme).dark
   const isSepia = ENABLE_SEPIA_THEME && theme === 'sepia'
   const themeLabel = themeById(theme).label
+  // Small icons: two-tone on light themes, filled on dark ones.
+  const smallIconStyle = isDark ? 'filled' : 'two-tone'
   const [highContrast, setHighContrast] = useState(
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
@@ -4539,6 +4542,7 @@ ${fontCss}
   useEffect(() => { setTocVisible(view === 'preview' || view === 'focus') }, [view])
 
   return (
+    <IconStyleContext.Provider value={smallIconStyle}>
     <LiteContext.Provider value={appSettings.lite}>
     <div
       ref={appRef}
@@ -4571,7 +4575,7 @@ ${fontCss}
           <div className="flex items-center shrink-0">
             <div className="flex items-center gap-2.5 select-none">
               <div className="w-7 h-7 rounded-lg logo-glow flex items-center justify-center">
-                <FileText size={14} className="text-white" />
+                <FileText size={14} variant="filled" className="text-white" />
               </div>
               <span className="font-semibold text-[15px] tracking-tight" style={{ color: 'var(--text-1)' }}>
                 Read<span className="brand-accent" style={{ color: 'var(--accent)' }}>Me</span>
@@ -5758,5 +5762,6 @@ ${fontCss}
       )}
     </div>
     </LiteContext.Provider>
+    </IconStyleContext.Provider>
   )
 }

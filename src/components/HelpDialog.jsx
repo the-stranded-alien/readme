@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { CircleHelp, Search, X } from 'lucide-react'
+import { CircleHelp, Search, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { shortcut } from '../platform'
 

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, Info, Palette, RefreshCw, Settings, Sparkles, X } from 'lucide-react'
+import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, Info, Palette, RefreshCw, Settings, Sparkles, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
 

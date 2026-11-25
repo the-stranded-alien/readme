@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   CalendarDays, Clock, Heading1, Heading2, Heading3, Image, Info, Lightbulb, Link, List, ListChecks, ListOrdered, Minus,
   Quote, Sigma, SquareCode, Superscript, Table, TriangleAlert, Workflow,
-} from 'lucide-react'
+} from '../icons'
 
 const ICONS = { CalendarDays, Clock, Heading1, Heading2, Heading3, Image, Info, Lightbulb, Link, List, ListChecks, ListOrdered, Minus, Quote, Sigma, SquareCode, Superscript, Table, TriangleAlert, Workflow }
 

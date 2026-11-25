@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, X } from 'lucide-react'
+import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, X } from '../icons'
 import { isModifiedFromDisk, labelColor } from '../fileUtils'
 
 const FILE_DRAG_TYPE = 'application/x-readme-file'

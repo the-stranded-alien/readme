@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ExternalLink, Hash, StickyNote } from 'lucide-react'
+import { ExternalLink, Hash, StickyNote } from '../icons'
 
 const SHOW_DELAY = 350
 const HIDE_DELAY = 160

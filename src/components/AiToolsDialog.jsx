@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Copy, FilePlus, Languages, Loader2, Sparkles, SpellCheck, X } from 'lucide-react'
+import { Check, Copy, FilePlus, Languages, Loader2, Sparkles, SpellCheck, X } from '../icons'
 import {
   TRANSLATION_LANGUAGES, aiSupport, applyCorrections, detectLanguage, proofread, summarize, translateMarkdown,
 } from '../onDeviceAi'

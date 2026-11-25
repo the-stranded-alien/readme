@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RotateCcw, X, ZoomIn, ZoomOut } from '../icons'
 
 const MIN_ZOOM = 1
 const MAX_ZOOM = 5
