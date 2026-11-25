@@ -267,7 +267,7 @@ export default function FileTabBar({
   const hasTabDrag = event => Array.from(event.dataTransfer?.types || []).includes(TAB_DRAG_TYPE)
 
   return (
-    <div className="file-tabs-bar no-print">
+    <nav className="file-tabs-bar no-print" aria-label="Files and commands">
       {onToggleFileTree && (
         <button type="button" onClick={onToggleFileTree} className={`file-tree-toggle${fileTreeOpen ? ' is-active' : ''}`}
           aria-label={fileTreeOpen ? 'Hide file tree' : 'Show file tree'} aria-pressed={Boolean(fileTreeOpen)} data-tooltip="Files and folders">
@@ -507,6 +507,6 @@ export default function FileTabBar({
           }}
         />
       )}
-    </div>
+    </nav>
   )
 }

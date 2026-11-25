@@ -846,15 +846,8 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
                   paddingLeft: `${depth * 14 + (depth > 0 ? 18 : 6)}px`,
                   animationDelay: `${Math.min(i * 25, 160)}ms`,
                 }}
+                // The whole row is clickable with a mouse; keyboard users use the heading button below.
                 onClick={() => onNavigate(h.id)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    onNavigate(h.id)
-                  }
-                }}
               >
                 {hasChildren ? (
                   <button
@@ -882,14 +875,17 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
                     )}
                   </span>
                 )}
-                <span className="truncate" style={{
-                  fontSize: h.level === 1 ? 13 : h.level === 2 ? 12 : 11.5,
-                  fontWeight: h.level === 1 ? 600 : h.level === 2 ? 500 : 400,
-                  letterSpacing: h.level === 1 ? '-0.01em' : 'normal',
-                  opacity: h.level === 3 && !isActive ? 0.75 : 1,
-                }}>
+                <button type="button" className="toc-link truncate"
+                  aria-current={isActive ? 'location' : undefined}
+                  onClick={event => { event.stopPropagation(); onNavigate(h.id) }}
+                  style={{
+                    fontSize: h.level === 1 ? 13 : h.level === 2 ? 12 : 11.5,
+                    fontWeight: h.level === 1 ? 600 : h.level === 2 ? 500 : 400,
+                    letterSpacing: h.level === 1 ? '-0.01em' : 'normal',
+                    opacity: h.level === 3 && !isActive ? 0.75 : 1,
+                  }}>
                   {h.text}
-                </span>
+                </button>
                 {onToggleBookmark && (
                   <button
                     type="button"
