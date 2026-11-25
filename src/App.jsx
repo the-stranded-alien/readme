@@ -1155,6 +1155,16 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
 
   return (
     <div className="file-tabs-bar no-print">
+      <button
+        type="button"
+        onClick={onCreate}
+        className="file-tab-add"
+        title="New file"
+        aria-label="New file"
+      >
+        <FilePlus size={12} />
+        <span>New</span>
+      </button>
       <div className="file-tabs-scroll" role="tablist" aria-label="Open files">
         {files.map(file => {
           const isActive = file.id === activeFileId
@@ -1245,22 +1255,9 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
           )
         })}
 
-        <button
-          type="button"
-          onClick={onCreate}
-          className="file-tab-add"
-          title="New file"
-          aria-label="New file"
-        >
-          <FilePlus size={12} />
-          <span>New</span>
-        </button>
       </div>
 
-      <span
-        className="file-tab-count hidden sm:inline-flex items-center self-center shrink-0"
-        style={{ fontSize: 10, fontVariantNumeric: 'tabular-nums', color: 'var(--text-3)', fontWeight: 600 }}
-      >
+      <span className="file-tab-count hidden sm:inline-flex" aria-label={`${files.length} open ${files.length === 1 ? 'file' : 'files'}`}>
         {files.length} {files.length === 1 ? 'file' : 'files'}
       </span>
       <div className="file-tabs-search-region">
