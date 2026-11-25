@@ -384,6 +384,12 @@ describe('advanced browser features', () => {
     expect(serialized).toContain('[x] ')
     expect(serialized).toContain('author: ')
     expect(definition.content.some(block => block.table?.headerRows === 1)).toBe(true)
+
+    const letter = await buildPdfDefinition('# A\n\n## B\n\ntext', { title: 'T', options: { pageSize: 'LETTER', margins: 'wide', toc: true, paper: 'sepia', diagrams: false } })
+    expect(letter.pageSize).toBe('LETTER')
+    expect(letter.pageMargins[0]).toBe(72)
+    expect(letter.content[0].toc).toBeTruthy()
+    expect(typeof letter.background).toBe('function')
   })
 
   it('downloads a generated PDF instead of opening a print window', async () => {
@@ -392,9 +398,13 @@ describe('advanced browser features', () => {
     const open = vi.spyOn(window, 'open')
     installApp()
     fireEvent.click(screen.getByRole('button', { name: 'Download and export options' }))
-    fireEvent.click(await screen.findByText('Download PDF'))
+    fireEvent.click(await screen.findByText('Download PDF…'))
+    const dialog = await screen.findByRole('dialog', { name: 'Export PDF' })
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'US Letter' }))
+    fireEvent.submit(dialog)
     await waitFor(() => expect(exportMarkdownPdf).toHaveBeenCalledOnce())
     expect(exportMarkdownPdf.mock.calls[0][1].fileName).toMatch(/\.pdf$/)
+    expect(exportMarkdownPdf.mock.calls[0][1].options).toMatchObject({ pageSize: 'LETTER', margins: 'normal' })
     expect(open).not.toHaveBeenCalled()
     vi.doUnmock('../pdfExport')
   })
@@ -551,6 +561,38 @@ describe('advanced browser features', () => {
     fireEvent.change(screen.getByLabelText('Word goal for this file'), { target: { value: '1000' } })
     fireEvent.submit(screen.getByLabelText('Word goal for this file').closest('form'))
     expect(document.querySelector('.writing-goal-trigger').getAttribute('aria-label')).toMatch(/of 1000 words/)
+  })
+
+  it('builds a Word document with headings, lists, tables and footnotes', async () => {
+    const { buildDocx } = await import('../docxExport.js')
+    const { Packer } = await import('docx')
+    const md = ['# Title', '', 'Text with **bold**, a [link](https://example.com) and a note[^1].', '', '1. one', '2. two', '', '- [x] task', '', '| a | b |', '|---|--:|', '| 1 | 2 |', '', '> [!NOTE]', '> Callout', '', '```js', 'const x = 1', '```', '', '[^1]: Footnote text.'].join('\n')
+    const document = await buildDocx(md, { title: 'Title', meta: [{ key: 'author', value: 'Me' }] })
+    const buffer = await Packer.toBuffer(document)
+    expect(buffer.byteLength).toBeGreaterThan(3000)
+    const { default: JSZip } = await import('jszip')
+    const zip = await JSZip.loadAsync(buffer)
+    const xml = await zip.file('word/document.xml').async('string')
+    expect(xml).toContain('Heading1')
+    expect(xml).toContain('Callout')
+    expect(xml).toContain('const x = 1')
+    expect(xml).toContain('w:tbl')
+    expect(await zip.file('word/footnotes.xml').async('string')).toContain('Footnote text.')
+  })
+
+  it('round-trips share links and opens them read-only with a save option', async () => {
+    const { encodeSharePayload, decodeSharePayload } = await import('../shareLink.js')
+    const text = '# Shared ✨\n\nHello **world** — ünïcödé'
+    expect(await decodeSharePayload(await encodeSharePayload(text))).toBe(text)
+
+    window.location.hash = `#share=${await encodeSharePayload('# From a friend\n\nShared body')}&name=Friend.md`
+    installApp()
+    const view = await screen.findByRole('dialog', { name: 'Shared document: Friend.md' })
+    expect(view).toHaveTextContent('Shared body')
+    fireEvent.click(within(view).getByRole('button', { name: /Save a copy/ }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Shared document/ })).toBeNull())
+    expect(screen.getAllByRole('tab').some(tab => tab.getAttribute('aria-label') === 'Friend.md')).toBe(true)
+    expect(window.location.hash).toBe('')
   })
 
   it('collapses and expands heading sections, individually and all at once', async () => {

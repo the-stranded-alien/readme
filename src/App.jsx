@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { readWorkspace, writeWorkspace } from './workspaceDb'
@@ -32,6 +32,9 @@ import FileDiffView from './components/FileDiffView'
 import FileTabBar from './components/FileTabBar'
 import ImageLightbox from './components/ImageLightbox'
 import LinkPreview from './components/LinkPreview'
+import PdfExportDialog from './components/PdfExportDialog'
+import { buildShareUrl, readShareFromHash } from './shareLink'
+import { EXPORT_EXTRA_CSS, embeddedFontCss } from './htmlExport'
 
 // ── Custom view icons ──────────────────────────────────────────
 const SplitEqualIcon = () => (
@@ -1110,6 +1113,8 @@ function DownloadMenuButton({
   onDownloadMd,
   onExportPdf,
   onExportHtml,
+  onExportDocx,
+  onCopyShareLink,
   onExportZip,
 }) {
   const [open, setOpen] = useState(false)
@@ -1180,7 +1185,7 @@ function DownloadMenuButton({
           >
             <span className="flex items-center gap-2">
               <FileDown size={13} style={{ color: 'var(--accent)' }} />
-              <span>Download PDF</span>
+              <span>Download PDF…</span>
             </span>
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
               style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
@@ -1201,6 +1206,38 @@ function DownloadMenuButton({
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
               style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
               .html
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="download-menu-item"
+            disabled={!canExportPdf}
+            onClick={() => { setOpen(false); onExportDocx() }}
+          >
+            <span className="flex items-center gap-2">
+              <FileText size={13} style={{ color: 'var(--accent)' }} />
+              <span>Export Word Document</span>
+            </span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+              .docx
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="download-menu-item"
+            disabled={!canExportPdf}
+            onClick={() => { setOpen(false); onCopyShareLink() }}
+          >
+            <span className="flex items-center gap-2">
+              <Share2 size={13} style={{ color: 'var(--accent)' }} />
+              <span>Copy Share Link</span>
+            </span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+              link
             </span>
           </button>
           <button
@@ -2789,7 +2826,71 @@ export default function App() {
   // Build a real PDF from the Markdown source (pdfmake) so the output has
   // selectable text and consistent document styling.
   const [pdfExporting, setPdfExporting] = useState(false)
-  const handleExportPdf = useCallback(async () => {
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
+  // Share links + transient toast messages.
+  const [toast, setToast] = useState(null)
+  useEffect(() => {
+    if (!toast) return undefined
+    const timer = setTimeout(() => setToast(null), toast.duration ?? 3200)
+    return () => clearTimeout(timer)
+  }, [toast])
+  const handleCopyShareLink = useCallback(async () => {
+    if (!activeFile || !content.trim()) return
+    try {
+      const url = await buildShareUrl(content, fileName)
+      await navigator.clipboard.writeText(url)
+      const kb = (url.length / 1024).toFixed(1)
+      setToast(url.length > 64_000
+        ? { message: `Share link copied (${kb} KB). Very long links can be cut off by some chat apps.`, tone: 'warning', duration: 6000 }
+        : { message: `Share link copied (${kb} KB). Anyone with the link can read this document.`, tone: 'success' })
+    } catch (error) {
+      console.error('Share link failed', error)
+      setToast({ message: 'Could not create a share link in this browser.', tone: 'warning' })
+    }
+  }, [activeFile, content, fileName])
+  const [sharedDoc, setSharedDoc] = useState(null)
+  useEffect(() => {
+    const load = () => {
+      readShareFromHash(window.location.hash)
+        .then(doc => { if (doc) setSharedDoc(doc) })
+        .catch(() => setToast({ message: 'This share link is damaged or incomplete.', tone: 'warning', duration: 5000 }))
+    }
+    load()
+    window.addEventListener('hashchange', load)
+    return () => window.removeEventListener('hashchange', load)
+  }, [])
+  const closeSharedDoc = useCallback(() => {
+    setSharedDoc(null)
+    if (window.location.hash.includes('share=')) history.replaceState(null, '', window.location.pathname + window.location.search)
+  }, [])
+  const saveSharedCopy = useCallback(() => {
+    if (!sharedDoc) return
+    markWorkspaceEdit()
+    const id = createFileId()
+    setFiles(prev => {
+      const taken = new Set(prev.map(f => f.name.toLowerCase()))
+      const name = taken.has(sharedDoc.name.toLowerCase()) ? makeDuplicateFileName(sharedDoc.name, prev.map(f => f.name)) : sharedDoc.name
+      return [...prev, { id, name, content: sharedDoc.content }]
+    })
+    setActiveFileId(id)
+    setActiveHeadingId(null)
+    closeSharedDoc()
+    setToast({ message: 'Saved a copy to your files.', tone: 'success' })
+  }, [sharedDoc, markWorkspaceEdit, closeSharedDoc])
+
+  const handleExportDocx = useCallback(async () => {
+    if (!activeFile || !markdownBody.trim()) return
+    const baseName = (fileName || 'document').replace(/\.[^.]+$/, '') || 'document'
+    try {
+      const { exportMarkdownDocx } = await import('./docxExport')
+      await exportMarkdownDocx(markdownBody, { title: headings[0]?.text || baseName, fileName: `${baseName}.docx`, meta: frontmatterMeta })
+    } catch (error) {
+      console.error('Could not generate the Word document', error)
+      alert('Could not generate the Word document. Please try again.')
+    }
+  }, [activeFile, markdownBody, fileName, headings, frontmatterMeta])
+  const openPdfDialog = useCallback(() => { if (activeFile && markdownBody.trim()) setPdfDialogOpen(true) }, [activeFile, markdownBody])
+  const handleExportPdf = useCallback(async (options) => {
     if (!activeFile || !markdownBody.trim() || pdfExporting) return
     const baseName = (fileName || 'document').replace(/\.[^.]+$/, '') || 'document'
     setPdfExporting(true)
@@ -2799,7 +2900,9 @@ export default function App() {
         title: headings[0]?.text || baseName,
         fileName: `${baseName}.pdf`,
         meta: frontmatterMeta,
+        options,
       })
+      setPdfDialogOpen(false)
     } catch (error) {
       console.error('Could not generate the PDF', error)
       alert('Could not generate the PDF. Please try again.')
@@ -2853,12 +2956,15 @@ export default function App() {
     requestAnimationFrame(() => textareaRef.current?.focus())
   }, [view, markWorkspaceEdit])
 
-  const handleExportHtml = useCallback(() => {
+  const handleExportHtml = useCallback(async () => {
     const article = previewScrollRef.current?.querySelector('.book-page')
     if (!article) return
     const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
     const clone = article.cloneNode(true)
-    clone.querySelectorAll('.heading-anchor, .section-toggle, .code-actions, .book-folio-footer').forEach(el => el.remove())
+    clone.querySelectorAll('.heading-anchor, .section-toggle, .code-actions, .book-folio-footer, .focus-section-bar').forEach(el => el.remove())
+    // Collapsed / focus-hidden sections are part of the document: export everything.
+    clone.querySelectorAll('[data-collapsed]').forEach(el => el.removeAttribute('data-collapsed'))
+    const fontCss = await embeddedFontCss(activeFont.family)
 
     const html = `<!doctype html>
 <html lang="en"${isDark ? ' class="dark"' : ''}>
@@ -2882,6 +2988,8 @@ export default function App() {
   img { max-width: 100%; border-radius: 10px; }
   .frontmatter-card { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
   .frontmatter-pill { padding: 3px 10px; border-radius: 99px; font-size: 12px; border: 1px solid ${isDark ? '#262842' : isSepia ? '#d8d2c8' : '#dfe2f0'}; }
+${EXPORT_EXTRA_CSS}
+${fontCss}
 </style>
 </head>
 <body><div class="page">${clone.innerHTML}</div></body>
@@ -2983,7 +3091,9 @@ export default function App() {
     ...(activeFile ? [
       { id: 'dl-md', label: 'Download Markdown (.md)', hint: 'Export', icon: Download, run: handleDownload },
       { id: 'dl-html', label: 'Export Standalone HTML (.html)', hint: 'Export', icon: FileCode2, run: handleExportHtml },
-    { id: 'dl-pdf', label: 'Download PDF', hint: 'Export', icon: FileDown, run: handleExportPdf },
+    { id: 'dl-pdf', label: 'Download PDF…', hint: 'Export', icon: FileDown, run: openPdfDialog },
+    { id: 'dl-docx', label: 'Export Word Document (.docx)', hint: 'Export', icon: FileText, run: handleExportDocx },
+    { id: 'share-link', label: 'Copy share link', hint: 'Share', icon: Share2, run: handleCopyShareLink },
     ] : []),
     ...(files.length > 0 ? [
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
@@ -2991,7 +3101,7 @@ export default function App() {
   ], [
     handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, syncScroll, activeFile, files.length, view, handleDownload,
-    handleExportHtml, handleExportPdf, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
+    handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
   ])
 
@@ -3076,8 +3186,10 @@ export default function App() {
               canExportPdf={Boolean(activeFile && content.trim())}
               fileCount={files.length}
               onDownloadMd={handleDownload}
-              onExportPdf={handleExportPdf}
+              onExportPdf={openPdfDialog}
               onExportHtml={handleExportHtml}
+              onExportDocx={handleExportDocx}
+              onCopyShareLink={handleCopyShareLink}
               onExportZip={handleExportZip}
             />
             <button onClick={handleImportUrl} className="btn-icon hidden sm:flex" data-tooltip="Import Markdown from URL" aria-label="Import Markdown from URL">
@@ -3751,6 +3863,48 @@ export default function App() {
       )}
 
       <LinkPreview rootRef={previewScrollRef} disabled={!content.trim()} />
+
+      {sharedDoc && (
+        <div className="shared-doc-view anim-fade-in" role="dialog" aria-modal="true" aria-label={`Shared document: ${sharedDoc.name}`}>
+          <div className="shared-doc-bar">
+            <div className="shared-doc-title">
+              <Share2 size={14} aria-hidden="true" />
+              <span className="truncate">{sharedDoc.name}</span>
+              <span className="shared-doc-badge">Read-only</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" className="pdf-dialog-primary" onClick={saveSharedCopy}><Save size={13} />Save a copy</button>
+              <button type="button" className="btn-icon" onClick={closeSharedDoc} aria-label="Close shared document"><X size={15} /></button>
+            </div>
+          </div>
+          <div className="shared-doc-scroll surface-preview">
+            <article className="book-page px-6 sm:px-11 md:px-14 py-8 sm:py-11" style={{ maxWidth: '860px' }}>
+              <div className="rm-prose" style={{ fontSize: READER_SIZES[readerPrefs.size]?.px ?? '17px', fontFamily: activeFont.family }}>
+                <MarkdownRenderer content={parseFrontmatter(sharedDoc.content).body} dark={isDark} />
+              </div>
+            </article>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`app-toast anim-pop-in is-${toast.tone || 'info'}`} role="status" aria-live="polite">
+          {toast.tone === 'warning' ? <TriangleAlert size={14} /> : <Check size={14} />}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
+      {pdfDialogOpen && (
+        <PdfExportDialog
+          fileName={(fileName || 'document').replace(/\.[^.]+$/, '') + '.pdf'}
+          hasFrontmatter={frontmatterMeta.length > 0}
+          hasHeadings={headings.length > 0}
+          hasDiagrams={/```mermaid|\$\$/.test(markdownBody)}
+          busy={pdfExporting}
+          onExport={handleExportPdf}
+          onClose={() => setPdfDialogOpen(false)}
+        />
+      )}
 
       {/* ── Image lightbox ────────────────────────────── */}
       {lightbox && (
