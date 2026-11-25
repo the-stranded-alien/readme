@@ -1412,9 +1412,6 @@ function loadReadingPetPrefs() {
       'bubbleEnabled', 'meow', 'rememberPosition', 'avoidControls', 'visitHeadings',
     ]
     const normalizedBooleans = Object.fromEntries(boolPrefs.map(key => [key, typeof saved[key] === 'boolean' ? saved[key] : defaults[key]]))
-    const validSprite = typeof saved.customSprite === 'string' && saved.customSprite.startsWith('data:image/') && saved.customSprite.length < 400_000
-      ? saved.customSprite
-      : ''
     const catProfiles = Array.isArray(saved.catProfiles)
       ? saved.catProfiles.slice(0, 10).map(profile => ({
         skin: READING_PET_SKINS.includes(profile?.skin) ? profile.skin : defaults.skin,
@@ -1431,7 +1428,7 @@ function loadReadingPetPrefs() {
       scale: Number.isFinite(saved.scale) ? Math.min(1.75, Math.max(.75, saved.scale)) : defaults.scale,
       catCount: Number.isFinite(saved.catCount) ? Math.min(10, Math.max(1, Math.round(saved.catCount))) : defaults.catCount,
       catProfiles,
-      customSprite: validSprite,
+      customSprite: '',
       freerunChance: Number.isFinite(saved.freerunChance) ? Math.min(.2, Math.max(.01, saved.freerunChance)) : defaults.freerunChance,
       animationSpeed: Number.isFinite(saved.animationSpeed) ? Math.min(2, Math.max(.5, saved.animationSpeed)) : defaults.animationSpeed,
       idleThreshold: Number.isFinite(saved.idleThreshold) ? Math.min(5000, Math.max(400, saved.idleThreshold)) : defaults.idleThreshold,
@@ -1447,11 +1444,9 @@ function ReadingPetFooter() {
   const footerRef = useRef(null)
   const catRefs = useRef([])
   const widgetRef = useRef(null)
-  const spriteInputRef = useRef(null)
   const [prefs, setPrefs] = useState(loadReadingPetPrefs)
   const [footerBounds, setFooterBounds] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [spriteError, setSpriteError] = useState('')
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1574,32 +1569,6 @@ function ReadingPetFooter() {
     profiles[index] = { ...base, [key]: value }
     return { ...current, catProfiles: profiles }
   })
-  const handleSpriteUpload = event => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    if (file.type !== 'image/png' || file.size > 256 * 1024) {
-      setSpriteError('Choose a PNG under 256 KB.')
-      return
-    }
-    const reader = new FileReader()
-    reader.onerror = () => setSpriteError('Could not read that image.')
-    reader.onload = () => {
-      const source = String(reader.result || '')
-      const image = new Image()
-      image.onerror = () => setSpriteError('That image could not be opened.')
-      image.onload = () => {
-        if (image.naturalWidth !== 256 || image.naturalHeight !== 128) {
-          setSpriteError('Use a 256 × 128 pixel sprite sheet.')
-          return
-        }
-        setSpriteError('')
-        updatePref('customSprite', source)
-      }
-      image.src = source
-    }
-    reader.readAsDataURL(file)
-  }
   return (
     <>
       <footer ref={footerRef} className="reading-pet-footer no-print" aria-label="Reading companion">
@@ -1622,8 +1591,7 @@ function ReadingPetFooter() {
                 <button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close pet settings"><X size={14} /></button>
               </div>
               <div className="reading-pet-options">
-                <section className="reading-pet-section" aria-label="Appearance">
-                  <h3>Appearance</h3>
+                <section className="reading-pet-section" aria-label="Basic settings">
                   <label className="reading-pet-setting">
                     <span>Coat</span>
                     <ReadingPetCoatDropdown value={prefs.skin} onChange={skin => updatePref('skin', skin)} />
@@ -1646,62 +1614,6 @@ function ReadingPetFooter() {
                       <input type="range" min="0.75" max="1.75" step="0.25" value={prefs.scale} onChange={event => updatePref('scale', Number(event.target.value))} aria-label="Cat size" />
                     </label>
                   </div>
-                  <ReadingPetToggle label="Customize each cat" checked={prefs.individualCats} onChange={value => updatePref('individualCats', value)} />
-                  {prefs.individualCats && (
-                    <div className="reading-pet-cat-list">
-                      {catAppearances.map((appearance, index) => (
-                        <div className="reading-pet-cat-profile" key={`cat-profile-${index}`}>
-                          <strong>Cat {index + 1}</strong>
-                          <ReadingPetCoatDropdown value={appearance.skin} ariaLabel={`Cat ${index + 1} coat`} onChange={skin => updateCatProfile(index, 'skin', skin)} />
-                          <label className="reading-pet-setting reading-pet-range">
-                            <span>Size <b>{appearance.scale.toFixed(2)}×</b></span>
-                            <input type="range" min="0.75" max="1.75" step="0.25" value={appearance.scale} onChange={event => updateCatProfile(index, 'scale', Number(event.target.value))} aria-label={`Cat ${index + 1} size`} />
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <input ref={spriteInputRef} className="reading-pet-file-input" type="file" accept="image/png" onChange={handleSpriteUpload} aria-label="Upload custom cat sprite" />
-                  <div className="reading-pet-sprite-actions">
-                    <button type="button" className="reading-pet-secondary-button" onClick={() => spriteInputRef.current?.click()}>
-                      <Upload size={12} /> {prefs.customSprite ? 'Replace artwork' : 'Upload custom artwork'}
-                    </button>
-                    {prefs.customSprite && <button type="button" className="reading-pet-text-button" onClick={() => updatePref('customSprite', '')}>Reset</button>}
-                  </div>
-                  <p className={`reading-pet-hint${spriteError ? ' is-error' : ''}`}>{spriteError || (prefs.customSprite ? 'Custom 256 × 128 sprite is active.' : 'PNG sprite sheet, 256 × 128 pixels, max 256 KB.')}</p>
-                </section>
-
-                <section className="reading-pet-section" aria-label="Behavior">
-                  <h3>Behavior</h3>
-                  <ReadingPetToggle label="Sleep when idle" checked={prefs.sleepEnabled} onChange={value => updatePref('sleepEnabled', value)} />
-                  <ReadingPetToggle label="Zoomies while roaming" checked={prefs.zoomies} onChange={value => updatePref('zoomies', value)} disabled={!prefs.roaming} />
-                  {prefs.zoomies && prefs.roaming && <label className="reading-pet-setting reading-pet-range"><span>Zoomies chance <b>{Math.round(prefs.freerunChance * 100)}%</b></span><input type="range" min="0.01" max="0.2" step="0.01" value={prefs.freerunChance} onChange={event => updatePref('freerunChance', Number(event.target.value))} aria-label="Zoomies chance" /></label>}
-                  <div className="reading-pet-popover-sliders">
-                    <label className="reading-pet-setting reading-pet-range"><span>Idle after <b>{(prefs.idleThreshold / 1000).toFixed(1)}s</b></span><input type="range" min="400" max="5000" step="200" value={prefs.idleThreshold} onChange={event => updatePref('idleThreshold', Number(event.target.value))} aria-label="Idle animation delay" /></label>
-                    <label className="reading-pet-setting reading-pet-range"><span>Animation <b>{prefs.animationSpeed.toFixed(1)}×</b></span><input type="range" min="0.5" max="2" step="0.1" value={prefs.animationSpeed} onChange={event => updatePref('animationSpeed', Number(event.target.value))} aria-label="Idle animation speed" /></label>
-                  </div>
-                </section>
-
-                <section className="reading-pet-section" aria-label="Page reactions">
-                  <h3>Page reactions</h3>
-                  <ReadingPetToggle label="Nap while I type" checked={prefs.napWhileTyping} onChange={value => updatePref('napWhileTyping', value)} disabled={!prefs.roaming} />
-                  <ReadingPetToggle label="Follow keyboard focus" checked={prefs.followFocus} onChange={value => updatePref('followFocus', value)} disabled={!prefs.roaming} />
-                  <ReadingPetToggle label="Perch on hovered controls" checked={prefs.perchOnHover} onChange={value => updatePref('perchOnHover', value)} disabled={!prefs.roaming} />
-                </section>
-
-                <section className="reading-pet-section" aria-label="Play">
-                  <h3>Play</h3>
-                  <ReadingPetToggle label="Allow keyboard petting" checked={prefs.pettable} onChange={value => updatePref('pettable', value)} />
-                  <ReadingPetToggle label="Drag and toss" checked={prefs.grabbable} onChange={value => updatePref('grabbable', value)} disabled={!prefs.roaming} />
-                  <ReadingPetToggle label="Drop fish treats on double-click" checked={prefs.treats} onChange={value => updatePref('treats', value)} disabled={!prefs.roaming} />
-                  <ReadingPetToggle label="Thought bubbles" checked={prefs.bubbleEnabled} onChange={value => updatePref('bubbleEnabled', value)} />
-                  {prefs.bubbleEnabled && <label className="reading-pet-setting"><span>Thoughts (one per line)</span><textarea value={prefs.bubbleText} maxLength={180} onChange={event => updatePref('bubbleText', event.target.value)} placeholder="A little reading break" aria-label="Pet thought bubbles" /></label>}
-                  <ReadingPetToggle label="Meow sounds" checked={prefs.meow} onChange={value => updatePref('meow', value)} />
-                  {prefs.meow && <label className="reading-pet-setting reading-pet-range"><span>Volume <b>{Math.round(prefs.volume * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value={prefs.volume} onChange={event => updatePref('volume', Number(event.target.value))} aria-label="Pet sound volume" /></label>}
-                </section>
-
-                <section className="reading-pet-section" aria-label="Movement">
-                  <h3>Movement</h3>
                   <div className="reading-pet-actions">
                     <button type="button" className="reading-pet-button reading-pet-roam" onClick={() => updatePref('roaming', !prefs.roaming)} aria-pressed={prefs.roaming}>
                       {prefs.roaming ? <PanelBottom size={13} /> : <Footprints size={13} />}
@@ -1712,11 +1624,68 @@ function ReadingPetFooter() {
                       <span>{prefs.enabled ? 'Disable' : 'Enable'}</span>
                     </button>
                   </div>
+                </section>
+
+                <details className="reading-pet-advanced">
+                  <summary>Advanced</summary>
+                  <div className="reading-pet-advanced-options">
+                    <section className="reading-pet-section" aria-label="Appearance">
+                      <h3>Appearance</h3>
+                      <ReadingPetToggle label="Customize each cat" checked={prefs.individualCats} onChange={value => updatePref('individualCats', value)} />
+                      {prefs.individualCats && (
+                        <div className="reading-pet-cat-list">
+                          {catAppearances.map((appearance, index) => (
+                            <div className="reading-pet-cat-profile" key={`cat-profile-${index}`}>
+                              <strong>Cat {index + 1}</strong>
+                              <ReadingPetCoatDropdown value={appearance.skin} ariaLabel={`Cat ${index + 1} coat`} onChange={skin => updateCatProfile(index, 'skin', skin)} />
+                              <label className="reading-pet-setting reading-pet-range">
+                                <span>Size <b>{appearance.scale.toFixed(2)}×</b></span>
+                                <input type="range" min="0.75" max="1.75" step="0.25" value={appearance.scale} onChange={event => updateCatProfile(index, 'scale', Number(event.target.value))} aria-label={`Cat ${index + 1} size`} />
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+
+                    <section className="reading-pet-section" aria-label="Behavior">
+                  <h3>Behavior</h3>
+                  <ReadingPetToggle label="Sleep when idle" checked={prefs.sleepEnabled} onChange={value => updatePref('sleepEnabled', value)} />
+                  <ReadingPetToggle label="Zoomies while roaming" checked={prefs.zoomies} onChange={value => updatePref('zoomies', value)} disabled={!prefs.roaming} />
+                  {prefs.zoomies && prefs.roaming && <label className="reading-pet-setting reading-pet-range"><span>Zoomies chance <b>{Math.round(prefs.freerunChance * 100)}%</b></span><input type="range" min="0.01" max="0.2" step="0.01" value={prefs.freerunChance} onChange={event => updatePref('freerunChance', Number(event.target.value))} aria-label="Zoomies chance" /></label>}
+                  <div className="reading-pet-popover-sliders">
+                    <label className="reading-pet-setting reading-pet-range"><span>Idle after <b>{(prefs.idleThreshold / 1000).toFixed(1)}s</b></span><input type="range" min="400" max="5000" step="200" value={prefs.idleThreshold} onChange={event => updatePref('idleThreshold', Number(event.target.value))} aria-label="Idle animation delay" /></label>
+                    <label className="reading-pet-setting reading-pet-range"><span>Animation <b>{prefs.animationSpeed.toFixed(1)}×</b></span><input type="range" min="0.5" max="2" step="0.1" value={prefs.animationSpeed} onChange={event => updatePref('animationSpeed', Number(event.target.value))} aria-label="Idle animation speed" /></label>
+                  </div>
+                    </section>
+
+                    <section className="reading-pet-section" aria-label="Page reactions">
+                  <h3>Page reactions</h3>
+                  <ReadingPetToggle label="Nap while I type" checked={prefs.napWhileTyping} onChange={value => updatePref('napWhileTyping', value)} disabled={!prefs.roaming} />
+                  <ReadingPetToggle label="Follow keyboard focus" checked={prefs.followFocus} onChange={value => updatePref('followFocus', value)} disabled={!prefs.roaming} />
+                  <ReadingPetToggle label="Perch on hovered controls" checked={prefs.perchOnHover} onChange={value => updatePref('perchOnHover', value)} disabled={!prefs.roaming} />
+                    </section>
+
+                    <section className="reading-pet-section" aria-label="Play">
+                  <h3>Play</h3>
+                  <ReadingPetToggle label="Allow keyboard petting" checked={prefs.pettable} onChange={value => updatePref('pettable', value)} />
+                  <ReadingPetToggle label="Drag and toss" checked={prefs.grabbable} onChange={value => updatePref('grabbable', value)} disabled={!prefs.roaming} />
+                  <ReadingPetToggle label="Drop fish treats on double-click" checked={prefs.treats} onChange={value => updatePref('treats', value)} disabled={!prefs.roaming} />
+                  <ReadingPetToggle label="Thought bubbles" checked={prefs.bubbleEnabled} onChange={value => updatePref('bubbleEnabled', value)} />
+                  {prefs.bubbleEnabled && <label className="reading-pet-setting"><span>Thoughts (one per line)</span><textarea rows="2" value={prefs.bubbleText} maxLength={180} onChange={event => updatePref('bubbleText', event.target.value)} aria-label="Pet thought bubbles" /></label>}
+                  <ReadingPetToggle label="Meow sounds" checked={prefs.meow} onChange={value => updatePref('meow', value)} />
+                  {prefs.meow && <label className="reading-pet-setting reading-pet-range"><span>Volume <b>{Math.round(prefs.volume * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value={prefs.volume} onChange={event => updatePref('volume', Number(event.target.value))} aria-label="Pet sound volume" /></label>}
+                    </section>
+
+                    <section className="reading-pet-section" aria-label="Movement">
+                  <h3>Movement</h3>
                   <ReadingPetToggle label="Cats follow one another" checked={prefs.parade} onChange={value => updatePref('parade', value)} disabled={prefs.catCount < 2} />
                   <ReadingPetToggle label="Remember roaming positions" checked={prefs.rememberPosition} onChange={value => updatePref('rememberPosition', value)} />
                   <ReadingPetToggle label="Avoid app toolbars" checked={prefs.avoidControls} onChange={value => updatePref('avoidControls', value)} disabled={!prefs.roaming} />
                   <ReadingPetToggle label="Visit document headings" checked={prefs.visitHeadings} onChange={value => updatePref('visitHeadings', value)} disabled={!prefs.roaming} />
-                </section>
+                    </section>
+                  </div>
+                </details>
               </div>
             </div>
           )}
@@ -1735,7 +1704,6 @@ function ReadingPetFooter() {
             key={`${prefs.roaming ? 'pet-screen-roam' : 'pet-footer-lane'}-${index}`}
             ref={cat => { catRefs.current[index] = cat }}
             skin={appearance.skin}
-            spriteSrc={prefs.customSprite || undefined}
             speed={prefs.speed}
             scale={appearance.scale}
             followCursor={prefs.roaming}
@@ -1754,7 +1722,7 @@ function ReadingPetFooter() {
             soundBasePath="/cat-sounds"
             zones={zones}
             zoneAttractionChance={prefs.roaming && prefs.visitHeadings ? .25 : 0}
-            bubbleEnabled={prefs.bubbleEnabled}
+            bubbleEnabled={prefs.bubbleEnabled && bubbleMessages.length > 0}
             bubbleText={bubbleMessages}
             pettable={prefs.pettable}
             persistPosition={prefs.rememberPosition}
