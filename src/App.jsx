@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, CircleHelp, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
@@ -40,7 +40,9 @@ import HistoryDialog from './components/HistoryDialog'
 import CodeEditor from './components/CodeEditor'
 import TemplateMenu from './components/TemplateMenu'
 import StorageDialog from './components/StorageDialog'
-import SettingsDialog from './components/SettingsDialog'
+import SettingsDialog, { ThemePicker } from './components/SettingsDialog'
+import HelpDialog from './components/HelpDialog'
+import { THEMES, THEME_IDS, availableThemes, nextTheme, themeById } from './themes'
 import TemplatesDialog from './components/TemplatesDialog'
 import SlashMenu from './components/SlashMenu'
 import FindReplacePanel from './components/FindReplacePanel'
@@ -2042,17 +2044,19 @@ function WritingGoal({ words, goal, sessionWords, activeMs, onGoalChange }) {
 export default function App() {
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('readme-theme')
-    return ['light', 'dark'].includes(saved) || (ENABLE_SEPIA_THEME && saved === 'sepia')
+    return THEME_IDS.includes(saved)
       ? saved
       : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
-  const isDark = theme === 'dark'
+  const isDark = themeById(theme).dark
   const isSepia = ENABLE_SEPIA_THEME && theme === 'sepia'
+  const themeLabel = themeById(theme).label
   const [highContrast, setHighContrast] = useState(
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
   const [appSettings, setAppSettings] = useState(() => {
-    try { return { hideAi: false, lite: false, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return { hideAi: false, lite: false } }
+    const defaults = { hideAi: false, lite: false, extraThemes: false }
+    try { return { ...defaults, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return defaults }
   })
   const updateAppSetting = useCallback((key, value) => setAppSettings(current => ({ ...current, [key]: value })), [])
   useEffect(() => {
@@ -2060,6 +2064,7 @@ export default function App() {
   }, [appSettings])
   useLayoutEffect(() => { document.documentElement.classList.toggle('lite-mode', appSettings.lite) }, [appSettings.lite])
   const [settingsOpen, setSettingsOpen] = useState(null) // section id when open
+  const [helpOpen, setHelpOpen] = useState(false)
   const hideAi = appSettings.hideAi
   const [initialWorkspace] = useState(loadInitialWorkspace)
   const [files, setFiles]               = useState(initialWorkspace.files)
@@ -2238,8 +2243,13 @@ export default function App() {
     const root = document.documentElement
     root.classList.toggle('dark', isDark)
     root.classList.toggle('theme-sepia', isSepia)
+    for (const item of THEMES) if (item.extra) root.classList.toggle(`theme-${item.id}`, theme === item.id)
     root.classList.toggle('high-contrast', highContrast)
-  }, [isDark, isSepia, highContrast])
+  }, [isDark, isSepia, highContrast, theme])
+  // Turning additional themes off while one is active falls back to Dark.
+  useEffect(() => {
+    if (!appSettings.extraThemes && themeById(theme).extra) setTheme('dark')
+  }, [appSettings.extraThemes, theme])
 
   useEffect(() => {
     try {
@@ -2277,12 +2287,12 @@ export default function App() {
 
   const toggleTheme = useCallback(() => {
     withThemeTransition(() => {
-      setTheme(t => {
-        if (!ENABLE_SEPIA_THEME) return t === 'dark' ? 'light' : 'dark'
-        return t === 'light' ? 'dark' : t === 'dark' ? 'sepia' : 'light'
-      })
+      setTheme(t => nextTheme(t, appSettings.extraThemes))
       setThemeKey(k => k + 1)
     })
+  }, [appSettings.extraThemes])
+  const chooseTheme = useCallback(id => {
+    withThemeTransition(() => { setTheme(id); setThemeKey(k => k + 1) })
   }, [])
   const toggleHighContrast = useCallback(() => {
     withThemeTransition(() => setHighContrast(h => !h))
@@ -3994,6 +4004,7 @@ ${fontCss}
     ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
     { id: 'shortcuts', label: 'Keyboard shortcuts', hint: '?', icon: Keyboard, run: () => setShortcutsOpen(true) },
+    { id: 'help', label: 'Help: how to use ReadMe', hint: 'Guide', icon: CircleHelp, run: () => setHelpOpen(true) },
     ...(activeFile ? [
       { id: 'history', label: 'Version history…', hint: 'File', icon: History, run: openHistory },
       { id: 'snapshot', label: 'Save a snapshot of this file', hint: 'File', icon: History, run: () => takeSnapshot(activeFile.id, content, 'Manual snapshot').then(list => list && setToast({ message: 'Snapshot saved to version history.', tone: 'success' })) },
@@ -4018,7 +4029,7 @@ ${fontCss}
     ] : []),
     { id: 'wide', label: readerPrefs.width === 'full' ? 'Switch to Book page width' : 'Expand to Wide mode', hint: 'Reader', icon: UnfoldHorizontal, run: () => setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' })) },
     { id: 'contrast', label: highContrast ? 'Disable High Contrast' : 'Enable High Contrast', hint: 'Theme', icon: Contrast, run: toggleHighContrast },
-    { id: 'theme', label: `Switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'Sepia' : isDark ? 'Light' : 'Dark'} mode`, hint: 'Theme', icon: ENABLE_SEPIA_THEME && theme === 'sepia' ? BookOpen : isDark ? Sun : Moon, run: toggleTheme },
+    { id: 'theme', label: `Switch to ${themeById(nextTheme(theme, appSettings.extraThemes)).label} mode`, hint: 'Theme', icon: ENABLE_SEPIA_THEME && theme === 'sepia' ? BookOpen : isDark ? Sun : Moon, run: toggleTheme },
     { id: 'sync', label: syncScroll ? 'Disable Synchronized Scroll' : 'Enable Synchronized Scroll', hint: 'Editor', icon: Link2, run: () => setSyncScroll(s => !s) },
     ...(activeFile ? [
       { id: 'dl-md', label: 'Download Markdown (.md)', hint: 'Export', icon: Download, run: handleDownload },
@@ -4035,7 +4046,7 @@ ${fontCss}
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
-    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi,
+    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes,
   ])
 
   const qualityIssues = useMemo(() => {
@@ -4183,8 +4194,11 @@ ${fontCss}
             >
               <Contrast size={15} />
             </button>
-            <button onClick={toggleTheme} data-tooltip={`Color mode: ${theme[0].toUpperCase()}${theme.slice(1)}`} aria-label={`Color mode ${theme}. Click to switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'sepia' : isDark ? 'light' : 'dark'} mode.`} className="btn-icon" key={themeKey}>
-              {ENABLE_SEPIA_THEME && theme === 'sepia'
+            <button onClick={toggleTheme} data-tooltip={`Color mode: ${themeLabel}`} aria-label={`Color mode ${theme}. Click to switch to ${nextTheme(theme, appSettings.extraThemes)} mode.`} className="btn-icon" key={themeKey}>
+              {theme === 'neon' ? <Zap size={15} className="theme-icon-enter" style={{ color: '#ff2bd6' }} />
+                : theme === 'ocean' ? <Waves size={15} className="theme-icon-enter" style={{ color: '#38bdf8' }} />
+                : theme === 'forest' ? <Leaf size={15} className="theme-icon-enter" style={{ color: '#2f7d4f' }} />
+                : ENABLE_SEPIA_THEME && theme === 'sepia'
                 ? <BookOpen size={15} className="theme-icon-enter" style={{ color: '#a16207' }} />
                 : isDark
                   ? <Sun size={15} className="theme-icon-enter" style={{ color: '#f59e0b' }} />
@@ -4194,6 +4208,9 @@ ${fontCss}
             {!appSettings.lite && <ReadingPetFooter />}
             <button type="button" onClick={() => setSettingsOpen('workspace')} className="btn-icon" data-tooltip="Settings" aria-label="Settings">
               <Settings size={15} />
+            </button>
+            <button type="button" onClick={() => setHelpOpen(true)} className="btn-icon tooltip-end" data-tooltip="How to use ReadMe" aria-label="Help: how to use ReadMe">
+              <CircleHelp size={15} />
             </button>
           </div>
         </div>
@@ -5062,6 +5079,7 @@ ${fontCss}
       )}
 
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {helpOpen && <HelpDialog onShortcuts={() => { setHelpOpen(false); setShortcutsOpen(true) }} onClose={() => setHelpOpen(false)} />}
 
       {aiOpen && activeFile && (
         <AiToolsDialog
@@ -5091,6 +5109,9 @@ ${fontCss}
         <PresentationMode
           markdown={markdownBody}
           renderMarkdown={markdown => <MarkdownRenderer content={markdown} dark={isDark} />}
+          themes={availableThemes(appSettings.extraThemes)}
+          theme={theme}
+          onTheme={chooseTheme}
           onClose={() => setPresenting(false)}
         />
       )}
@@ -5108,6 +5129,10 @@ ${fontCss}
           onDensity={setUiDensity}
           highContrast={highContrast}
           onHighContrast={value => { if (value !== highContrast) toggleHighContrast() }}
+          appearanceExtra={(
+            <ThemePicker themes={availableThemes(appSettings.extraThemes)} value={theme} onChange={chooseTheme}
+              extraThemes={appSettings.extraThemes} onExtraThemes={value => updateAppSetting('extraThemes', value)} />
+          )}
           onClose={() => setSettingsOpen(null)}
         />
       )}

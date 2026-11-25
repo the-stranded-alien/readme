@@ -1080,6 +1080,52 @@ describe('advanced browser features', () => {
     document.documentElement.classList.remove('lite-mode')
   })
 
+  it('offers additional themes from Settings, including Neon', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Appearance' }))
+    expect(within(dialog).queryByRole('radio', { name: 'Neon' })).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('switch', { name: /Additional themes/ }))
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Neon' }))
+    await waitFor(() => expect(document.documentElement).toHaveClass('theme-neon'))
+    expect(document.documentElement).toHaveClass('dark')
+    fireEvent.click(within(dialog).getByRole('switch', { name: /Additional themes/ }))
+    await waitFor(() => expect(document.documentElement).not.toHaveClass('theme-neon'))
+  })
+
+  it('switches theme inside presentation mode', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Present document as slides' }))
+    const show = await screen.findByRole('dialog', { name: /Presentation/ })
+    const before = document.documentElement.className
+    fireEvent.click(within(show).getByRole('button', { name: /Switch theme/ }))
+    await waitFor(() => expect(document.documentElement.className).not.toBe(before))
+  })
+
+  it('opens the help guide and searches it', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Help: how to use ReadMe' }))
+    const dialog = await screen.findByRole('dialog', { name: 'How to use ReadMe' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Search help' }), { target: { value: 'slash' } })
+    expect(within(dialog).getByText('Slash commands')).toBeInTheDocument()
+  })
+
+  it('explains why the browser refused to keep data', async () => {
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: {
+      estimate: async () => ({ usage: 1024, quota: 100 * 1024 * 1024 }),
+      persisted: async () => false,
+      persist: vi.fn(async () => false),
+    } })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Storage' }))
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Keep my data' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Couldn’t protect your data.')
+    delete navigator.storage
+  })
+
   it('collapses and expands heading sections, individually and all at once', async () => {
     installApp()
     const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })

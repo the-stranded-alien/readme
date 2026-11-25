@@ -7,12 +7,15 @@ import { formatBytes, requestPersistentStorage, storageStatus } from '../pwaInte
 export function StoragePanel() {
   const [status, setStatus] = useState(null)
   const [requesting, setRequesting] = useState(false)
+  const [failure, setFailure] = useState('')
   const refresh = useCallback(() => storageStatus().then(setStatus).catch(() => setStatus({ supported: false })), [])
   useEffect(() => { refresh() }, [refresh])
 
   const persist = async () => {
     setRequesting(true)
-    await requestPersistentStorage()
+    setFailure('')
+    const result = await requestPersistentStorage()
+    if (!result.granted) setFailure(result.reason)
     await refresh()
     setRequesting(false)
   }
@@ -41,10 +44,13 @@ export function StoragePanel() {
         </div>
         {!status.persisted && status.canPersist && (
           <button type="button" className="pdf-dialog-primary" onClick={persist} disabled={requesting}>
-            {requesting ? 'Asking…' : 'Keep my data'}
+            {requesting ? 'Asking…' : failure ? 'Try again' : 'Keep my data'}
           </button>
         )}
       </div>
+      {failure && !status.persisted && (
+        <p className="storage-failure" role="alert"><ShieldAlert size={14} aria-hidden="true" /><span><strong>Couldn’t protect your data.</strong> {failure}</span></p>
+      )}
     </>
   )
 }

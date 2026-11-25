@@ -45,8 +45,39 @@ export async function storageStatus() {
   return { supported: true, usage: estimate.usage ?? 0, quota: estimate.quota ?? 0, persisted: Boolean(persisted), canPersist: typeof storage.persist === 'function' }
 }
 
+/**
+ * Ask the browser to keep this site's data. Resolves to { granted, reason }:
+ * when it isn't granted, `reason` explains why in plain words.
+ */
 export async function requestPersistentStorage() {
-  try { return Boolean(await navigator.storage?.persist?.()) } catch { return false }
+  const storage = navigator.storage
+  if (typeof storage?.persist !== 'function') {
+    return { granted: false, reason: 'This browser does not let websites ask to keep their data. Back up your workspace regularly instead.' }
+  }
+  if (typeof window !== 'undefined' && window.isSecureContext === false) {
+    return { granted: false, reason: 'Storage can only be protected on a secure (https) page.' }
+  }
+  let permission = null
+  try { permission = (await navigator.permissions?.query({ name: 'persistent-storage' }))?.state ?? null } catch { /* not supported */ }
+  if (permission === 'denied') {
+    return { granted: false, reason: 'Keeping data is blocked for this site in your browser’s site settings. Allow “storage” there, or back up your workspace.' }
+  }
+  try {
+    if (await storage.persist()) return { granted: true }
+  } catch (error) {
+    return { granted: false, reason: `The browser reported an error: ${error?.message || error?.name || 'unknown error'}.` }
+  }
+  const standalone = typeof window !== 'undefined' && window.matchMedia?.('(display-mode: standalone)').matches
+  const chromium = typeof navigator !== 'undefined' && /Chrome|Chromium|Edg\//.test(navigator.userAgent)
+  if (chromium) {
+    return {
+      granted: false,
+      reason: standalone
+        ? 'Chrome decided not to protect the data yet — it grants this to sites you use often. Try again after using ReadMe for a while, and keep a backup.'
+        : 'Chrome only protects data for sites you use often, have bookmarked or installed as an app. Install ReadMe as an app (or bookmark it) and try again — or back up your workspace.',
+    }
+  }
+  return { granted: false, reason: 'The browser declined the request (you may have dismissed its prompt). Try again, or back up your workspace.' }
 }
 
 export function formatBytes(bytes) {

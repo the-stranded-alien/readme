@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Palette, X } from 'lucide-react'
 import { slideTitle, splitSlides } from '../presentation'
 
 /**
  * Full-screen slide view of the document (one slide per H1/H2). The slide
  * body is rendered with the app's own Markdown renderer (`renderMarkdown`).
  */
-export default function PresentationMode({ markdown, renderMarkdown, onClose, startAt = 0 }) {
+export default function PresentationMode({ markdown, renderMarkdown, onClose, startAt = 0, themes = [], theme, onTheme }) {
   const slides = useMemo(() => splitSlides(markdown), [markdown])
   const [index, setIndex] = useState(() => Math.min(startAt, slides.length - 1))
   const [fullscreen, setFullscreen] = useState(false)
@@ -14,6 +14,12 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
   const touchRef = useRef(null)
   const safeIndex = Math.min(index, slides.length - 1)
 
+  const cycleTheme = useCallback(() => {
+    if (!themes.length || !onTheme) return
+    const index = themes.findIndex(item => item.id === theme)
+    onTheme(themes[(index + 1) % themes.length].id)
+  }, [themes, theme, onTheme])
+  const currentTheme = themes.find(item => item.id === theme)
   const go = useCallback(step => setIndex(current => Math.max(0, Math.min(slides.length - 1, current + step))), [slides.length])
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -41,6 +47,7 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
     else if (key === 'Home') { event.preventDefault(); setIndex(0) }
     else if (key === 'End') { event.preventDefault(); setIndex(slides.length - 1) }
     else if (key === 'f') { event.preventDefault(); toggleFullscreen() }
+    else if (key === 't') { event.preventDefault(); cycleTheme() }
     else if (key === 'Escape' && !document.fullscreenElement) { event.preventDefault(); onClose() }
   }
 
@@ -73,6 +80,11 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
         <span className="presentation-counter" aria-live="polite">{safeIndex + 1} / {slides.length}</span>
         <button type="button" onClick={() => go(1)} disabled={safeIndex === slides.length - 1} aria-label="Next slide"><ChevronRight size={18} /></button>
         <span className="presentation-divider" />
+        {onTheme && themes.length > 1 && (
+          <button type="button" className="presentation-theme" onClick={cycleTheme} aria-label={`Theme: ${currentTheme?.label ?? theme}. Switch theme`} title="Switch theme (T)">
+            <Palette size={15} /><span>{currentTheme?.label}</span>
+          </button>
+        )}
         <button type="button" onClick={toggleFullscreen} aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title="Fullscreen (F)">
           {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
         </button>

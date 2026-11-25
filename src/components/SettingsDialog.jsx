@@ -13,6 +13,26 @@ const SECTIONS = [
   { id: 'about', label: 'About', icon: Info },
 ]
 
+/** Theme swatches + the "Additional themes" switch (shown in Appearance). */
+export function ThemePicker({ themes, value, onChange, extraThemes, onExtraThemes }) {
+  return (
+    <>
+      <div className="theme-picker" role="radiogroup" aria-label="Theme">
+        {themes.map(theme => (
+          <button key={theme.id} type="button" role="radio" aria-checked={value === theme.id}
+            className={`theme-swatch${value === theme.id ? ' is-active' : ''}`} onClick={() => onChange(theme.id)}>
+            <span className="theme-swatch-preview" style={{ background: theme.swatch[0] }}>
+              <span style={{ background: theme.swatch[1] }} />
+            </span>
+            {theme.label}
+          </button>
+        ))}
+      </div>
+      <SettingsToggle label="Additional themes" description="Adds Neon, Ocean and Forest to the theme switcher." checked={extraThemes} onChange={onExtraThemes} />
+    </>
+  )
+}
+
 export function SettingsToggle({ label, description, checked, onChange, disabled }) {
   return (
     <label className={`settings-toggle${disabled ? ' is-disabled' : ''}`}>
