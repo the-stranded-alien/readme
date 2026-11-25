@@ -45,7 +45,7 @@ import SettingsDialog, { FolderSyncCard, ThemePicker } from './components/Settin
 import HelpDialog from './components/HelpDialog'
 import { MARK_COLORS, rehypeMarks } from './rehypeMarks'
 import { CONTENT_FILTERS, applyContentFilter, clearContentFilter, filterLabel } from './contentFilter'
-import { THEMES, THEME_IDS, availableThemes, nextTheme, themeById } from './themes'
+import { ALL_THEME_CLASSES, THEME_IDS, availableThemes, nextTheme, themeById, themeClasses } from './themes'
 import TemplatesDialog from './components/TemplatesDialog'
 import SlashMenu from './components/SlashMenu'
 import FindReplacePanel from './components/FindReplacePanel'
@@ -2465,7 +2465,8 @@ export default function App() {
     const root = document.documentElement
     root.classList.toggle('dark', isDark)
     root.classList.toggle('theme-sepia', isSepia)
-    for (const item of THEMES) if (item.extra) root.classList.toggle(`theme-${item.id}`, theme === item.id)
+    const active = themeClasses(themeById(theme))
+    for (const name of ALL_THEME_CLASSES) root.classList.toggle(name, active.includes(name))
     root.classList.toggle('high-contrast', highContrast)
   }, [isDark, isSepia, highContrast, theme])
   // Turning additional themes off while one is active falls back to Dark.
@@ -4631,7 +4632,7 @@ ${fontCss}
               <Contrast size={15} />
             </button>
             <button onClick={toggleTheme} data-tooltip={`Color mode: ${themeLabel}`} aria-label={`Color mode ${theme}. Click to switch to ${nextTheme(theme, appSettings.extraThemes)} mode.`} className="btn-icon" key={themeKey}>
-              {theme === 'neon' ? <Zap size={15} className="theme-icon-enter" style={{ color: '#ff2bd6' }} />
+              {theme.startsWith('neon') ? <Zap size={15} className="theme-icon-enter" style={{ color: themeById(theme).swatch[1].startsWith('#') ? themeById(theme).swatch[1] : '#ffe600' }} />
                 : theme === 'ocean' ? <Waves size={15} className="theme-icon-enter" style={{ color: '#38bdf8' }} />
                 : theme === 'forest' ? <Leaf size={15} className="theme-icon-enter" style={{ color: '#2f7d4f' }} />
                 : ENABLE_SEPIA_THEME && theme === 'sepia'

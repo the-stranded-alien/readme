@@ -28,7 +28,7 @@ export function ThemePicker({ themes, value, onChange, extraThemes, onExtraTheme
           </button>
         ))}
       </div>
-      <SettingsToggle label="Additional themes" description="Adds Neon, Ocean and Forest to the theme switcher." checked={extraThemes} onChange={onExtraThemes} />
+      <SettingsToggle label="Additional themes" description="Adds Neon (pink, blue, green, purple and multicolour rainbow), Ocean and Forest to the theme switcher." checked={extraThemes} onChange={onExtraThemes} />
     </>
   )
 }
