@@ -1,5 +1,5 @@
 import { createContext, createElement, useContext, useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -33,6 +33,8 @@ import FileTabBar from './components/FileTabBar'
 import ImageLightbox from './components/ImageLightbox'
 import LinkPreview from './components/LinkPreview'
 import PdfExportDialog from './components/PdfExportDialog'
+import EmptyWorkspace from './components/EmptyWorkspace'
+import { shortcut } from './platform'
 import { buildShareUrl, readShareFromHash } from './shareLink'
 import { EXPORT_EXTRA_CSS, embeddedFontCss } from './htmlExport'
 
@@ -1709,6 +1711,18 @@ function initialSectionState(docKey, fileId, isLong) {
   }
 }
 
+// Cross-fades theme changes with the View Transitions API when available
+// (skipped for reduced motion). flushSync applies the new classes inside the
+// transition callback so the "after" snapshot is the new theme.
+function withThemeTransition(update) {
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  if (!document.startViewTransition || reduceMotion) { update(); return }
+  document.startViewTransition(() => flushSync(update))
+}
+
+// Smooth scrolling unless the user prefers reduced motion.
+const scrollBehavior = () => (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth')
+
 // Pinned tabs always sit before the others; order inside each group is kept.
 function orderPinnedFirst(list) {
   return [...list.filter(file => file.pinned), ...list.filter(file => !file.pinned)]
@@ -1995,11 +2009,16 @@ export default function App() {
   }, [deferredInstallPrompt])
 
   const toggleTheme = useCallback(() => {
-    setTheme(t => {
-      if (!ENABLE_SEPIA_THEME) return t === 'dark' ? 'light' : 'dark'
-      return t === 'light' ? 'dark' : t === 'dark' ? 'sepia' : 'light'
+    withThemeTransition(() => {
+      setTheme(t => {
+        if (!ENABLE_SEPIA_THEME) return t === 'dark' ? 'light' : 'dark'
+        return t === 'light' ? 'dark' : t === 'dark' ? 'sepia' : 'light'
+      })
+      setThemeKey(k => k + 1)
     })
-    setThemeKey(k => k + 1)
+  }, [])
+  const toggleHighContrast = useCallback(() => {
+    withThemeTransition(() => setHighContrast(h => !h))
   }, [])
 
   // Sync in-memory file list + active tab to browser localStorage (best-effort)
@@ -2129,7 +2148,7 @@ export default function App() {
       const scroller = previewScrollRef.current
       if (!scroller) return
       const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-      scroller.scrollTo({ top: maxScroll * bookmark.ratio, behavior: 'smooth' })
+      scroller.scrollTo({ top: maxScroll * bookmark.ratio, behavior: scrollBehavior() })
     })
   }, [activeFileId, readingBookmarks])
 
@@ -2263,7 +2282,7 @@ export default function App() {
     const container = previewScrollRef.current
     const scrollToHeading = () => {
       const elTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top
-      container.scrollBy({ top: elTop - 20, behavior: 'smooth' })
+      container.scrollBy({ top: elTop - 20, behavior: scrollBehavior() })
     }
     // Open every collapsed section that hides (or is owned by) this heading.
     const collapsedKeys = []
@@ -2366,7 +2385,7 @@ export default function App() {
     const hits = searchHitsRef.current
     if (!hits.length) return
     hits.forEach((m, i) => m.classList.toggle('current', i === searchIndex))
-    hits[searchIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    hits[searchIndex]?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
   }, [searchIndex, searchCount])
 
   useEffect(() => {
@@ -3085,7 +3104,7 @@ ${fontCss}
       ...(files.length > 1 ? [{ id: 'close-others', label: 'Close other tabs', hint: 'Tabs', icon: X, run: () => handleCloseOthers(activeFile.id) }] : []),
     ] : []),
     { id: 'wide', label: readerPrefs.width === 'full' ? 'Switch to Book page width' : 'Expand to Wide mode', hint: 'Reader', icon: UnfoldHorizontal, run: () => setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' })) },
-    { id: 'contrast', label: highContrast ? 'Disable High Contrast' : 'Enable High Contrast', hint: 'Theme', icon: Contrast, run: () => setHighContrast(h => !h) },
+    { id: 'contrast', label: highContrast ? 'Disable High Contrast' : 'Enable High Contrast', hint: 'Theme', icon: Contrast, run: toggleHighContrast },
     { id: 'theme', label: `Switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'Sepia' : isDark ? 'Light' : 'Dark'} mode`, hint: 'Theme', icon: ENABLE_SEPIA_THEME && theme === 'sepia' ? BookOpen : isDark ? Sun : Moon, run: toggleTheme },
     { id: 'sync', label: syncScroll ? 'Disable Synchronized Scroll' : 'Enable Synchronized Scroll', hint: 'Editor', icon: Link2, run: () => setSyncScroll(s => !s) },
     ...(activeFile ? [
@@ -3100,7 +3119,7 @@ ${fontCss}
     ] : []),
   ], [
     handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
-    toggleTheme, syncScroll, activeFile, files.length, view, handleDownload,
+    toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
   ])
@@ -3224,7 +3243,7 @@ ${fontCss}
               <span className="font-cycle-badge">{activeFont.label.slice(0, 2).toUpperCase()}</span>
             </button>
             <button
-              onClick={() => setHighContrast(h => !h)}
+              onClick={toggleHighContrast}
               data-tooltip={highContrast ? 'Standard contrast' : 'High contrast'}
               aria-label={highContrast ? 'Standard contrast' : 'High contrast'}
               aria-pressed={highContrast}
@@ -3292,38 +3311,15 @@ ${fontCss}
       {/* ── Main ──────────────────────────────────────── */}
       <main className="flex-1 flex min-h-0">
         {!activeFile ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-8 surface-preview anim-fade-in">
-            <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 anim-pop-in"
-              style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent-border)' }}>
-              <FileText size={34} style={{ color: 'var(--accent)' }} />
-            </div>
-            <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-2)' }}>
-              No files open
-            </p>
-            <p className="text-sm leading-relaxed max-w-sm" style={{ color: 'var(--text-4)' }}>
-              Create a new Markdown file or upload one or more files. Everything stays in memory in your browser.
-            </p>
-            <div className="mt-6 flex items-center gap-3">
-              <button onClick={handleNewFile} className="btn-primary">
-                <FilePlus size={14} /> New file
-              </button>
-              <button onClick={() => fileInputRef.current?.click()} className="btn-secondary">
-                <Upload size={13} /> Upload files
-              </button>
-            </div>
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-2 max-w-md">
-              {MD_TEMPLATES.map(tpl => (
-                <button
-                  key={tpl.id}
-                  onClick={() => handleCreateFromTemplate(tpl)}
-                  className="reader-chip !flex-none px-3 py-1.5 flex items-center gap-1.5"
-                >
-                  <LayoutTemplate size={11} style={{ color: 'var(--accent)' }} />
-                  <span>{tpl.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <EmptyWorkspace
+            templates={MD_TEMPLATES}
+            canReopen={canReopen}
+            onNew={handleNewFile}
+            onOpen={handleOpenDiskFiles}
+            onImportUrl={handleImportUrl}
+            onReopen={handleReopenClosed}
+            onTemplate={handleCreateFromTemplate}
+          />
         ) : (
           <>
             {/* Editor pane */}
@@ -3540,7 +3536,7 @@ ${fontCss}
                                 <div key={item.id} className="rounded p-2 text-[11px]" style={{ background: 'var(--bg-editor)', color: 'var(--text-2)' }}>
                                   <button className="text-left w-full" onClick={() => {
                                     if (item.headingId) navigateToHeading(item.headingId)
-                                    else previewScrollRef.current?.scrollTo({ top: previewScrollRef.current.scrollHeight * item.progress / 100, behavior: 'smooth' })
+                                    else previewScrollRef.current?.scrollTo({ top: previewScrollRef.current.scrollHeight * item.progress / 100, behavior: scrollBehavior() })
                                   }}><span className="line-clamp-3">“{item.quote}”</span>{item.note && <span className="block mt-1 opacity-80">{item.note}</span>}</button>
                                   <button className="mt-1 opacity-60 hover:opacity-100" onClick={() => setAnnotations(prev => prev.filter(value => value.id !== item.id))}>Remove</button>
                                 </div>
@@ -3607,7 +3603,7 @@ ${fontCss}
                       setSearchOpen(s => !s)
                       requestAnimationFrame(() => searchInputRef.current?.focus())
                     }}
-                    data-tooltip="Find in document (Cmd/Ctrl + F)"
+                    data-tooltip={`Find in document (${shortcut('F')})`}
                     aria-label="Find in document"
                     className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
                     style={{
@@ -3782,14 +3778,14 @@ ${fontCss}
 
                         {focusSection && !searchingDocument && (
                           <nav className="focus-section-bar no-print" aria-label="Section focus">
-                            <button type="button" onClick={() => stepSectionFocus(-1)} disabled={focusSection.index === 0} aria-label="Previous section" title="Previous section (Alt+←)">
+                            <button type="button" onClick={() => stepSectionFocus(-1)} disabled={focusSection.index === 0} aria-label="Previous section" title={`Previous section (${shortcut('←', { alt: true, mod: false })})`}>
                               <ChevronLeft size={15} /><span className="hidden sm:inline">Previous</span>
                             </button>
                             <span className="focus-section-status">
                               <span className="tabular-nums">{focusSection.index + 1} / {focusSection.total}</span>
                               <span className="focus-section-title">{focusSection.title}</span>
                             </span>
-                            <button type="button" onClick={() => stepSectionFocus(1)} disabled={focusSection.index >= focusSection.total - 1} aria-label="Next section" title="Next section (Alt+→)">
+                            <button type="button" onClick={() => stepSectionFocus(1)} disabled={focusSection.index >= focusSection.total - 1} aria-label="Next section" title={`Next section (${shortcut('→', { alt: true, mod: false })})`}>
                               <span className="hidden sm:inline">Next</span><ChevronRight size={15} />
                             </button>
                             <button type="button" className="focus-section-exit" onClick={exitSectionFocus} aria-label="Exit section focus" title="Show the whole document">
@@ -3829,7 +3825,7 @@ ${fontCss}
                 {showScrollTop && (
                   <button
                     className="scroll-top-btn anim-pop-in no-print"
-                    onClick={() => previewScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                    onClick={() => previewScrollRef.current?.scrollTo({ top: 0, behavior: scrollBehavior() })}
                     title="Back to top"
                   >
                     <ArrowUp size={15} />

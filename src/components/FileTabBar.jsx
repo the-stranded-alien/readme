@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { shortcut } from '../platform'
 import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedFromDisk, labelColor } from '../fileUtils'
 import {
   Check, Command, CopyPlus, Download, FilePlus, FileText, GitCompare, HardDrive, ListTree,
@@ -112,7 +113,7 @@ function TabContextMenu({ menu, file, files, canReopen, actions, onClose }) {
       <button type="button" role="menuitem" onClick={run(() => actions.onClose(file.id))}><X size={13} />Close<kbd>Middle-click</kbd></button>
       <button type="button" role="menuitem" onClick={run(() => actions.onCloseOthers(file.id))} disabled={files.length < 2}><XCircle size={13} />Close others</button>
       <button type="button" role="menuitem" onClick={run(() => actions.onCloseToRight(file.id))} disabled={index === files.length - 1}><XCircle size={13} />Close to the right</button>
-      <button type="button" role="menuitem" onClick={run(actions.onReopenClosed)} disabled={!canReopen}><RotateCcw size={13} />Reopen closed tab<kbd>⇧⌘T</kbd></button>
+      <button type="button" role="menuitem" onClick={run(actions.onReopenClosed)} disabled={!canReopen}><RotateCcw size={13} />Reopen closed tab<kbd>{shortcut('T', { shift: true })}</kbd></button>
     </div>,
     document.body,
   )
@@ -223,7 +224,7 @@ export default function FileTabBar({
 
   useEffect(() => {
     if (!activeFileId) return
-    tabRefs.current[activeFileId]?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+    tabRefs.current[activeFileId]?.scrollIntoView?.({ behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest', inline: 'nearest' })
   }, [activeFileId, files.length])
 
   const updateFades = useCallback(() => {
@@ -466,13 +467,13 @@ export default function FileTabBar({
             placeholder="Search commands…"
             aria-label="Search files, headings, and commands"
           />
-          <kbd>⌘ K</kbd>
+          <kbd>{shortcut('K')}</kbd>
         </label>
         <button
           type="button"
           onClick={onOpenCommandPalette}
           className="file-tabs-command-button"
-          data-tooltip="Open command palette (Cmd/Ctrl + K)"
+          data-tooltip={`Open command palette (${shortcut('K')})`}
           aria-label="Open command palette"
         >
           <Command size={14} />
