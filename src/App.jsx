@@ -700,7 +700,7 @@ function TocSidebar({ headings, activeId, onNavigate }) {
 }
 
 // ── PillSwitcher ───────────────────────────────────────────────
-function PillSwitcher({ view, onChange }) {
+function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
   const containerRef = useRef(null)
   const btnRefs = useRef([])
   const [pill, setPill] = useState({ left: 4, width: 72, height: 29, top: 3 })
@@ -731,6 +731,23 @@ function PillSwitcher({ view, onChange }) {
         </button>
         )
       })}
+      {onPresent && (
+        <>
+          <span className="pill-divider" aria-hidden="true" />
+          {/* Not a layout: opens the full-screen slide view. */}
+          <button
+            type="button"
+            onClick={onPresent}
+            disabled={!canPresent}
+            className="pill-btn pill-present"
+            title={canPresent ? 'Present as slides (one per heading)' : 'Add some content to present'}
+            aria-label="Present as slides"
+          >
+            <Presentation size={13} />
+            Present
+          </button>
+        </>
+      )}
     </div>
   )
 }
@@ -3877,7 +3894,7 @@ ${fontCss}
             </div>
           </div>
           <div className="justify-self-center">
-            <PillSwitcher view={view} onChange={setView} />
+            <PillSwitcher view={view} onChange={setView} onPresent={() => setPresenting(true)} canPresent={Boolean(activeFile && markdownBody.trim())} />
           </div>
 
           <div className="flex items-center gap-1 justify-self-end shrink-0">

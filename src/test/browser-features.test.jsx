@@ -908,6 +908,10 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(screen.getByRole('dialog', { name: /slide 3 of 3/ })).toHaveTextContent('Second'))
     fireEvent.keyDown(deck, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /Presentation/ })).toBeNull())
+
+    // The header mode switcher opens it too.
+    fireEvent.click(screen.getByRole('button', { name: 'Present as slides' }))
+    expect(await screen.findByRole('dialog', { name: /Presentation, slide 1 of 3/ })).toBeInTheDocument()
   })
 
   it('shows folders in a file tree and moves files between them', async () => {

@@ -2181,3 +2181,8 @@ button[data-tooltip]:not(:focus-visible)::after {
 .file-tree-toggle[data-tooltip]::after,
 .tooltip-start[data-tooltip]::after { left: 0; right: auto; transform: none; }
 .tooltip-end[data-tooltip]::after { left: auto; right: 0; transform: none; }
+
+/* Present action in the header mode switcher */
+.pill-divider { align-self: center; width: 1px; height: 16px; margin: 0 3px; background: var(--border-strong); opacity: .6; }
+.pill-btn.pill-present:disabled { opacity: .4; cursor: not-allowed; }
+.pill-btn.pill-present:not(:disabled):hover { color: var(--accent); }
