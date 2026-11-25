@@ -479,7 +479,7 @@ export default function FileTabBar({
         <button
           type="button"
           onClick={onOpenCommandPalette}
-          className="file-tabs-command-button"
+          className="file-tabs-command-button tooltip-end"
           data-tooltip={`Open command palette (${shortcut('K')})`}
           aria-label="Open command palette"
         >

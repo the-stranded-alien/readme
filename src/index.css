@@ -2176,3 +2176,8 @@ button[data-tooltip]:not(:focus-visible)::after {
 .ai-progress .storage-bar { grid-column: 1 / -1; }
 .ai-error { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px; color: #cf222e; background: color-mix(in srgb, #cf222e 8%, transparent); }
 .templates-item.is-selected span, .templates-item:hover span { color: var(--text-3); }
+
+/* Tooltips on buttons at the screen edges: anchor to the edge instead of centring. */
+.file-tree-toggle[data-tooltip]::after,
+.tooltip-start[data-tooltip]::after { left: 0; right: auto; transform: none; }
+.tooltip-end[data-tooltip]::after { left: auto; right: 0; transform: none; }
