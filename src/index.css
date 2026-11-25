@@ -484,17 +484,6 @@ mark.rm-search-hit.current {
 .btn-icon:active { transform: scale(.91); }
 .btn-icon:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 
-.font-cycle-badge {
-  position: absolute; right: -3px; bottom: -2px;
-  min-width: 14px; height: 11px; padding: 0 2px;
-  border-radius: 99px;
-  background: var(--accent); color: #ffffff;
-  border: 2px solid var(--bg-app);
-  font-size: 7px; font-weight: 700; line-height: 7px;
-  text-align: center; pointer-events: none;
-  box-shadow: 0 1px 2px rgba(20, 24, 80, 0.2);
-}
-.dark .font-cycle-badge { color: #14172b; }
 
 @keyframes spin { to { transform: rotate(360deg) } }
 .spin-loader { animation: spin .8s linear infinite; }
@@ -2479,3 +2468,15 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 .folder-sync-status.is-connected { color: #15803d; }
 .dark .folder-sync-status.is-connected { color: #4ade80; }
 .folder-sync-status.is-error, .folder-sync-status.is-needs-permission { color: #b45309; }
+
+/* ── Editor toolbar labels (portal; the toolbar scrolls) ──── */
+.fmt-tooltip {
+  position: fixed; z-index: 1000; transform: translateX(-50%); width: max-content; max-width: 240px;
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-editor); color: var(--text-1);
+  box-shadow: var(--shadow-md); font-size: 10px; font-weight: 500; line-height: 1.35; pointer-events: none;
+  animation: fmt-tooltip-in .12s ease-out;
+}
+@keyframes fmt-tooltip-in { from { opacity: 0; transform: translate(-50%, -2px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ── Editor and page toolbars share one height ────────────── */
+.fmt-toolbar, .reader-preview-toolbar { height: 36px; min-height: 36px; padding-top: 0 !important; padding-bottom: 0 !important; box-sizing: border-box; }

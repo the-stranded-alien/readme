@@ -1208,13 +1208,13 @@ describe('advanced browser features', () => {
     expect(document.querySelector('.doc-prose mark.md-mark-yellow')).toHaveTextContent('yellow')
     const toolbar = screen.getByRole('toolbar', { name: 'Formatting' })
     for (const name of ['Heading 3', 'Numbered list', 'Task list', 'Table', 'Code block', 'Image', 'Footnote', 'Callout']) {
-      expect(within(toolbar).getByTitle(name)).toBeInTheDocument()
+      expect(within(toolbar).getByRole('button', { name })).toHaveAttribute('data-tip', name)
     }
     editor.setSelectionRange(10, 14)
     fireEvent.click(within(toolbar).getByRole('button', { name: 'Highlight' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Blue highlight' }))
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toContain('=={blue}'))
-    fireEvent.click(within(toolbar).getByTitle('Footnote'))
+    fireEvent.click(within(toolbar).getByRole('button', { name: 'Footnote' }))
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toMatch(/\[\^1\]: Footnote text$/))
   })
 

@@ -921,6 +921,44 @@ const FMT_ACTIONS = [
   { label: 'Divider',   Icon: Minus,       mode: 'insert', text: '\n---\n' },
 ]
 
+// Hover/focus labels for the editor toolbar. The toolbar scrolls sideways,
+// which would clip CSS tooltips, so the label is drawn in a portal.
+function useToolbarTooltip() {
+  const [tip, setTip] = useState(null)
+  const timerRef = useRef(null)
+  const shownRef = useRef(false)
+  const show = useCallback((target, immediate) => {
+    clearTimeout(timerRef.current)
+    const run = () => {
+      const rect = target.getBoundingClientRect()
+      shownRef.current = true
+      setTip({ text: target.dataset.tip, x: rect.left + rect.width / 2, y: rect.bottom + 7 })
+    }
+    if (immediate || shownRef.current) run()
+    else timerRef.current = setTimeout(run, 350)
+  }, [])
+  const hide = useCallback(() => {
+    clearTimeout(timerRef.current)
+    setTip(null)
+    // Moving straight to a neighbouring button shows its label without the delay.
+    timerRef.current = setTimeout(() => { shownRef.current = false }, 250)
+  }, [])
+  useEffect(() => () => clearTimeout(timerRef.current), [])
+  const handlers = {
+    onPointerOver: event => { const target = event.target.closest?.('[data-tip]'); if (target && event.currentTarget.contains(target)) show(target) },
+    onPointerOut: event => { const target = event.target.closest?.('[data-tip]'); if (target && !target.contains(event.relatedTarget)) hide() },
+    onFocus: event => { const target = event.target.closest?.('[data-tip]'); if (target?.matches(':focus-visible')) show(target, true) },
+    onBlur: hide,
+    onPointerDown: hide,
+    onScroll: hide,
+  }
+  const element = tip && createPortal(
+    <div className="fmt-tooltip no-print" role="tooltip" style={{ left: Math.min(Math.max(tip.x, 70), window.innerWidth - 70), top: tip.y }}>{tip.text}</div>,
+    document.body,
+  )
+  return [handlers, element]
+}
+
 function HighlightPicker({ position, onPick, onClose }) {
   const menuRef = useRef(null)
   useEffect(() => {
@@ -948,6 +986,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
   const closeTemplates = useCallback(() => setTplOpen(false), [])
   const [highlightMenu, setHighlightMenu] = useState(null)
   const closeHighlightMenu = useCallback(() => setHighlightMenu(null), [])
+  const [tipHandlers, tooltip] = useToolbarTooltip()
 
   const apply = useCallback((action) => {
     const ta = textareaRef.current
@@ -983,14 +1022,15 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
   }, [content, onChange, textareaRef])
 
   return (
-    <div className="fmt-toolbar no-print justify-between">
-      <div className="fmt-scroll" role="toolbar" aria-label="Formatting"
+    <div className="fmt-toolbar no-print justify-between" {...tipHandlers}>
+      {tooltip}
+      <div className="fmt-scroll" role="toolbar" aria-label="Formatting" onScroll={tipHandlers.onScroll}
         onWheel={event => { if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY }}>
         {FMT_ACTIONS.map((action, i) =>
           action === null
             ? <div key={`sep-${i}`} className="fmt-divider" />
             : action === 'highlight' ? (
-              <button key="highlight" type="button" className="fmt-btn fmt-btn-highlight" title="Highlight (choose a colour)" aria-label="Highlight"
+              <button key="highlight" type="button" className="fmt-btn fmt-btn-highlight" data-tip="Highlight (choose a colour)" aria-label="Highlight"
                 aria-haspopup="menu" aria-expanded={Boolean(highlightMenu)}
                 onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setHighlightMenu(menu => (menu ? null : { top: rect.bottom + 6, left: Math.max(8, rect.left - 40) })) }}>
                 <Highlighter size={13} />
@@ -998,8 +1038,10 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
             ) : (
               <button
                 key={action.label}
+                type="button"
                 onClick={() => apply(action)}
-                title={action.label}
+                data-tip={action.label}
+                aria-label={action.label}
                 className="fmt-btn"
               >
                 <action.Icon size={13} />
@@ -1014,13 +1056,13 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
 
       <div className="relative shrink-0 ml-2 flex items-center gap-0.5">
         {onWriteReadme && (
-          <button type="button" onClick={onWriteReadme} title={aiHidden ? 'Write a README' : 'Write a README with AI'} aria-label={aiHidden ? 'Write a README' : 'Write a README with AI'} className="fmt-btn fmt-btn-ai !px-2 gap-1">
+          <button type="button" onClick={onWriteReadme} data-tip={aiHidden ? 'Write a README' : 'Write a README with AI'} aria-label={aiHidden ? 'Write a README' : 'Write a README with AI'} className="fmt-btn fmt-btn-ai !px-2 gap-1">
             <Sparkles size={12} />
             <span className="hidden lg:inline text-[10px] font-semibold">Write README</span>
           </button>
         )}
         {onFindReplace && (
-          <button type="button" onClick={onFindReplace} title={`Find & replace (${shortcut('F', { alt: true })})`} aria-label="Find and replace" className="fmt-btn">
+          <button type="button" onClick={onFindReplace} data-tip={`Find & replace (${shortcut('F', { alt: true })})`} aria-label="Find and replace" className="fmt-btn">
             <Replace size={13} />
           </button>
         )}
@@ -1028,7 +1070,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
           ref={tplRef}
           type="button"
           onClick={() => setTplOpen(o => !o)}
-          title="New file from a template"
+          data-tip="New file from a template"
           aria-label="New file from a template"
           aria-haspopup="menu"
           aria-expanded={tplOpen}
@@ -4577,7 +4619,6 @@ ${fontCss}
               style={{ position: 'relative' }}
             >
               <Type size={15} />
-              <span className="font-cycle-badge">{activeFont.label.slice(0, 2).toUpperCase()}</span>
             </button>
             <button
               onClick={toggleHighContrast}
