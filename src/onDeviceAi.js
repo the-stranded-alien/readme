@@ -357,3 +357,67 @@ export function readmeFromPrompt(prompt) {
     '',
   ].join('\n')
 }
+
+// ── Summaries sized to the document ───────────────────────────
+export const countWords = text => (proseForModel(text).match(/\S+/g) || []).length
+/** Summary length for a text of `words` words: longer texts get longer summaries. */
+export const summaryLengthFor = words => (words < 250 ? 'short' : words < 900 ? 'medium' : 'long')
+
+/** Split Markdown into parts of roughly `target` words at heading boundaries. */
+export function splitForSummary(markdown, target = 1200) {
+  const blocks = markdown.split(/\n(?=#{1,3}\s)/)
+  const parts = []
+  let current = { title: '', text: '', words: 0 }
+  for (const block of blocks) {
+    const words = countWords(block)
+    if (current.words && current.words + words > target) {
+      parts.push(current)
+      current = { title: '', text: '', words: 0 }
+    }
+    if (!current.title) current.title = /^#{1,3}\s+(.+)$/m.exec(block)?.[1]?.trim() ?? ''
+    current.text += `${current.text ? '\n' : ''}${block}`
+    current.words += words
+  }
+  if (current.words) parts.push(current)
+  return parts
+}
+
+/**
+ * Summarize a whole document (or one section). Short texts get one summary
+ * whose length follows the text; long documents are summarized part by part
+ * so the summary grows with the document.
+ */
+export async function summarizeDocument(markdown, { language = 'en', onProgress, onStatus, onChunk, signal } = {}) {
+  const words = countWords(markdown)
+  if (words <= 1800) return summarize(markdown, { type: 'key-points', length: summaryLengthFor(words), language, onProgress, onStatus, onChunk, signal })
+  const parts = splitForSummary(markdown)
+  const outputLanguage = SUMMARY_LANGUAGES.includes(language) ? language : 'en'
+  const summarizer = await createSession(scope.Summarizer, {
+    type: 'key-points', length: 'medium', format: 'markdown', sharedContext: 'One part of a longer Markdown document written by the user.',
+    expectedInputLanguages: [language], outputLanguage,
+  }, { onProgress, onStatus, signal })
+  try {
+    const done = []
+    for (const [index, part] of parts.entries()) {
+      const heading = `**${part.title || `Part ${index + 1}`}**`
+      let text = proseForModel(part.text)
+      if (summarizer.inputQuota && summarizer.measureInputUsage) {
+        while (text.length > 500 && await summarizer.measureInputUsage(text) > summarizer.inputQuota) text = text.slice(0, Math.floor(text.length * 0.8))
+      }
+      let result = ''
+      if (onChunk && summarizer.summarizeStreaming) {
+        for await (const chunk of summarizer.summarizeStreaming(text, { signal })) {
+          result = chunk.startsWith(result) ? chunk : result + chunk
+          onChunk([...done, `${heading}\n\n${result}`].join('\n\n'))
+        }
+      } else {
+        result = await summarizer.summarize(text, { signal })
+      }
+      done.push(`${heading}\n\n${result.trim()}`)
+      onChunk?.(done.join('\n\n'))
+    }
+    return done.join('\n\n')
+  } finally {
+    summarizer.destroy?.()
+  }
+}

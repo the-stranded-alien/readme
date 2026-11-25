@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, CircleHelp, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, CircleHelp, Star, Filter, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
@@ -42,6 +42,7 @@ import TemplateMenu from './components/TemplateMenu'
 import StorageDialog from './components/StorageDialog'
 import SettingsDialog, { ThemePicker } from './components/SettingsDialog'
 import HelpDialog from './components/HelpDialog'
+import { CONTENT_FILTERS, applyContentFilter, clearContentFilter, filterLabel } from './contentFilter'
 import { THEMES, THEME_IDS, availableThemes, nextTheme, themeById } from './themes'
 import TemplatesDialog from './components/TemplatesDialog'
 import SlashMenu from './components/SlashMenu'
@@ -49,7 +50,7 @@ import FindReplacePanel from './components/FindReplacePanel'
 import PresentationMode from './components/PresentationMode'
 import FileTree from './components/FileTree'
 import AiToolsDialog from './components/AiToolsDialog'
-import { aiSupport, canWriteWithAi, detectLanguage, hasAnyAi, readmeFromPrompt, summarize, writeReadmeWithAi } from './onDeviceAi'
+import { aiSupport, canWriteWithAi, detectLanguage, hasAnyAi, readmeFromPrompt, summarizeDocument, writeReadmeWithAi } from './onDeviceAi'
 import WriteReadmeDialog from './components/WriteReadmeDialog'
 import { detectSlash, editorCaretRect, expandSnippet, filterSlashCommands, textareaCaretRect } from './slashCommands'
 import { findMatches, replaceAllIn } from './findReplace'
@@ -403,26 +404,61 @@ function isSectionCollapsed(state, properties) {
   return state.overrides.has(key) ? !base : base
 }
 
+// Per-section extras in the page: bookmarks and on-device section summaries.
+const SectionExtrasContext = createContext(null)
+const InsideBookmarkContext = createContext(false)
+const sectionSlug = key => String(key || '').replace(/~\d+$/, '')
+
+function SectionSummary({ sectionKey }) {
+  const extras = useContext(SectionExtrasContext)
+  const summary = extras?.summaries?.[sectionKey]
+  if (!summary) return null
+  return (
+    <div className="section-summary no-print anim-drop-in" role="region" aria-label="Section summary" aria-busy={summary.status === 'loading'}>
+      <div className="section-summary-header">
+        <span><Sparkles size={12} aria-hidden="true" />Section summary</span>
+        <span className="section-summary-actions">
+          {summary.status !== 'loading' && <button type="button" onClick={() => extras.summarizeSection(sectionKey)} aria-label="Summarize section again" title="Summarize again"><RefreshCw size={12} /></button>}
+          <button type="button" onClick={() => extras.closeSummary(sectionKey)} aria-label="Close section summary" title="Close"><X size={12} /></button>
+        </span>
+      </div>
+      {summary.status === 'error'
+        ? <p className="summary-card-error" role="alert">{summary.error}</p>
+        : summary.text
+          ? <div className="section-summary-body">{extras.renderSummary(summary.text)}</div>
+          : <p className="summary-card-status" aria-live="polite"><Loader2 size={12} className="animate-spin" />{summary.preparing ? 'Preparing the on-device model…' : 'Summarizing…'}</p>}
+    </div>
+  )
+}
+
 function CollapsibleSection({ node, children, ...rest }) {
   const state = useContext(SectionCollapseContext)
+  const extras = useContext(SectionExtrasContext)
+  const insideBookmark = useContext(InsideBookmarkContext)
   const properties = node?.properties ?? {}
   // Sections that are not heading sections (e.g. the GFM footnotes block) render unchanged.
   if (!properties.dataSectionKey) return <section {...rest}>{children}</section>
   const collapsed = isSectionCollapsed(state, properties)
+  const bookmarked = Boolean(extras?.bookmarks?.has(sectionSlug(properties.dataSectionKey)))
+  const [heading, ...body] = Array.isArray(children) ? children : [children]
   return (
     <section
       className={`md-section${state?.focusKey && state.focusKey === properties.dataSectionKey ? ' focus-target' : ''}`}
       data-section-key={properties.dataSectionKey}
       data-title-section={properties.dataTitleSection ? 'true' : undefined}
       data-collapsed={collapsed ? 'true' : undefined}
+      data-bm={bookmarked ? 'self' : insideBookmark ? 'inside' : undefined}
     >
-      {children}
+      {heading}
+      {extras && <SectionSummary sectionKey={properties.dataSectionKey} />}
+      <InsideBookmarkContext.Provider value={bookmarked || insideBookmark}>{body}</InsideBookmarkContext.Provider>
     </section>
   )
 }
 
 function SectionHeading({ as, iconSize, node, children, ...rest }) {
   const state = useContext(SectionCollapseContext)
+  const extras = useContext(SectionExtrasContext)
   const properties = node?.properties ?? {}
   const text = headingText(node)
   const id = headingSlug(text)
@@ -431,8 +467,10 @@ function SectionHeading({ as, iconSize, node, children, ...rest }) {
   if (!key) return createElement(as, { ...rest, id: rest.id || id }, children)
   const canToggle = Boolean(state && key && !properties.dataEmpty)
   const collapsed = isSectionCollapsed(state, properties)
+  const bookmarked = Boolean(extras?.bookmarks?.has(id))
+  const headingClass = [canToggle && `has-section-toggle${collapsed ? ' is-collapsed' : ''}`, bookmarked && 'is-bookmarked'].filter(Boolean).join(' ')
   return (
-    createElement(as, { id, 'aria-label': text.trim() || undefined, className: canToggle ? `has-section-toggle${collapsed ? ' is-collapsed' : ''}` : undefined }, <>
+    createElement(as, { id, 'aria-label': text.trim() || undefined, className: headingClass || undefined }, <>
       {canToggle && (
         <button
           type="button"
@@ -449,6 +487,20 @@ function SectionHeading({ as, iconSize, node, children, ...rest }) {
       <a href={`#${id}`} className="heading-anchor" aria-label="Link to section">
         <Hash size={iconSize} />
       </a>
+      {extras && (
+        <span className="heading-tools no-print">
+          {extras.canSummarize && !properties.dataEmpty && (
+            <button type="button" className="heading-tool" onClick={() => extras.summarizeSection(key)}
+              aria-label={`Summarize ${text}`} title="Summarize this section">
+              <ScrollText size={13} />
+            </button>
+          )}
+          <button type="button" className={`heading-tool${bookmarked ? ' is-on' : ''}`} onClick={() => extras.toggleBookmark(id)}
+            aria-pressed={bookmarked} aria-label={`Bookmark heading ${text}`} title={bookmarked ? 'Remove bookmark' : 'Bookmark this section'}>
+            <Star size={13} fill={bookmarked ? 'currentColor' : 'none'} />
+          </button>
+        </span>
+      )}
     </>)
   )
 }
@@ -555,7 +607,39 @@ function MarkdownRenderer({ content, dark }) {
 }
 
 // ── TOCSidebar ─────────────────────────────────────────────────
-function TocSidebar({ headings, activeId, onNavigate }) {
+function filterMenuPosition(anchor) {
+  const rect = anchor.getBoundingClientRect()
+  const width = 220
+  return { top: rect.bottom + 6, left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)), width }
+}
+
+function FilterMenu({ anchorRef, position, value, onPick, onClose }) {
+  const menuRef = useRef(null)
+  useEffect(() => {
+    menuRef.current?.querySelector('[aria-checked="true"], button')?.focus()
+    const onDown = event => { if (!menuRef.current?.contains(event.target) && !anchorRef.current?.contains(event.target)) onClose() }
+    const onKey = event => { if (event.key === 'Escape') { event.preventDefault(); onClose(); anchorRef.current?.focus() } }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [anchorRef, onClose])
+  const options = [{ id: null, label: 'Everything' }, ...CONTENT_FILTERS]
+  return createPortal(
+    <div ref={menuRef} className="filter-menu anim-pop-in no-print" role="menu" aria-label="Filter content" style={position ? { top: position.top, left: position.left, width: position.width } : { visibility: 'hidden' }}>
+      <div className="filter-menu-heading">Show only</div>
+      {options.map(option => (
+        <button key={option.id ?? 'all'} type="button" role="menuitemradio" aria-checked={value === option.id}
+          className={`filter-menu-item${value === option.id ? ' is-active' : ''}`} onClick={() => onPick(option.id)}>
+          <span>{option.label}</span>
+          {value === option.id && <Check size={12} />}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  )
+}
+
+function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onToggleBookmark, onlyBookmarked = false, onOnlyBookmarked }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
 
   const parentKeys = useMemo(() => {
@@ -587,8 +671,9 @@ function TocSidebar({ headings, activeId, onNavigate }) {
         stack.push({ level: h.level, collapsed: isCollapsed })
       }
     }
+    if (onlyBookmarked) return headings.flatMap((h, i) => (bookmarks.has(h.id) ? [{ h, i, key: `${h.level}-${h.id}-${i}`, hasChildren: false, isCollapsed: false }] : []))
     return items
-  }, [headings, collapsed])
+  }, [headings, collapsed, onlyBookmarked, bookmarks])
 
   const toggleCollapse = useCallback((key) => {
     setCollapsed(prev => {
@@ -631,22 +716,38 @@ function TocSidebar({ headings, activeId, onNavigate }) {
             Contents
           </span>
         </div>
-        {parentKeys.length > 0 && (
-          <button
-            type="button"
-            onClick={toggleAll}
-            className="btn-icon !p-1"
-            title={allCollapsed ? 'Expand all sections' : 'Collapse all sections'}
-            aria-label={allCollapsed ? 'Expand all sections' : 'Collapse all sections'}
-          >
-            {allCollapsed ? <ChevronsUpDown size={12} /> : <ChevronsDownUp size={12} />}
-          </button>
-        )}
+        <div className="flex items-center gap-0.5">
+          {parentKeys.length > 0 && !onlyBookmarked && (
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="btn-icon !p-1"
+              title={allCollapsed ? 'Expand all sections' : 'Collapse all sections'}
+              aria-label={allCollapsed ? 'Expand all sections' : 'Collapse all sections'}
+            >
+              {allCollapsed ? <ChevronsUpDown size={12} /> : <ChevronsDownUp size={12} />}
+            </button>
+          )}
+          {onOnlyBookmarked && (
+            <button
+              type="button"
+              onClick={() => onOnlyBookmarked(!onlyBookmarked)}
+              disabled={bookmarks.size === 0}
+              className={`btn-icon !p-1 toc-bookmark-filter${onlyBookmarked ? ' is-on' : ''}`}
+              aria-pressed={onlyBookmarked}
+              title={bookmarks.size === 0 ? 'Bookmark a section (☆) to use this' : onlyBookmarked ? 'Show all sections' : 'Show only bookmarked sections'}
+              aria-label="Show only bookmarked sections"
+            >
+              <Star size={12} fill={onlyBookmarked ? 'currentColor' : 'none'} />
+            </button>
+          )}
+        </div>
       </div>
       <nav className="py-1">
         {visibleItems.map(({ h, i, key, hasChildren, isCollapsed }) => {
           const isActive = activeId === h.id
-          const depth = h.level - 1 // 0, 1, 2
+          const isBookmarked = bookmarks.has(h.id)
+          const depth = onlyBookmarked ? 0 : h.level - 1 // 0, 1, 2
           const guides = Array.from({ length: depth })
           return (
             <div key={key} className="relative">
@@ -659,7 +760,7 @@ function TocSidebar({ headings, activeId, onNavigate }) {
                 />
               ))}
               <div
-                className={`toc-item anim-slide-left ${isActive ? 'active' : ''}`}
+                className={`toc-item anim-slide-left ${isActive ? 'active' : ''}${isBookmarked ? ' is-bookmarked' : ''}`}
                 style={{
                   paddingLeft: `${depth * 14 + (depth > 0 ? 18 : 6)}px`,
                   animationDelay: `${Math.min(i * 25, 160)}ms`,
@@ -708,6 +809,18 @@ function TocSidebar({ headings, activeId, onNavigate }) {
                 }}>
                   {h.text}
                 </span>
+                {onToggleBookmark && (
+                  <button
+                    type="button"
+                    className={`toc-star${isBookmarked ? ' is-on' : ''}`}
+                    onClick={event => { event.stopPropagation(); onToggleBookmark(h.id) }}
+                    aria-pressed={isBookmarked}
+                    aria-label={`Bookmark ${h.text}`}
+                    title={isBookmarked ? 'Remove bookmark' : 'Bookmark this section'}
+                  >
+                    <Star size={11} fill={isBookmarked ? 'currentColor' : 'none'} />
+                  </button>
+                )}
               </div>
             </div>
           )
@@ -2165,14 +2278,16 @@ export default function App() {
   const [focusSection, setFocusSection] = useState(null)
   if (focusSection && focusSection.docKey !== sectionDocKey) setFocusSection(null)
   const searchingDocument = Boolean(searchOpen && searchQuery.trim())
+  const [contentFilter, setContentFilter] = useState(null)
+  const [onlyBookmarked, setOnlyBookmarked] = useState(false)
   const sectionCollapseValue = useMemo(() => ({
     mode: sectionCollapse.mode,
     overrides: sectionCollapse.overrides,
-    // Show everything while searching so every hit is visible.
-    forceExpanded: searchingDocument,
+    // Show everything while searching or filtering so every hit is visible.
+    forceExpanded: searchingDocument || Boolean(contentFilter) || onlyBookmarked,
     focusKey: searchingDocument ? null : focusSection?.key ?? null,
     toggle: toggleSection,
-  }), [sectionCollapse.mode, sectionCollapse.overrides, searchingDocument, focusSection, toggleSection])
+  }), [sectionCollapse.mode, sectionCollapse.overrides, searchingDocument, focusSection, toggleSection, contentFilter, onlyBookmarked])
   const editorSectionState = useMemo(() => ({
     isCollapsed: (key, title) => isSectionCollapsed(sectionCollapseValue, { dataSectionKey: key, dataTitleSection: title }),
   }), [sectionCollapseValue])
@@ -2531,7 +2646,7 @@ export default function App() {
     const units = top.length === 1 && top[0].dataset.titleSection ? sectionsOf(top[0]) : top
     return (units.length ? units : top).map(section => {
       const heading = section.firstElementChild?.cloneNode(true)
-      heading?.querySelectorAll('.heading-anchor, .section-toggle').forEach(el => el.remove())
+      heading?.querySelectorAll('.heading-anchor, .section-toggle, .heading-tools').forEach(el => el.remove())
       return { key: section.dataset.sectionKey, title: heading?.textContent.trim() || 'Section', el: section }
     })
   }, [])
@@ -3247,8 +3362,8 @@ export default function App() {
     update({ status: 'loading', text: '', error: '', progress: null, preparing: false, source, visible: true })
     try {
       const language = await detectLanguage(source).catch(() => null)
-      const text = await summarize(source, {
-        type: 'key-points', length: 'medium', language: language || 'en', signal: controller.signal,
+      const text = await summarizeDocument(source, {
+        language: language || 'en', signal: controller.signal,
         onStatus: status => update({ preparing: status === 'preparing' }),
         onProgress: loaded => update({ progress: loaded < 1 ? loaded : null }),
         onChunk: partial => update({ text: partial, preparing: false, progress: null }),
@@ -3273,6 +3388,119 @@ export default function App() {
     }
   }, [activeFileId, summaries, markdownBody, runSummary])
   useEffect(() => () => summaryAbortRef.current?.abort(), [])
+
+  // ── Section bookmarks (per file, by heading id) ─────────────
+  const [sectionBookmarks, setSectionBookmarks] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('readme-section-bookmarks') || '{}') } catch { return {} }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('readme-section-bookmarks', JSON.stringify(sectionBookmarks)) } catch { /* storage is optional */ }
+  }, [sectionBookmarks])
+  const activeBookmarkIds = useMemo(() => {
+    const valid = new Set(headings.map(heading => heading.id))
+    return new Set((sectionBookmarks[activeFileId] || []).filter(id => valid.has(id)))
+  }, [sectionBookmarks, activeFileId, headings])
+  const toggleSectionBookmark = useCallback(id => {
+    if (!activeFileId) return
+    setSectionBookmarks(all => {
+      const list = all[activeFileId] || []
+      const next = list.includes(id) ? list.filter(item => item !== id) : [...list, id]
+      return { ...all, [activeFileId]: next }
+    })
+  }, [activeFileId])
+  const showOnlyBookmarked = onlyBookmarked && activeBookmarkIds.size > 0
+
+  // ── Section summaries ────────────────────────────────────────
+  const [sectionSummaries, setSectionSummaries] = useState({}) // { [fileId]: { [sectionKey]: state } }
+  const sectionAbortRef = useRef(new Map())
+  const summarizeSection = useCallback(async key => {
+    const fileId = activeFileId
+    const section = previewScrollRef.current?.querySelector(`.doc-prose section[data-section-key="${CSS.escape(key)}"]`)
+    if (!fileId || !section) return
+    const clone = section.cloneNode(true)
+    clone.querySelectorAll('.heading-tools, .section-summary, .heading-anchor, .section-toggle, .code-actions, svg').forEach(el => el.remove())
+    const text = clone.innerText || clone.textContent || ''
+    sectionAbortRef.current.get(key)?.abort()
+    const controller = new AbortController()
+    sectionAbortRef.current.set(key, controller)
+    const update = patch => setSectionSummaries(all => ({ ...all, [fileId]: { ...all[fileId], [key]: { ...all[fileId]?.[key], ...patch } } }))
+    update({ status: 'loading', text: '', error: '', preparing: false })
+    try {
+      const result = await summarizeDocument(text, {
+        signal: controller.signal,
+        onStatus: status => update({ preparing: status === 'preparing' }),
+        onChunk: partial => update({ text: partial, preparing: false }),
+      })
+      update({ status: 'ready', text: result, preparing: false })
+    } catch (error) {
+      if (error?.name === 'AbortError') return
+      update({ status: 'error', error: error?.message || 'Could not summarize this section.', preparing: false })
+    }
+  }, [activeFileId])
+  const closeSectionSummary = useCallback(key => {
+    sectionAbortRef.current.get(key)?.abort()
+    setSectionSummaries(all => {
+      const forFile = { ...all[activeFileId] }
+      delete forFile[key]
+      return { ...all, [activeFileId]: forFile }
+    })
+  }, [activeFileId])
+  useEffect(() => () => sectionAbortRef.current.forEach(controller => controller.abort()), [])
+  const sectionExtrasValue = useMemo(() => ({
+    bookmarks: activeBookmarkIds,
+    toggleBookmark: toggleSectionBookmark,
+    canSummarize,
+    summaries: sectionSummaries[activeFileId] || {},
+    summarizeSection,
+    closeSummary: closeSectionSummary,
+    renderSummary: text => <MarkdownRenderer content={text} dark={isDark} />,
+  }), [activeBookmarkIds, toggleSectionBookmark, canSummarize, sectionSummaries, activeFileId, summarizeSection, closeSectionSummary, isDark])
+
+  // ── Content filter (show only headings / tables / code …) ────
+  const [filterCount, setFilterCount] = useState(0)
+  const docProseRef = useRef(null)
+  // Re-apply after every render of the page content (React may replace nodes).
+  useLayoutEffect(() => {
+    const root = docProseRef.current
+    if (!root) return
+    if (!contentFilter) { clearContentFilter(root); return }
+    setFilterCount(applyContentFilter(root, contentFilter))
+  }, [contentFilter, markdownBody, sectionExtrasValue, sectionCollapseValue, isDark, appSettings.lite])
+  useEffect(() => { setContentFilter(null); setOnlyBookmarked(false) }, [activeFileId])
+  const [filterMenuOpen, setFilterMenuOpen] = useState(null) // menu position while open
+  const closeFilterMenu = useCallback(() => setFilterMenuOpen(null), [])
+  const filterButtonRef = useRef(null)
+
+  // ── Resizable contents bar ───────────────────────────────────
+  const TOC_MIN_WIDTH = 230
+  const tocMaxWidth = () => Math.max(TOC_MIN_WIDTH, Math.round(window.innerWidth * 0.3))
+  const [tocWidth, setTocWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('readme-toc-width'))
+    return Number.isFinite(saved) && saved > 0 ? Math.min(Math.max(saved, TOC_MIN_WIDTH), tocMaxWidth()) : TOC_MIN_WIDTH
+  })
+  const [tocResizing, setTocResizing] = useState(false)
+  useEffect(() => {
+    try { localStorage.setItem('readme-toc-width', String(tocWidth)) } catch { /* storage is optional */ }
+  }, [tocWidth])
+  useEffect(() => {
+    const clamp = () => setTocWidth(width => Math.min(Math.max(width, TOC_MIN_WIDTH), tocMaxWidth()))
+    window.addEventListener('resize', clamp)
+    return () => window.removeEventListener('resize', clamp)
+  }, [])
+  const startTocResize = useCallback(event => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = tocWidth
+    setTocResizing(true)
+    const onMove = moveEvent => setTocWidth(Math.min(Math.max(startWidth + moveEvent.clientX - startX, TOC_MIN_WIDTH), tocMaxWidth()))
+    const onUp = () => {
+      setTocResizing(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [tocWidth])
 
   // ── Write a README from a description ───────────────────────
   const [writeReadmeOpen, setWriteReadmeOpen] = useState(false)
@@ -3885,7 +4113,7 @@ export default function App() {
     if (!article) return
     const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
     const clone = article.cloneNode(true)
-    clone.querySelectorAll('.heading-anchor, .section-toggle, .code-actions, .book-folio-footer, .focus-section-bar, .summary-card').forEach(el => el.remove())
+    clone.querySelectorAll('.heading-anchor, .section-toggle, .heading-tools, .section-summary, .code-actions, .book-folio-footer, .focus-section-bar, .summary-card').forEach(el => el.remove())
     // Collapsed / focus-hidden sections are part of the document: export everything.
     clone.querySelectorAll('[data-collapsed]').forEach(el => el.removeAttribute('data-collapsed'))
     const fontCss = await embeddedFontCss(activeFont.family)
@@ -4737,6 +4965,33 @@ ${fontCss}
                       <span className="hidden md:inline reader-toolbar-label">{sectionCollapse.mode === 'collapsed' ? 'Expand all' : 'Collapse all'}</span>
                     </button>
                   )}
+                  {markdownBody.trim() && (
+                    <div className="relative">
+                      <button
+                        ref={filterButtonRef}
+                        type="button"
+                        onClick={event => { const anchor = event.currentTarget; setFilterMenuOpen(open => (open ? null : filterMenuPosition(anchor))) }}
+                        data-tooltip={contentFilter ? `Showing: ${filterLabel(contentFilter)}` : 'Filter content (headings, tables, code…)'}
+                        aria-label="Filter content"
+                        aria-haspopup="menu"
+                        aria-expanded={Boolean(filterMenuOpen)}
+                        className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
+                        style={{
+                          fontSize: 10, fontWeight: 500,
+                          color: contentFilter || filterMenuOpen ? 'var(--accent)' : 'var(--text-4)',
+                          background: contentFilter || filterMenuOpen ? 'var(--accent-soft)' : 'transparent',
+                        }}
+                      >
+                        <Filter size={11} />
+                        <span className="hidden lg:inline reader-toolbar-label">{contentFilter ? filterLabel(contentFilter) : 'Filter'}</span>
+                      </button>
+                      {filterMenuOpen && (
+                        <FilterMenu anchorRef={filterButtonRef} position={filterMenuOpen} value={contentFilter}
+                          onPick={value => { setContentFilter(value); setFilterMenuOpen(null) }}
+                          onClose={closeFilterMenu} />
+                      )}
+                    </div>
+                  )}
                   <button
                     onClick={() => {
                       setSearchOpen(s => !s)
@@ -4839,20 +5094,42 @@ ${fontCss}
 
                 {/* TOC */}
                 <div
-                  className="shrink-0 overflow-y-auto surface-toc"
+                  className={`shrink-0 overflow-y-auto surface-toc toc-panel${tocResizing ? ' is-resizing' : ''}`}
                   style={{
-                    width: tocVisible ? 230 : 0,
+                    width: tocVisible ? tocWidth : 0,
                     opacity: tocVisible ? 1 : 0,
                     overflow: tocVisible ? 'auto' : 'hidden',
-                    transition: 'width .25s cubic-bezier(.4,0,.2,1), opacity .2s',
+                    transition: tocResizing ? 'none' : 'width .25s cubic-bezier(.4,0,.2,1), opacity .2s',
                   }}
                 >
                   {tocVisible && (
                     <div className="py-3 px-2">
-                      <TocSidebar headings={headings} activeId={activeHeadingId} onNavigate={navigateToHeading} />
+                      <TocSidebar headings={headings} activeId={activeHeadingId} onNavigate={navigateToHeading}
+                        bookmarks={activeBookmarkIds} onToggleBookmark={toggleSectionBookmark}
+                        onlyBookmarked={showOnlyBookmarked} onOnlyBookmarked={setOnlyBookmarked} />
                     </div>
                   )}
                 </div>
+                {tocVisible && (
+                  <div
+                    className={`toc-resize-handle no-print${tocResizing ? ' is-active' : ''}`}
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize contents"
+                    aria-valuemin={TOC_MIN_WIDTH}
+                    aria-valuemax={tocMaxWidth()}
+                    aria-valuenow={tocWidth}
+                    tabIndex={0}
+                    title="Drag to resize the contents (double-click to reset)"
+                    onPointerDown={startTocResize}
+                    onDoubleClick={() => setTocWidth(TOC_MIN_WIDTH)}
+                    onKeyDown={event => {
+                      const step = event.shiftKey ? 40 : 16
+                      if (event.key === 'ArrowRight') { event.preventDefault(); setTocWidth(width => Math.min(width + step, tocMaxWidth())) }
+                      else if (event.key === 'ArrowLeft') { event.preventDefault(); setTocWidth(width => Math.max(width - step, TOC_MIN_WIDTH)) }
+                    }}
+                  />
+                )}
 
                 {/* Scrollable content — Book desk & folio page */}
                 <div
@@ -4945,10 +5222,23 @@ ${fontCss}
                           </section>
                         )}
 
+                        {(contentFilter || showOnlyBookmarked) && (
+                          <div className="filter-banner no-print" role="status">
+                            {contentFilter ? <Filter size={13} aria-hidden="true" /> : <Star size={13} aria-hidden="true" />}
+                            <span>
+                              {contentFilter
+                                ? (filterCount ? `Showing ${filterCount} ${filterCount === 1 ? 'match' : 'matches'}: ${filterLabel(contentFilter)}` : `No ${filterLabel(contentFilter).toLowerCase()} in this document.`)
+                                : `Showing ${activeBookmarkIds.size} bookmarked section${activeBookmarkIds.size === 1 ? '' : 's'}`}
+                            </span>
+                            <button type="button" onClick={() => { setContentFilter(null); setOnlyBookmarked(false) }}>Show everything</button>
+                          </div>
+                        )}
+
                         <FrontmatterCard meta={frontmatterMeta} />
 
                         <div
-                          className={`rm-prose ${activeFont.isSerif ? 'font-book' : ''}${sectionCollapseValue.focusKey ? ' focus-section-mode' : ''}`}
+                          ref={docProseRef}
+                          className={`rm-prose doc-prose ${activeFont.isSerif ? 'font-book' : ''}${sectionCollapseValue.focusKey ? ' focus-section-mode' : ''}${showOnlyBookmarked ? ' bm-only' : ''}${contentFilter ? ' is-filtered' : ''}`}
                           style={{
                             fontSize: READER_SIZES[readerPrefs.size]?.px ?? '17px',
                             maxWidth: 'none',
@@ -4959,7 +5249,9 @@ ${fontCss}
                           }}
                         >
                           <SectionCollapseContext.Provider value={sectionCollapseValue}>
-                            <MarkdownRenderer content={markdownBody} dark={isDark} />
+                            <SectionExtrasContext.Provider value={sectionExtrasValue}>
+                              <MarkdownRenderer content={markdownBody} dark={isDark} />
+                            </SectionExtrasContext.Provider>
                           </SectionCollapseContext.Provider>
                         </div>
 

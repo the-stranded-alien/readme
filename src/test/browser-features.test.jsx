@@ -1126,6 +1126,63 @@ describe('advanced browser features', () => {
     delete navigator.storage
   })
 
+  it('sizes summaries to the document and splits long documents into parts', async () => {
+    const { summaryLengthFor, splitForSummary } = await import('../onDeviceAi.js')
+    expect(summaryLengthFor(100)).toBe('short')
+    expect(summaryLengthFor(500)).toBe('medium')
+    expect(summaryLengthFor(3000)).toBe('long')
+    const long = Array.from({ length: 6 }, (_, i) => `## Part ${i}\n\n${'word '.repeat(500)}`).join('\n\n')
+    const parts = splitForSummary(long)
+    expect(parts.length).toBeGreaterThan(1)
+    expect(parts[0].title).toBe('Part 0')
+  })
+
+  it('summarizes a single section under its heading', async () => {
+    const summarizeStreaming = vi.fn(async function* () { yield '- Section point' })
+    vi.stubGlobal('Summarizer', { availability: async () => 'available', create: async () => ({ summarizeStreaming, destroy() {} }) })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Summarize Features' }))
+    const card = await screen.findByRole('region', { name: 'Section summary' })
+    await within(card).findByText('Section point')
+    expect(card.closest('section[data-section-key]').querySelector('h2')).toHaveTextContent('Features')
+  })
+
+  it('bookmarks sections, highlights them and shows only bookmarked sections', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+    const onlyToggle = await screen.findByRole('button', { name: 'Show only bookmarked sections' })
+    expect(onlyToggle).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Bookmark heading Features' }))
+    await waitFor(() => expect(document.querySelector('.doc-prose h2#features')).toHaveClass('is-bookmarked'))
+    expect(onlyToggle).not.toBeDisabled()
+    fireEvent.click(onlyToggle)
+    expect(document.querySelector('.doc-prose')).toHaveClass('bm-only')
+    expect(screen.getByText('Showing 1 bookmarked section')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('readme-section-bookmarks'))).toEqual(expect.any(Object))
+  })
+
+  it('filters the page to one kind of content', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Filter content' }))
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'Filter content' })).getByRole('menuitemradio', { name: 'Tables' }))
+    await waitFor(() => expect(document.querySelector('.doc-prose').querySelector('[data-filter-match]')).toBeTruthy())
+    const visible = [...document.querySelectorAll('.doc-prose p, .doc-prose ul')].filter(el => !el.closest('[data-filter-hidden]'))
+    expect(visible.filter(el => !el.closest('table'))).toHaveLength(0)
+    expect(screen.getByText(/Showing \d+ match/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show everything' }))
+    await waitFor(() => expect(document.querySelector('[data-filter-hidden]')).toBeNull())
+  })
+
+  it('resizes the contents bar between its minimum and 30% of the window', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+    const handle = await screen.findByRole('separator', { name: 'Resize contents' })
+    for (let i = 0; i < 40; i += 1) fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    expect(Number(handle.getAttribute('aria-valuenow'))).toBe(Math.max(230, Math.round(window.innerWidth * 0.3)))
+    for (let i = 0; i < 80; i += 1) fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    expect(Number(handle.getAttribute('aria-valuenow'))).toBe(230)
+  })
+
   it('collapses and expands heading sections, individually and all at once', async () => {
     installApp()
     const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })
