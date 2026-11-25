@@ -839,13 +839,20 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
   const [pill, setPill] = useState({ left: 4, width: 72, height: 29, top: 3 })
 
   useLayoutEffect(() => {
-    const idx = VIEW_MODES.findIndex(v => v.id === view)
-    const btn = btnRefs.current[idx]
-    if (btn && containerRef.current) {
-      const cr = containerRef.current.getBoundingClientRect()
-      const br = btn.getBoundingClientRect()
-      setPill({ left: br.left - cr.left, top: br.top - cr.top, width: br.width, height: br.height })
+    const measure = () => {
+      const idx = VIEW_MODES.findIndex(v => v.id === view)
+      const btn = btnRefs.current[idx]
+      if (btn && containerRef.current) {
+        const cr = containerRef.current.getBoundingClientRect()
+        const br = btn.getBoundingClientRect()
+        setPill({ left: br.left - cr.left, top: br.top - cr.top, width: br.width, height: br.height })
+      }
     }
+    measure()
+    // Labels hide on narrower windows, which changes the button sizes.
+    const observer = typeof ResizeObserver !== 'undefined' && containerRef.current ? new ResizeObserver(measure) : null
+    if (observer) observer.observe(containerRef.current)
+    return () => observer?.disconnect()
   }, [view])
 
   return (
@@ -858,9 +865,10 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
           onClick={() => onChange(id)}
           className={`pill-btn ${view === id ? 'active' : ''}`}
           title={label}
+          aria-label={label}
         >
           {createElement(mode.Icon, { size: 13 })}
-          {label}
+          <span className="pill-label">{label}</span>
         </button>
         )
       })}
@@ -877,7 +885,7 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
             aria-label="Present as slides"
           >
             <Presentation size={13} />
-            Present
+            <span className="pill-label">Present</span>
           </button>
         </>
       )}
@@ -4437,6 +4445,10 @@ ${fontCss}
     ...(deferredInstallPrompt ? [{ id: 'install', label: 'Install ReadMe app', hint: 'App', icon: Download, run: handleInstallApp }] : []),
     { id: 'upload', label: 'Open files…', hint: 'Action', icon: Upload, run: handleOpenDiskFiles },
     { id: 'url-import', label: 'Import Markdown from URL…', hint: 'Action', icon: Globe, run: handleImportUrl },
+    ...(activeFile ? [{ id: 'save-in-place', label: 'Save file in place…', hint: 'Disk', icon: Save, run: handleSaveInPlace }] : []),
+    { id: 'fullscreen', label: isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen', hint: 'View', icon: isFullscreen ? Minimize2 : Maximize2, run: toggleFullscreen },
+    { id: 'reading-font', label: `Next reading font (now ${activeFont.label})`, hint: 'Reading', icon: Type, run: cycleDocFont },
+    { id: 'keep-awake', label: keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading', hint: 'Reading', icon: keepAwake ? MonitorUp : MonitorDown, run: () => setKeepAwake(value => !value) },
     { id: 'quality', label: 'Check document quality', hint: 'Document', icon: TriangleAlert, run: () => { setQualityOpen(true); if (view === 'editor') setView('split') } },
     ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => { setDiffCompareId(null); setDiffOpen(true) } }] : []),
     ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
@@ -4484,7 +4496,7 @@ ${fontCss}
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
-    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes,
+    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes, activeFont.label, cycleDocFont, handleSaveInPlace, isFullscreen, keepAwake, toggleFullscreen,
   ])
 
   const qualityIssues = useMemo(() => {
@@ -4591,10 +4603,10 @@ ${fontCss}
               onRestore={() => restoreInputRef.current?.click()}
               onStorage={() => setSettingsOpen('storage')}
             />
-            <button onClick={handleImportUrl} className="btn-icon hidden sm:flex" data-tooltip="Import Markdown from URL" aria-label="Import Markdown from URL">
+            <button onClick={handleImportUrl} className="btn-icon hidden sm:flex hdr-optional" data-tooltip="Import Markdown from URL" aria-label="Import Markdown from URL">
               <Globe size={14} />
             </button>
-            <button onClick={handleSaveInPlace} disabled={!activeFile} className="btn-icon hidden sm:flex disabled:opacity-40" data-tooltip="Save file in place or choose a location" aria-label="Save file in place">
+            <button onClick={handleSaveInPlace} disabled={!activeFile} className="btn-icon hidden sm:flex hdr-optional disabled:opacity-40" data-tooltip="Save file in place or choose a location" aria-label="Save file in place">
               <Save size={14} />
             </button>
             <button
@@ -4603,20 +4615,20 @@ ${fontCss}
               data-tooltip={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
               aria-label={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
               aria-pressed={keepAwake}
-              className="btn-icon"
+              className="btn-icon hdr-optional"
               style={keepAwake ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-border)' } : undefined}
             >
               {keepAwake ? <MonitorUp size={15} /> : <MonitorDown size={15} />}
             </button>
             <button onClick={toggleFullscreen} data-tooltip={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-              className="btn-icon hidden sm:flex">
+              className="btn-icon hidden sm:flex hdr-optional">
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
             <button
               onClick={cycleDocFont}
               data-tooltip={`Reading font: ${activeFont.label}`}
               aria-label={`Reading font ${activeFont.label} (${readerPrefs.fontIndex + 1} of ${DOC_FONTS.length})`}
-              className="btn-icon"
+              className="btn-icon hdr-optional"
               style={{ position: 'relative' }}
             >
               <Type size={15} />
@@ -4626,7 +4638,7 @@ ${fontCss}
               data-tooltip={highContrast ? 'Standard contrast' : 'High contrast'}
               aria-label={highContrast ? 'Standard contrast' : 'High contrast'}
               aria-pressed={highContrast}
-              className="btn-icon"
+              className="btn-icon hdr-optional"
               style={highContrast ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-border)' } : undefined}
             >
               <Contrast size={15} />

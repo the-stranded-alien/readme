@@ -2556,3 +2556,23 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 
 /* ── Editor and page toolbars share one height ────────────── */
 .fmt-toolbar, .reader-preview-toolbar { height: 36px; min-height: 36px; padding-top: 0 !important; padding-bottom: 0 !important; box-sizing: border-box; }
+
+/* ── Start screen: all actions in one row ─────────────────── */
+.empty-workspace-inner { width: min(1060px, 100%); }
+.empty-workspace-inner > .empty-templates, .empty-workspace-inner > .empty-templates-heading { max-width: 720px; margin-left: auto; margin-right: auto; }
+.empty-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.empty-card { flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px; padding: 18px 14px 16px; min-height: 132px; text-align: center; }
+.empty-card-icon { width: 40px; height: 40px; border-radius: 12px; }
+.empty-card-text { justify-items: center; gap: 4px; }
+.empty-card-text strong { font-size: 13.5px; line-height: 1.3; }
+.empty-card-text span { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .empty-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .empty-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Header: the view switcher shows icons only when the window is too narrow for labels. */
+@media (max-width: 1240px) {
+  .pill-track .pill-label { display: none; }
+  .pill-track .pill-btn { padding-left: 10px; padding-right: 10px; }
+}
+/* Secondary header buttons step aside on narrow windows (all are in the command palette / Settings). */
+@media (max-width: 1023px) { .surface-header .hdr-optional { display: none !important; } }
