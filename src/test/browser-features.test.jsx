@@ -657,6 +657,44 @@ describe('advanced browser features', () => {
     expect(history[0].reason).toBe('Saved to disk')
   })
 
+  it('uses the CodeMirror editor by default with folds that mirror the preview', async () => {
+    localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code' }))
+    const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body'].join('\n')
+    await writeWorkspace({ activeId: 'cm', files: [{ id: 'cm', name: 'Code.md', content: doc }] })
+    installApp()
+    await waitFor(() => expect(document.querySelector('.cm-content')?.textContent).toContain('First body'))
+    expect(document.querySelector('.cm-content')).toHaveAttribute('aria-label', 'Markdown editor')
+
+    // Collapsing a section in the preview folds it in the editor…
+    fireEvent.click(await screen.findByRole('button', { name: 'Collapse section One' }))
+    await waitFor(() => expect(document.querySelector('.cm-foldPlaceholder')).toBeTruthy())
+    expect(document.querySelector('.cm-content').textContent).not.toContain('First body')
+    // …and expanding it unfolds the editor again.
+    fireEvent.click(screen.getByRole('button', { name: 'Expand section One' }))
+    await waitFor(() => expect(document.querySelector('.cm-foldPlaceholder')).toBeNull())
+
+    // Edits through the editor reach the document (and the preview).
+    const { EditorView } = await import('@codemirror/view')
+    const view = EditorView.findFromDOM(document.querySelector('.cm-editor'))
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\nAdded from CodeMirror' } })
+    await waitFor(() => expect(document.querySelector('.rm-prose')).toHaveTextContent('Added from CodeMirror'))
+  })
+
+  it('switches between the code editor, the simple editor and Vim keys', async () => {
+    localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code' }))
+    installApp()
+    await waitFor(() => expect(document.querySelector('.cm-editor')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Editor options' }))
+    const options = await screen.findByRole('dialog', { name: 'Editor options' })
+    fireEvent.click(within(options).getByRole('radio', { name: 'Vim' }))
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('readme-editor-prefs')).keymap).toBe('vim'))
+    await waitFor(() => expect(document.querySelector('.cm-vimMode, .cm-fat-cursor')).toBeTruthy())
+    fireEvent.click(within(options).getByRole('radio', { name: 'Simple' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea')).toBeTruthy())
+    expect(document.querySelector('.cm-editor')).toBeNull()
+    expect(within(options).getByRole('radio', { name: 'Vim' })).toBeDisabled()
+  })
+
   it('collapses and expands heading sections, individually and all at once', async () => {
     installApp()
     const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })

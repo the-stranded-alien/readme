@@ -1904,3 +1904,27 @@ button[data-tooltip]:not(:focus-visible)::after {
 }
 :where(.code-body pre):focus-visible { outline-offset: -2px; border-radius: 0 0 12px 12px; }
 .pdf-dialog-footer .reader-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; white-space: nowrap; }
+
+/* ── Code editor (CodeMirror) ─────────────────────────────── */
+.code-editor-host { height: 100%; }
+.code-editor-host .cm-editor { height: 100%; }
+.cm-fold-marker { display: inline-flex; color: var(--text-4); opacity: .55; transition: transform .15s ease, opacity .15s, color .15s; }
+.cm-fold-marker.is-open { transform: rotate(90deg); }
+.cm-gutterElement:hover .cm-fold-marker { opacity: 1; color: var(--accent); }
+.cm-fold-marker:not(.is-open) { opacity: 1; color: var(--accent); }
+.dark .code-editor-pane { --cm-code: #f472b6; --cm-keyword: #c4b5fd; --cm-string: #5eead4; --cm-number: #fbbf24; --cm-function: #93c5fd; }
+.theme-sepia .code-editor-pane { --cm-code: #9a3412; --cm-keyword: #7c2d12; --cm-string: #3f6212; --cm-number: #a16207; --cm-function: #1e40af; }
+.app-shell[data-density="compact"] .code-editor-host .cm-content { padding-top: 14px; }
+
+.editor-options { position: relative; display: inline-flex; }
+.editor-options-trigger {
+  display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: 999px;
+  border: 1px solid transparent; background: transparent; color: var(--text-4); font-size: 10px; font-weight: 600; cursor: pointer;
+}
+.editor-options-trigger:hover, .editor-options-trigger[aria-expanded="true"] { color: var(--accent); background: var(--accent-soft); }
+.editor-options-trigger span { color: var(--accent); }
+.editor-options-popover {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; width: 270px; display: grid; gap: 14px; padding: 14px;
+  border-radius: 12px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-lg);
+}
+.editor-options-popover .pdf-segmented button:disabled { opacity: .4; cursor: not-allowed; }

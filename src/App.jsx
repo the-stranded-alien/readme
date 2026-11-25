@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
@@ -37,6 +37,7 @@ import EmptyWorkspace from './components/EmptyWorkspace'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import GlobalSearch from './components/GlobalSearch'
 import HistoryDialog from './components/HistoryDialog'
+import CodeEditor from './components/CodeEditor'
 import { applyBackup, createBackup, readBackup } from './backup'
 import { shortcut } from './platform'
 import { buildShareUrl, readShareFromHash } from './shareLink'
@@ -1766,6 +1767,7 @@ function syncableFile({ id, name, content, pinned, color, wordGoal }) {
 // Applies an edit to the textarea through the browser's editing commands so
 // native undo / redo keep working; falls back to setRangeText.
 function applyTextareaEdit(textarea, edit) {
+  if (textarea.applyEdit) { textarea.applyEdit(edit); return } // CodeMirror adapter
   textarea.focus()
   textarea.setSelectionRange(edit.from, edit.to)
   let applied = false
@@ -1779,6 +1781,72 @@ function applyTextareaEdit(textarea, edit) {
     textarea.dispatchEvent(new Event('input', { bubbles: true }))
   }
   textarea.setSelectionRange(edit.cursor, edit.cursorEnd ?? edit.cursor)
+}
+
+// ── Editor preferences ─────────────────────────────────────────
+const EDITOR_PREFS_KEY = 'readme-editor-prefs'
+const DEFAULT_EDITOR_PREFS = { engine: 'code', keymap: 'default', lineNumbers: false }
+function loadEditorPrefs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EDITOR_PREFS_KEY) || '{}')
+    return {
+      engine: saved.engine === 'plain' ? 'plain' : 'code',
+      keymap: ['vim', 'emacs'].includes(saved.keymap) ? saved.keymap : 'default',
+      lineNumbers: saved.lineNumbers === true,
+    }
+  } catch {
+    return DEFAULT_EDITOR_PREFS
+  }
+}
+
+function EditorOptions({ prefs, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return undefined
+    const onDown = event => { if (!ref.current?.contains(event.target)) setOpen(false) }
+    const onKey = event => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+  const set = (key, value) => onChange({ ...prefs, [key]: value })
+  const option = (key, value, label) => (
+    <button key={value} type="button" role="radio" aria-checked={prefs[key] === value}
+      className={prefs[key] === value ? 'is-active' : ''} onClick={() => set(key, value)}
+      disabled={key === 'keymap' && prefs.engine !== 'code'}>
+      {label}
+    </button>
+  )
+  return (
+    <div className="editor-options" ref={ref}>
+      <button type="button" className="editor-options-trigger" onClick={() => setOpen(value => !value)}
+        aria-label="Editor options" aria-expanded={open} data-tooltip="Editor options">
+        <Settings2 size={11} />
+        {prefs.engine === 'code' && prefs.keymap !== 'default' && <span>{prefs.keymap === 'vim' ? 'Vim' : 'Emacs'}</span>}
+      </button>
+      {open && (
+        <div className="editor-options-popover anim-drop-in" role="dialog" aria-label="Editor options">
+          <div className="pdf-option" role="radiogroup" aria-label="Editor">
+            <span className="pdf-option-label">Editor</span>
+            <div className="pdf-segmented">{option('engine', 'code', 'Code editor')}{option('engine', 'plain', 'Simple')}</div>
+            <span className="pdf-toggle-hint">{prefs.engine === 'code' ? 'Syntax colours, heading folding synced with the preview' : 'A plain text box — lightest and most compatible'}</span>
+          </div>
+          <div className="pdf-option" role="radiogroup" aria-label="Key bindings">
+            <span className="pdf-option-label">Key bindings</span>
+            <div className="pdf-segmented">{option('keymap', 'default', 'Standard')}{option('keymap', 'vim', 'Vim')}{option('keymap', 'emacs', 'Emacs')}</div>
+            {prefs.engine !== 'code' && <span className="pdf-toggle-hint">Available in the code editor</span>}
+          </div>
+          <label className="pdf-toggle">
+            <span><span className="pdf-option-label">Line numbers</span></span>
+            <input type="checkbox" checked={prefs.lineNumbers && prefs.engine === 'code'} disabled={prefs.engine !== 'code'}
+              onChange={event => set('lineNumbers', event.target.checked)} />
+            <span className="pdf-switch" aria-hidden="true" />
+          </label>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function formatDuration(ms) {
@@ -1949,6 +2017,18 @@ export default function App() {
   const toggleAllSections = useCallback(() => {
     setSectionCollapse(state => ({ ...state, mode: state.mode === 'collapsed' ? 'expanded' : 'collapsed', overrides: new Set() }))
   }, [])
+  // Section state shared with the code editor so folds mirror preview collapse.
+  const handleEditorSectionToggle = useCallback((key, folded, title = false) => {
+    setSectionCollapse(state => {
+      const collapsed = isSectionCollapsed({ mode: state.mode, overrides: state.overrides }, { dataSectionKey: key, dataTitleSection: title })
+      if (collapsed === folded) return state
+      const overrides = new Set(state.overrides)
+      if (overrides.has(key)) overrides.delete(key)
+      else overrides.add(key)
+      return { ...state, overrides }
+    })
+  }, [])
+
   // "Focus on section" mode: only one chapter-level section is shown at a time.
   const [focusSection, setFocusSection] = useState(null)
   if (focusSection && focusSection.docKey !== sectionDocKey) setFocusSection(null)
@@ -1961,6 +2041,9 @@ export default function App() {
     focusKey: searchingDocument ? null : focusSection?.key ?? null,
     toggle: toggleSection,
   }), [sectionCollapse.mode, sectionCollapse.overrides, searchingDocument, focusSection, toggleSection])
+  const editorSectionState = useMemo(() => ({
+    isCollapsed: (key, title) => isSectionCollapsed(sectionCollapseValue, { dataSectionKey: key, dataTitleSection: title }),
+  }), [sectionCollapseValue])
 
   const fileInputRef    = useRef(null)
   const appRef          = useRef(null)
@@ -1976,6 +2059,10 @@ export default function App() {
   const [canReopen, setCanReopen] = useState(false)
   const [writingStats, setWritingStats] = useState({})
   const [failedImages, setFailedImages] = useState({ key: '', srcs: [] })
+  const [editorPrefs, setEditorPrefs] = useState(loadEditorPrefs)
+  useEffect(() => {
+    try { localStorage.setItem(EDITOR_PREFS_KEY, JSON.stringify(editorPrefs)) } catch { /* storage is optional */ }
+  }, [editorPrefs])
   if (activeFileId && workspaceReady && !writingStats[activeFileId]) {
     setWritingStats(prev => ({ ...prev, [activeFileId]: { baseWords: currentWords, activeMs: 0, lastEditAt: 0 } }))
   }
@@ -2514,6 +2601,7 @@ export default function App() {
       const end = length ? start + length : start + (lines[line - 1]?.length ?? 0) - column
       ta.focus()
       ta.setSelectionRange(start, end)
+      if (ta.scrollToLine) { ta.scrollToLine(line); return }
       const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 24
       ta.scrollTop = Math.max(0, (line - 4) * lineHeight)
     }))
@@ -3563,6 +3651,7 @@ ${fontCss}
                     <Link2 size={10} />
                     <span>Sync</span>
                   </button>
+                  <EditorOptions prefs={editorPrefs} onChange={setEditorPrefs} />
                   <span style={{ fontSize: 10, color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
                     {lineCount} lines ·
                   </span>
@@ -3587,7 +3676,24 @@ ${fontCss}
                 </div>
               </div>
 
-              {/* Textarea */}
+              {/* Editor: CodeMirror (default) or a plain textarea */}
+              {editorPrefs.engine === 'code' ? (
+                <div className="flex-1 min-h-0 overflow-hidden grid-pattern code-editor-pane" style={{ background: 'var(--bg-editor)' }}>
+                  <CodeEditor
+                    key={activeFileId}
+                    value={content}
+                    onChange={updateActiveContent}
+                    onScroll={handleSyncEditorScroll}
+                    onImageFiles={files => insertImages(files, textareaRef.current)}
+                    editorRef={textareaRef}
+                    placeholder={'# Start typing Markdown…\n\nOr drag & drop .md files anywhere. Paste or drop images to embed them.'}
+                    keymapMode={editorPrefs.keymap}
+                    showLineNumbers={editorPrefs.lineNumbers}
+                    sectionState={editorSectionState}
+                    onSectionToggle={handleEditorSectionToggle}
+                  />
+                </div>
+              ) : (
               <div
                 className="flex-1 overflow-auto grid-pattern"
                 style={{ background: 'var(--bg-editor)' }}
@@ -3605,6 +3711,7 @@ ${fontCss}
                   spellCheck={false}
                 />
               </div>
+              )}
             </div>
 
             {/* Preview pane */}
