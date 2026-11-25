@@ -1441,6 +1441,8 @@ function ReadingPetFooter() {
   const footerRef = useRef(null)
   const catRefs = useRef([])
   const widgetRef = useRef(null)
+  const speakingCatRef = useRef(0)
+  const thoughtIndexRef = useRef(0)
   const [prefs, setPrefs] = useState(loadReadingPetPrefs)
   const [footerBounds, setFooterBounds] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -1492,6 +1494,26 @@ function ReadingPetFooter() {
     .split('\n')
     .map(message => message.trim())
     .filter(Boolean), [prefs.bubbleText])
+
+  useEffect(() => {
+    if (!prefs.enabled || !prefs.bubbleEnabled || bubbleMessages.length === 0) return undefined
+    const sayNextThought = () => {
+      const catIndex = speakingCatRef.current % prefs.catCount
+      const thought = bubbleMessages[thoughtIndexRef.current % bubbleMessages.length]
+      catRefs.current[catIndex]?.say(thought, { duration: 4500 })
+      speakingCatRef.current = (catIndex + 1) % prefs.catCount
+      thoughtIndexRef.current = (thoughtIndexRef.current + 1) % bubbleMessages.length
+    }
+    let interval
+    const firstThought = setTimeout(() => {
+      sayNextThought()
+      interval = setInterval(sayNextThought, 18_000)
+    }, 1200)
+    return () => {
+      clearTimeout(firstThought)
+      clearInterval(interval)
+    }
+  }, [prefs.enabled, prefs.bubbleEnabled, prefs.catCount, bubbleMessages])
 
   useEffect(() => {
     if (!prefs.enabled || prefs.roaming || !footerBounds) return undefined
@@ -1685,13 +1707,17 @@ function ReadingPetFooter() {
             soundBasePath="/cat-sounds"
             zones={zones}
             zoneAttractionChance={prefs.roaming && prefs.visitHeadings ? .25 : 0}
-            bubbleEnabled={prefs.bubbleEnabled && bubbleMessages.length > 0}
-            bubbleText={bubbleMessages}
+            bubbleEnabled={false}
             pettable={prefs.pettable}
             persistPosition={prefs.rememberPosition}
             storageKey={`readme-reading-pet:${index}`}
             initialPos={initialPos}
             seasonal={false}
+            onSleep={() => {
+              if (prefs.bubbleEnabled && bubbleMessages.length > 0) {
+                catRefs.current[index]?.say(bubbleMessages[index % bubbleMessages.length], { duration: 4500 })
+              }
+            }}
             zIndex={50}
           />
         )
