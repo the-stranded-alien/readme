@@ -20,13 +20,14 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { readWorkspace, writeWorkspace } from './workspaceDb'
 import { analyzeDocument } from './documentAnalysis'
 import { makeDuplicateFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
+import FileTabBar from './components/FileTabBar'
 
 // ── Custom view icons ──────────────────────────────────────────
 const SplitEqualIcon = () => (
@@ -803,7 +804,7 @@ function loadInitialWorkspace() {
         ).map(f => ({ ...f, content: removeSampleAttribution(f.content) }))
         const savedActive = localStorage.getItem('readme-active-file')
         const activeId = valid.some(f => f.id === savedActive) ? savedActive : (valid[0]?.id ?? null)
-        return { files: valid, activeId }
+        return { files: orderPinnedFirst(valid), activeId }
       }
     }
 
@@ -1129,176 +1130,6 @@ function DownloadMenuButton({
 }
 
 // ── FileTabBar ─────────────────────────────────────────────────
-function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename, onDuplicate, onCompare, searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette }) {
-  const tabRefs = useRef({})
-  const [editingId, setEditingId] = useState(null)
-  const [draftName, setDraftName] = useState('')
-
-  useEffect(() => {
-    if (!activeFileId) return
-    tabRefs.current[activeFileId]?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'nearest',
-    })
-  }, [activeFileId, files.length])
-
-  const startRename = (file) => {
-    setEditingId(file.id)
-    setDraftName(file.name)
-  }
-
-  const commitRename = (id) => {
-    onRename(id, draftName)
-    setEditingId(null)
-  }
-
-  return (
-    <div className="file-tabs-bar no-print">
-      <button
-        type="button"
-        onClick={onCreate}
-        className="file-tab-add"
-        title="New file"
-        aria-label="New file"
-      >
-        <FilePlus size={12} />
-        <span>New</span>
-      </button>
-      <div className="file-tabs-scroll" role="tablist" aria-label="Open files">
-        {files.map(file => {
-          const isActive = file.id === activeFileId
-          const isEditing = editingId === file.id
-          return (
-            <div
-              key={file.id}
-              ref={el => {
-                if (el) tabRefs.current[file.id] = el
-                else delete tabRefs.current[file.id]
-              }}
-              role="tab"
-              aria-selected={isActive}
-              tabIndex={0}
-              onClick={() => onSelect(file.id)}
-              onAuxClick={e => {
-                if (e.button === 1) {
-                  e.preventDefault()
-                  onClose(file.id)
-                }
-              }}
-              onKeyDown={e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  onSelect(file.id)
-                }
-              }}
-              title={`${file.name} (double-click to rename)`}
-              className={`file-tab ${isActive ? 'active' : ''}`}
-            >
-              <FileText
-                size={12}
-                style={{
-                  flexShrink: 0,
-                  color: isActive ? 'var(--accent)' : 'var(--text-4)',
-                }}
-              />
-              {isEditing ? (
-                <input
-                  className="file-tab-rename"
-                  value={draftName}
-                  autoFocus
-                  onClick={e => e.stopPropagation()}
-                  onChange={e => setDraftName(e.target.value)}
-                  onBlur={() => commitRename(file.id)}
-                  onKeyDown={e => {
-                    e.stopPropagation()
-                    if (e.key === 'Enter') commitRename(file.id)
-                    else if (e.key === 'Escape') setEditingId(null)
-                  }}
-                />
-              ) : (
-                <span
-                  className="truncate"
-                  onDoubleClick={e => {
-                    e.stopPropagation()
-                    startRename(file)
-                  }}
-                >
-                  {file.name}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={e => {
-                  e.stopPropagation()
-                  onDuplicate(file.id)
-                }}
-                className="file-tab-duplicate"
-                title={`Duplicate ${file.name}`}
-                aria-label={`Duplicate ${file.name}`}
-              >
-                <CopyPlus size={11} />
-              </button>
-              <button
-                type="button"
-                onClick={e => {
-                  e.stopPropagation()
-                  onClose(file.id)
-                }}
-                className="file-tab-close"
-                title={`Close ${file.name}`}
-                aria-label={`Close ${file.name}`}
-              >
-                <X size={10} />
-              </button>
-            </div>
-          )
-        })}
-
-      </div>
-
-      <span className="file-tab-count hidden sm:inline-flex" aria-label={`${files.length} open ${files.length === 1 ? 'file' : 'files'}`}>
-        {files.length} {files.length === 1 ? 'file' : 'files'}
-      </span>
-      <div className="file-tabs-search-region">
-        <div className="file-tabs-compare-control">
-          <button
-            type="button"
-            onClick={onCompare}
-            className="file-tabs-command-button"
-            data-tooltip="Compare open files"
-            aria-label="Compare open files"
-            disabled={files.length < 2}
-          >
-            <GitCompare size={14} />
-          </button>
-        </div>
-        <label className="file-tabs-command-search">
-          <Search size={13} aria-hidden="true" />
-          <input
-            type="search"
-            value={searchValue}
-            onChange={event => onSearchChange(event.target.value)}
-            onFocus={onSearchFocus}
-            placeholder="Search commands…"
-            aria-label="Search files, headings, and commands"
-          />
-          <kbd>⌘ K</kbd>
-        </label>
-        <button
-          type="button"
-          onClick={onOpenCommandPalette}
-          className="file-tabs-command-button"
-          data-tooltip="Open command palette (Cmd/Ctrl + K)"
-          aria-label="Open command palette"
-        >
-          <Command size={14} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
 const READING_PET_SKINS = ONEKO_SKINS.map(skin => skin.id)
 
 function ReadingPetCoatDropdown({ value, onChange, ariaLabel = 'Cat coat' }) {
@@ -1709,6 +1540,15 @@ function ReadingPetFooter() {
   )
 }
 
+// Pinned tabs always sit before the others; order inside each group is kept.
+function orderPinnedFirst(list) {
+  return [...list.filter(file => file.pinned), ...list.filter(file => !file.pinned)]
+}
+// Fields that are safe to persist in localStorage and share with other browser tabs.
+function syncableFile({ id, name, content, pinned, color }) {
+  return { id, name, content, ...(pinned ? { pinned: true } : {}), ...(color ? { color } : {}) }
+}
+
 // ── App ────────────────────────────────────────────────────────
 export default function App() {
   const [theme, setTheme] = useState(() => {
@@ -1767,6 +1607,10 @@ export default function App() {
     [files, activeFileId]
   )
   const content = activeFile?.content ?? ''
+  const [recentIds, setRecentIds] = useState(() => (activeFileId ? [activeFileId] : []))
+  if (activeFileId && recentIds[0] !== activeFileId) {
+    setRecentIds([activeFileId, ...recentIds.filter(id => id !== activeFileId)].slice(0, 30))
+  }
   const fileName = activeFile?.name ?? null
   const { meta: frontmatterMeta, body: markdownBody } = useMemo(
     () => parseFrontmatter(content),
@@ -1815,6 +1659,9 @@ export default function App() {
   const syncTimerRef    = useRef(null)
   const syncRafRef      = useRef(null)
   const diskHandlesRef = useRef(new Map())
+  const closedFilesRef = useRef([])
+  const [canReopen, setCanReopen] = useState(false)
+  const [diffCompareId, setDiffCompareId] = useState(null)
   const speechRef = useRef(null)
   const broadcastRef = useRef(null)
   const remoteUpdateRef = useRef(null)
@@ -1898,7 +1745,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
-        localStorage.setItem('readme-files', JSON.stringify(files.map(({ id, name, content }) => ({ id, name, content }))))
+        localStorage.setItem('readme-files', JSON.stringify(files.map(syncableFile)))
         if (activeFileId) localStorage.setItem('readme-active-file', activeFileId)
         else localStorage.removeItem('readme-active-file')
       } catch {
@@ -1919,17 +1766,24 @@ export default function App() {
       if (updatedAt <= lastLocalEditAtRef.current) return
       lastLocalEditAtRef.current = updatedAt
       remoteUpdateRef.current = JSON.stringify({
-        files: data.files.map(({ id, name, content }) => ({ id, name, content })),
+        files: data.files.map(syncableFile),
         activeId: data.activeId ?? null,
       })
-      setFiles(data.files)
+      // Keep this tab's disk handles / saved baselines, which are not shared.
+      setFiles(prev => {
+        const local = new Map(prev.map(file => [file.id, file]))
+        return data.files.map(file => {
+          const mine = local.get(file.id)
+          return mine ? { ...file, diskHandle: mine.diskHandle, diskSavedContent: mine.diskSavedContent } : file
+        })
+      })
       setActiveFileId(data.activeId ?? null)
     }
     return () => { channel.close(); broadcastRef.current = null }
   }, [])
 
   useEffect(() => {
-    const safeFiles = files.map(({ id, name, content }) => ({ id, name, content }))
+    const safeFiles = files.map(syncableFile)
     const snapshot = JSON.stringify({ files: safeFiles, activeId: activeFileId })
     if (remoteUpdateRef.current === snapshot) { remoteUpdateRef.current = null; return }
     remoteUpdateRef.current = null
@@ -2250,19 +2104,112 @@ export default function App() {
     previewScrollRef.current?.scrollTo({ top: 0 })
   }, [activeFileId, markWorkspaceEdit])
 
-  const handleCloseFile = useCallback((id) => {
-    const idx = files.findIndex(f => f.id === id)
-    if (idx === -1) return
+  // Closes several tabs at once and remembers them so they can be reopened.
+  const closeFiles = useCallback((ids) => {
+    const closing = new Set(ids)
+    if (!closing.size) return
+    const closedEntries = files
+      .map((file, index) => ({ file, index }))
+      .filter(entry => closing.has(entry.file.id))
+    if (!closedEntries.length) return
     markWorkspaceEdit()
-    const next = files.filter(f => f.id !== id)
+    closedFilesRef.current = [...closedFilesRef.current, ...closedEntries].slice(-25)
+    setCanReopen(true)
+    const next = files.filter(f => !closing.has(f.id))
     setFiles(next)
-    if (id === activeFileId) {
-      const fallback = next[idx] ?? next[idx - 1] ?? null
+    if (closing.has(activeFileId)) {
+      const activeIndex = files.findIndex(f => f.id === activeFileId)
+      const fallback = next.find((_, i) => i >= activeIndex - closedEntries.filter(e => e.index < activeIndex).length) ?? next[next.length - 1] ?? null
       setActiveFileId(fallback?.id ?? null)
       setActiveHeadingId(null)
       setShowScrollTop(false)
     }
   }, [files, activeFileId, markWorkspaceEdit])
+  const handleCloseFile = useCallback(id => closeFiles([id]), [closeFiles])
+  const handleCloseOthers = useCallback(id => {
+    closeFiles(files.filter(f => f.id !== id && !f.pinned).map(f => f.id))
+    setActiveFileId(id)
+  }, [files, closeFiles])
+  const handleCloseToRight = useCallback(id => {
+    const index = files.findIndex(f => f.id === id)
+    closeFiles(files.slice(index + 1).filter(f => !f.pinned).map(f => f.id))
+  }, [files, closeFiles])
+  const handleReopenClosed = useCallback(() => {
+    const entry = closedFilesRef.current.pop()
+    setCanReopen(closedFilesRef.current.length > 0)
+    if (!entry) return
+    markWorkspaceEdit()
+    setFiles(prev => {
+      if (prev.some(f => f.id === entry.file.id)) return prev
+      const next = [...prev]
+      next.splice(Math.min(entry.index, next.length), 0, entry.file)
+      return orderPinnedFirst(next)
+    })
+    setActiveFileId(entry.file.id)
+    setActiveHeadingId(null)
+  }, [markWorkspaceEdit])
+
+  // Cmd/Ctrl+Shift+T reopens the last closed tab. Browsers may reserve this
+  // shortcut in a normal tab; it works in the installed app and via the menu/palette.
+  useEffect(() => {
+    const onKeyDown = event => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 't') {
+        event.preventDefault()
+        handleReopenClosed()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleReopenClosed])
+
+  const handleReorderFiles = useCallback((sourceId, targetId, placeAfter) => {
+    setFiles(prev => {
+      const source = prev.find(f => f.id === sourceId)
+      const target = prev.find(f => f.id === targetId)
+      if (!source || !target || source === target || Boolean(source.pinned) !== Boolean(target.pinned)) return prev
+      const without = prev.filter(f => f.id !== sourceId)
+      const targetIndex = without.findIndex(f => f.id === targetId)
+      without.splice(targetIndex + (placeAfter ? 1 : 0), 0, source)
+      return without
+    })
+    markWorkspaceEdit()
+  }, [markWorkspaceEdit])
+  const handleTogglePin = useCallback(id => {
+    markWorkspaceEdit()
+    setFiles(prev => {
+      const target = prev.find(f => f.id === id)
+      if (!target) return prev
+      const updated = { ...target, pinned: !target.pinned }
+      const rest = prev.filter(f => f.id !== id)
+      // Pinning moves the tab to the end of the pinned group; unpinning to the start of the others.
+      const firstUnpinned = rest.findIndex(f => !f.pinned)
+      const insertAt = firstUnpinned === -1 ? rest.length : firstUnpinned
+      rest.splice(insertAt, 0, updated)
+      return rest
+    })
+  }, [markWorkspaceEdit])
+  const handleSetFileColor = useCallback((id, color) => {
+    markWorkspaceEdit()
+    setFiles(prev => prev.map(f => (f.id === id ? { ...f, color: color || undefined } : f)))
+  }, [markWorkspaceEdit])
+  const handleDownloadFile = useCallback(id => {
+    const file = files.find(f => f.id === id)
+    if (!file) return
+    const name = (file.name.split('/').pop() || 'document.md')
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([file.content], { type: 'text/markdown' })),
+      download: /\.(md|markdown|txt)$/i.test(name) ? name : `${name}.md`,
+    })
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }, [files])
+
+  const handleRevealOutline = useCallback(id => {
+    setActiveFileId(id)
+    if (view === 'editor') setView('split')
+    setTocVisible(true)
+    setMobileTab('preview')
+  }, [view])
 
   const handleRenameFile = useCallback((id, rawName) => {
     const trimmed = rawName.trim()
@@ -2285,7 +2232,8 @@ export default function App() {
         valid.map(async f => {
           const id = createFileId()
           if (f.readmeHandle) diskHandlesRef.current.set(id, f.readmeHandle)
-          return { id, name: f.readmePath || f.name, content: await readFileAsText(f), ...(f.readmeHandle ? { diskHandle: f.readmeHandle } : {}) }
+          const text = await readFileAsText(f)
+          return { id, name: f.readmePath || f.name, content: text, ...(f.readmeHandle ? { diskHandle: f.readmeHandle, diskSavedContent: text } : {}) }
         })
       )
       markWorkspaceEdit()
@@ -2338,7 +2286,8 @@ export default function App() {
         const file = await handle.getFile()
         const id = createFileId()
         diskHandlesRef.current.set(id, handle)
-        return { id, name: file.name, content: await readFileAsText(file), diskHandle: handle }
+        const text = await readFileAsText(file)
+        return { id, name: file.name, content: text, diskHandle: handle, diskSavedContent: text }
       }))
       if (loaded.length) {
         markWorkspaceEdit()
@@ -2375,6 +2324,9 @@ export default function App() {
       const writable = await handle.createWritable()
       await writable.write(content)
       await writable.close()
+      const savedId = activeFile.id
+      const savedContent = content
+      setFiles(prev => prev.map(f => (f.id === savedId ? { ...f, diskHandle: handle, diskSavedContent: savedContent } : f)))
     } catch (error) {
       if (error?.name !== 'AbortError') { console.error('Save file failed', error); alert('Could not save this file. Use Download as a fallback.') }
     }
@@ -2630,7 +2582,12 @@ export default function App() {
     { id: 'upload', label: 'Open files…', hint: 'Action', icon: Upload, run: handleOpenDiskFiles },
     { id: 'url-import', label: 'Import Markdown from URL…', hint: 'Action', icon: Globe, run: handleImportUrl },
     { id: 'quality', label: 'Check document quality', hint: 'Document', icon: TriangleAlert, run: () => { setQualityOpen(true); if (view === 'editor') setView('split') } },
-    ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => setDiffOpen(true) }] : []),
+    ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => { setDiffCompareId(null); setDiffOpen(true) } }] : []),
+    ...(canReopen ? [{ id: 'reopen', label: 'Reopen closed tab', hint: 'Tabs', icon: RotateCcw, run: handleReopenClosed }] : []),
+    ...(activeFile ? [
+      { id: 'pin', label: activeFile.pinned ? 'Unpin current tab' : 'Pin current tab', hint: 'Tabs', icon: activeFile.pinned ? PinOff : Pin, run: () => handleTogglePin(activeFile.id) },
+      ...(files.length > 1 ? [{ id: 'close-others', label: 'Close other tabs', hint: 'Tabs', icon: X, run: () => handleCloseOthers(activeFile.id) }] : []),
+    ] : []),
     { id: 'wide', label: readerPrefs.width === 'full' ? 'Switch to Book page width' : 'Expand to Wide mode', hint: 'Reader', icon: UnfoldHorizontal, run: () => setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' })) },
     { id: 'contrast', label: highContrast ? 'Disable High Contrast' : 'Enable High Contrast', hint: 'Theme', icon: Contrast, run: () => setHighContrast(h => !h) },
     { id: 'theme', label: `Switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'Sepia' : isDark ? 'Light' : 'Dark'} mode`, hint: 'Theme', icon: ENABLE_SEPIA_THEME && theme === 'sepia' ? BookOpen : isDark ? Sun : Moon, run: toggleTheme },
@@ -2646,7 +2603,7 @@ export default function App() {
   ], [
     handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, syncScroll, activeFile, files.length, view, handleDownload,
-    handleExportHtml, handleExportPdf, handleExportZip,
+    handleExportHtml, handleExportPdf, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
   ])
 
   const wordCount   = analysis.wordCount
@@ -2784,7 +2741,17 @@ export default function App() {
         onCreate={handleNewFile}
         onRename={handleRenameFile}
         onDuplicate={handleDuplicateFile}
-        onCompare={() => setDiffOpen(true)}
+        onCompare={withId => { setDiffCompareId(withId ?? null); setDiffOpen(true) }}
+        recentIds={recentIds}
+        canReopen={canReopen}
+        onReorder={handleReorderFiles}
+        onTogglePin={handleTogglePin}
+        onSetColor={handleSetFileColor}
+        onCloseOthers={handleCloseOthers}
+        onCloseToRight={handleCloseToRight}
+        onRevealOutline={handleRevealOutline}
+        onDownload={handleDownloadFile}
+        onReopenClosed={handleReopenClosed}
         searchValue={cmdQuery}
         onSearchChange={value => { setCmdQuery(value); setCmdOpen(true) }}
         onSearchFocus={() => setCmdOpen(true)}
@@ -3308,7 +3275,7 @@ export default function App() {
       )}
 
       {diffOpen && files.length > 1 && (
-        <FileDiffView files={files} activeFileId={activeFileId} onClose={() => setDiffOpen(false)} />
+        <FileDiffView files={files} activeFileId={activeFileId} compareWithId={diffCompareId} onClose={() => setDiffOpen(false)} />
       )}
 
       {/* ── Image lightbox ────────────────────────────── */}

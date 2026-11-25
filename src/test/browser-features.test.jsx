@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import App from '../App.jsx'
 import { analyzeDocument, checkMarkdownQuality } from '../documentAnalysis.js'
 import { diffLines } from '../documentDiff.js'
-import { makeDuplicateFileName } from '../fileUtils.js'
+import { fuzzyScore, isModifiedFromDisk, makeDuplicateFileName } from '../fileUtils.js'
 import { readWorkspace, writeWorkspace } from '../workspaceDb.js'
 
 function installApp(root = document.body) {
@@ -403,6 +403,68 @@ describe('advanced browser features', () => {
     const manifest = JSON.parse(await readFile(resolve(testDir, '../../public/manifest.webmanifest'), 'utf8'))
     expect(manifest.name).toBe('ReadMe')
     expect(manifest.short_name).toBe('ReadMe')
+  })
+
+  it('pins, labels, closes others and reopens tabs from the tab context menu', async () => {
+    installApp()
+    fireEvent.click(document.querySelector('.file-tab-add'))
+    fireEvent.click(document.querySelector('.file-tab-add'))
+    const tabs = () => screen.getAllByRole('tab')
+    expect(tabs()).toHaveLength(3)
+
+    const lastTab = tabs()[2]
+    const lastName = lastTab.getAttribute('aria-label')
+    fireEvent.contextMenu(lastTab, { clientX: 40, clientY: 40 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Pin tab/ }))
+    expect(tabs()[0].getAttribute('aria-label')).toBe(`${lastName}, pinned`)
+
+    fireEvent.contextMenu(tabs()[1], { clientX: 40, clientY: 40 })
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Green label' }))
+    expect(tabs()[1].className).toContain('has-label')
+
+    // Close others keeps pinned tabs.
+    fireEvent.contextMenu(tabs()[1], { clientX: 40, clientY: 40 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Close others/ }))
+    expect(tabs()).toHaveLength(2)
+
+    fireEvent.contextMenu(tabs()[1], { clientX: 40, clientY: 40 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Reopen closed tab/ }))
+    expect(tabs()).toHaveLength(3)
+  })
+
+  it('opens a fuzzy file switcher from the files pill', async () => {
+    installApp()
+    fireEvent.click(document.querySelector('.file-tab-add'))
+    fireEvent.click(screen.getByRole('button', { name: /2 open files/ }))
+    const input = await screen.findByRole('combobox', { name: 'Find a file' })
+    fireEvent.change(input, { target: { value: 'wlcm' } })
+    const options = screen.getAllByRole('option')
+    expect(options).toHaveLength(1)
+    expect(options[0]).toHaveTextContent('Welcome.md')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.getByRole('tab', { selected: true })).toHaveAttribute('aria-label', 'Welcome.md')
+    expect(fuzzyScore('wlcm', 'Welcome.md')).toBeGreaterThan(0)
+    expect(fuzzyScore('zzz', 'Welcome.md')).toBe(-1)
+    expect(fuzzyScore('unt 5', 'Untitled-5.md')).toBeGreaterThan(0)
+  })
+
+  it('reorders tabs with drag and drop', async () => {
+    installApp()
+    fireEvent.click(document.querySelector('.file-tab-add'))
+    const [first, second] = screen.getAllByRole('tab')
+    const names = [first.getAttribute('aria-label'), second.getAttribute('aria-label')]
+    const data = new Map()
+    const dataTransfer = { setData: (k, v) => data.set(k, v), getData: k => data.get(k) || '', get types() { return [...data.keys()] }, effectAllowed: '', dropEffect: '' }
+    fireEvent.dragStart(second, { dataTransfer })
+    fireEvent.dragOver(first, { dataTransfer, clientX: 0 })
+    fireEvent.drop(first, { dataTransfer, clientX: 0 })
+    expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('aria-label'))).toEqual([names[1], names[0]])
+  })
+
+  it('flags disk-backed files with unsaved changes', () => {
+    expect(isModifiedFromDisk({ content: 'a', diskSavedContent: 'a' })).toBe(false)
+    expect(isModifiedFromDisk({ content: 'ab', diskSavedContent: 'a' })).toBe(true)
+    expect(isModifiedFromDisk({ content: 'ab' })).toBe(false)
   })
 
   it('collapses and expands heading sections, individually and all at once', async () => {

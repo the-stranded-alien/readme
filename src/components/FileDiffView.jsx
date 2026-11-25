@@ -76,9 +76,10 @@ function DiffPane({ title, files, selectedId, otherSelectedId, onSelect, rows, s
   )
 }
 
-export default function FileDiffView({ files, activeFileId, onClose }) {
+export default function FileDiffView({ files, activeFileId, compareWithId, onClose }) {
   const initialLeftId = activeFileId || files[0]?.id
-  const initialRightId = files.find(file => file.id !== initialLeftId)?.id || files[1]?.id
+  const initialRightId = (compareWithId && compareWithId !== initialLeftId && files.some(file => file.id === compareWithId) ? compareWithId : null)
+    || files.find(file => file.id !== initialLeftId)?.id || files[1]?.id
   const [leftId, setLeftId] = useState(initialLeftId)
   const [rightId, setRightId] = useState(initialRightId)
   const [diffResult, setDiffResult] = useState(null)

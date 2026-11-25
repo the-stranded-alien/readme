@@ -743,6 +743,105 @@ mark.rm-search-hit.current {
 .file-tab-close:hover { background: var(--accent-soft); color: var(--accent); }
 .file-tab-duplicate { color: var(--text-4); }
 
+/* ── Tab strip: fades, pinned, labels, drag & drop, unsaved state ── */
+.file-tabs-scroll { --fade: 28px; }
+.file-tabs-scroll.fade-left  { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade)); mask-image: linear-gradient(to right, transparent 0, #000 var(--fade)); }
+.file-tabs-scroll.fade-right { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 var(--fade)); mask-image: linear-gradient(to left, transparent 0, #000 var(--fade)); }
+.file-tabs-scroll.fade-left.fade-right {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%);
+}
+.file-tab.is-pinned { padding: 0 10px; gap: 4px; }
+.file-tab.group-start { margin-left: 8px; }
+.file-tab.group-start::after {
+  content: ''; position: absolute; left: -6px; top: 8px; bottom: 6px; width: 1px;
+  background: var(--border-strong); opacity: .6;
+}
+.file-tab.has-label { box-shadow: inset 0 -2px 0 var(--tab-label); }
+.file-tab.has-label.active { box-shadow: inset 0 -2px 0 var(--tab-label), 0 -2px 10px rgba(20,24,80,0.04); }
+.file-tab.is-dragging { opacity: .45; }
+.file-tab.drop-before::before, .file-tab.drop-after::before {
+  content: ''; position: absolute; top: 4px; bottom: 2px; width: 2px; border-radius: 2px;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft);
+  left: auto; right: auto; height: auto;
+}
+.file-tab.drop-before::before { left: -3px; }
+.file-tab.drop-after::before  { right: -3px; }
+.file-tab-disk { flex-shrink: 0; color: var(--text-4); opacity: .7; }
+.file-tab-disk.is-modified { color: var(--accent); opacity: 1; }
+.file-modified-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0;
+  background: var(--accent);
+}
+.file-tab-close .file-modified-dot { display: none; }
+.file-tab-close.is-modified { opacity: 1; }
+.file-tab-close.is-modified .file-modified-dot { display: inline-block; }
+.file-tab-close.is-modified svg { display: none; }
+.file-tab-close.is-modified:hover .file-modified-dot { display: none; }
+.file-tab-close.is-modified:hover svg { display: block; }
+.file-tabs-command-button.is-drop-ready { border-style: dashed; border-color: var(--accent); }
+.file-tabs-command-button.is-drop-target { background: var(--accent); color: #fff; border-style: solid; transform: scale(1.06); }
+
+/* ── Tab context menu ─────────────────────────────────────── */
+.tab-context-menu {
+  position: fixed; z-index: 90; min-width: 224px; padding: 5px;
+  background: var(--bg-preview); color: var(--text-2);
+  border: 1px solid var(--border); border-radius: 11px; box-shadow: var(--shadow-xl);
+}
+.tab-context-menu > button {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 7px 9px; border: 0; border-radius: 7px; background: transparent;
+  font-size: 12.5px; color: var(--text-2); text-align: left; cursor: pointer;
+}
+.tab-context-menu > button svg { color: var(--text-4); flex-shrink: 0; }
+.tab-context-menu > button:hover:not(:disabled),
+.tab-context-menu > button:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+.tab-context-menu > button:hover:not(:disabled) svg,
+.tab-context-menu > button:focus-visible svg { color: var(--accent); }
+.tab-context-menu > button:disabled { opacity: .4; cursor: default; }
+.tab-context-menu kbd { margin-left: auto; font-family: inherit; font-size: 10.5px; color: var(--text-4); }
+.tab-context-separator { height: 1px; margin: 4px 6px; background: var(--border-light); }
+.tab-context-colors { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; font-size: 12.5px; color: var(--text-3); }
+.tab-context-colors > div { display: flex; gap: 5px; }
+.tab-color-swatch {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0; border-radius: 999px; cursor: pointer; color: #fff;
+  background: var(--swatch); border: 1px solid color-mix(in srgb, var(--swatch) 70%, #000);
+  transition: transform .12s, box-shadow .12s;
+}
+.tab-color-swatch:hover, .tab-color-swatch:focus-visible { transform: scale(1.15); outline: none; box-shadow: 0 0 0 2px var(--bg-preview), 0 0 0 3.5px var(--swatch, var(--border-strong)); }
+.tab-color-swatch.is-none { background: transparent; border: 1px dashed var(--border-strong); position: relative; }
+.tab-color-swatch.is-none::after { content: ''; position: absolute; width: 1px; height: 13px; background: var(--border-strong); transform: rotate(45deg); }
+
+/* ── File switcher (files pill) ───────────────────────────── */
+.file-tab-count-wrap { position: relative; display: flex; align-items: center; align-self: center; flex-shrink: 0; }
+button.file-tab-count { cursor: pointer; transition: background .15s, box-shadow .15s; }
+button.file-tab-count:hover, button.file-tab-count[aria-expanded="true"] { background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); }
+.file-switcher {
+  position: absolute; top: calc(100% + 8px); right: -40px; z-index: 85;
+  width: min(340px, calc(100vw - 24px)); padding: 6px;
+  background: var(--bg-preview); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-xl);
+}
+.file-switcher-search {
+  display: flex; align-items: center; gap: 7px; padding: 7px 9px; margin-bottom: 4px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-editor); color: var(--text-4);
+}
+.file-switcher-search:focus-within { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-soft); }
+.file-switcher-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 12.5px; color: var(--text-1); }
+.file-switcher-search input:focus, .file-switcher-search input:focus-visible { outline: none; box-shadow: none; }
+.file-switcher-heading { padding: 6px 8px 4px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-4); }
+.file-switcher-list { max-height: 300px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.file-switcher-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px;
+  font-size: 12.5px; color: var(--text-2); cursor: pointer;
+}
+.file-switcher-item.is-highlighted { background: var(--accent-soft); color: var(--text-1); }
+.file-switcher-item.is-active .file-switcher-name { color: var(--accent); font-weight: 600; }
+.file-switcher-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-switcher-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-4); }
+.file-switcher-meta { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-4); }
+.file-switcher-empty { padding: 14px 8px; font-size: 12px; color: var(--text-4); text-align: center; }
+
 .app-shell[data-density="compact"] .file-tab { height: 28px; padding-inline: 7px; gap: 4px; }
 .app-shell[data-density="compact"] .file-tab-add { height: 24px; }
 .app-shell[data-density="compact"] .file-tabs-bar { min-height: 38px; }
