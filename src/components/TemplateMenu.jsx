@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { FilePlus, LayoutTemplate } from 'lucide-react'
+import { FilePlus, LayoutTemplate, Settings2 } from 'lucide-react'
 
 /**
  * Template picker rendered in a portal (so toolbars with overflow can't clip
  * it), positioned under `anchorRef` and kept inside the viewport.
  */
-export default function TemplateMenu({ anchorRef, templates, onPick, onBlank, onClose, align = 'right', label = 'Templates' }) {
+export default function TemplateMenu({ anchorRef, templates, onPick, onBlank, onManage, onClose, align = 'right', label = 'Templates' }) {
   const ref = useRef(null)
 
   useLayoutEffect(() => {
@@ -66,6 +66,15 @@ export default function TemplateMenu({ anchorRef, templates, onPick, onBlank, on
           </span>
         </button>
       ))}
+      {onManage && (
+        <>
+          <div className="template-menu-separator" role="separator" />
+          <button type="button" role="menuitem" className="template-menu-item is-compact" onClick={() => { onClose(); onManage() }}>
+            <span className="template-menu-icon is-plain"><Settings2 size={13} /></span>
+            <span className="template-menu-text"><strong>Manage templates…</strong></span>
+          </button>
+        </>
+      )}
     </div>,
     document.body,
   )

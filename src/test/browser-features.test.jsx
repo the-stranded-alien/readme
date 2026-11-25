@@ -781,6 +781,82 @@ describe('advanced browser features', () => {
     delete navigator.storage
   })
 
+  it('finds and replaces with case, whole-word and regex options', async () => {
+    const { buildSearchRegex, findMatches, replaceAllIn } = await import('../findReplace.js')
+    const text = 'Cat cat catalog. Dog: 2024-01-05'
+    expect(findMatches(text, buildSearchRegex('cat').regex)).toHaveLength(3)
+    expect(findMatches(text, buildSearchRegex('cat', { matchCase: true }).regex)).toHaveLength(2)
+    expect(findMatches(text, buildSearchRegex('cat', { wholeWord: true }).regex)).toHaveLength(2)
+    const dates = buildSearchRegex('(\\d{4})-(\\d{2})-(\\d{2})', { regex: true }).regex
+    expect(replaceAllIn(text, dates, '$3/$2/$1', true).text).toBe('Cat cat catalog. Dog: 05/01/2024')
+    expect(replaceAllIn('a.b.c', buildSearchRegex('.').regex, '$1', false).text).toBe('a$1b$1c')
+    expect(buildSearchRegex('(', { regex: true }).error).toBeTruthy()
+    expect(buildSearchRegex('a*', { regex: true }).error).toMatch(/empty/)
+  })
+
+  it('replaces in the editor and across all open files', async () => {
+    await writeWorkspace({ activeId: 'r1', files: [
+      { id: 'r1', name: 'One.md', content: 'colour colour' },
+      { id: 'r2', name: 'Two.md', content: 'A colour here' },
+    ] })
+    installApp()
+    await screen.findByRole('tab', { name: 'One.md' })
+    fireEvent.click(screen.getByRole('button', { name: 'Find and replace' }))
+    const panel = await screen.findByRole('search', { name: 'Find and replace in the editor' })
+    fireEvent.change(within(panel).getByRole('textbox', { name: 'Find' }), { target: { value: 'colour' } })
+    fireEvent.change(within(panel).getByRole('textbox', { name: 'Replace with' }), { target: { value: 'color' } })
+    expect(within(panel).getByText('2 results')).toBeInTheDocument()
+    fireEvent.click(within(panel).getByRole('checkbox'))
+    fireEvent.click(within(panel).getByTitle('Replace in all open files'))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toBe('color color'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Two.md' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toBe('A color here'))
+    expect((await readHistory('r2'))[0].reason).toBe('Before replace all')
+  })
+
+  it('inserts blocks with slash commands', async () => {
+    const { detectSlash, expandSnippet, filterSlashCommands } = await import('../slashCommands.js')
+    expect(detectSlash('Intro\n/tab', 10)).toEqual({ from: 6, to: 10, query: 'tab' })
+    expect(detectSlash('word /tab', 9)).toBeNull()
+    expect(detectSlash('```\n/tab', 8)).toBeNull()
+    expect(filterSlashCommands('tab')[0].id).toBe('table')
+    expect(filterSlashCommands('todo')[0].id).toBe('checklist')
+    const table = expandSnippet(filterSlashCommands('table')[0], 6)
+    expect(table.text.split('\n')[1]).toBe('| --- | --- | --- |')
+    expect([table.cursor, table.cursorEnd]).toEqual([8, 16])
+
+    await writeWorkspace({ activeId: 's', files: [{ id: 's', name: 'Slash.md', content: '' }] })
+    installApp()
+    await screen.findByRole('tab', { name: 'Slash.md' })
+    const editor = document.querySelector('textarea.editor-textarea')
+    editor.focus()
+    fireEvent.change(editor, { target: { value: '/note' } })
+    editor.setSelectionRange(5, 5)
+    fireEvent.input(editor)
+    const menu = await screen.findByRole('listbox', { name: 'Insert block' })
+    expect(within(menu).getAllByRole('option')[0]).toHaveTextContent('Callout: Note')
+    fireEvent.keyDown(editor, { key: 'Enter' })
+    await waitFor(() => expect(editor.value).toBe('> [!NOTE]\n> '))
+    expect(screen.queryByRole('listbox', { name: 'Insert block' })).toBeNull()
+  })
+
+  it('manages custom templates and uses them from the New menu', async () => {
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'New file options' }))
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'New file' })).getByRole('menuitem', { name: /Manage templates/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Templates' })
+    fireEvent.click(within(dialog).getByRole('button', { name: /^New$/ }))
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'Weekly report' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /Content/ }), { target: { value: '# Weekly report\n\n## Wins' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Save template/ }))
+    expect(JSON.parse(localStorage.getItem('readme-custom-templates'))[0]).toMatchObject({ name: 'Weekly report', fileName: 'Weekly report.md' })
+    fireEvent.click(within(dialog).getByRole('button', { name: /New file from template/ }))
+    await waitFor(() => expect(screen.getByRole('tab', { selected: true })).toHaveAttribute('aria-label', 'Weekly report.md'))
+    expect(document.querySelector('textarea.editor-textarea').value).toBe('# Weekly report\n\n## Wins')
+    fireEvent.click(screen.getByRole('button', { name: 'New file options' }))
+    expect(within(await screen.findByRole('menu', { name: 'New file' })).getByRole('menuitem', { name: /Weekly report/ })).toBeInTheDocument()
+  })
+
   it('collapses and expands heading sections, individually and all at once', async () => {
     installApp()
     const toggle = await screen.findByRole('button', { name: 'Collapse section Features' })

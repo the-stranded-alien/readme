@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
@@ -40,6 +40,11 @@ import HistoryDialog from './components/HistoryDialog'
 import CodeEditor from './components/CodeEditor'
 import TemplateMenu from './components/TemplateMenu'
 import StorageDialog from './components/StorageDialog'
+import TemplatesDialog from './components/TemplatesDialog'
+import SlashMenu from './components/SlashMenu'
+import FindReplacePanel from './components/FindReplacePanel'
+import { detectSlash, editorCaretRect, expandSnippet, filterSlashCommands, textareaCaretRect } from './slashCommands'
+import { findMatches, replaceAllIn } from './findReplace'
 import { requestPersistentStorage, sharedItemToFiles, takeSharedItems } from './pwaIntegration'
 import { applyBackup, createBackup, readBackup } from './backup'
 import { shortcut } from './platform'
@@ -743,7 +748,7 @@ const FMT_ACTIONS = [
   { label: 'Divider',   Icon: Minus,       mode: 'insert', text: '\n---\n' },
 ]
 
-function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate }) {
+function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace }) {
   const [tplOpen, setTplOpen] = useState(false)
   const tplRef = useRef(null)
   const closeTemplates = useCallback(() => setTplOpen(false), [])
@@ -792,7 +797,12 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
         )}
       </div>
 
-      <div className="relative shrink-0 ml-2">
+      <div className="relative shrink-0 ml-2 flex items-center gap-0.5">
+        {onFindReplace && (
+          <button type="button" onClick={onFindReplace} title={`Find & replace (${shortcut('F', { alt: true })})`} aria-label="Find and replace" className="fmt-btn">
+            <Replace size={13} />
+          </button>
+        )}
         <button
           ref={tplRef}
           type="button"
@@ -808,7 +818,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
           <span className="hidden lg:inline text-[10px] font-semibold">Templates</span>
         </button>
         {tplOpen && (
-          <TemplateMenu anchorRef={tplRef} templates={MD_TEMPLATES} onPick={onCreateFromTemplate} onClose={closeTemplates} />
+          <TemplateMenu anchorRef={tplRef} templates={templates} onPick={onCreateFromTemplate} onManage={onManageTemplates} onClose={closeTemplates} />
         )}
       </div>
     </div>
@@ -1134,7 +1144,7 @@ function DocumentQualityPopover({ issues, onClose, onFix, onGoToLine }) {
 }
 
 // Header "New" split button: blank file, or pick a template from the caret.
-function NewFileButton({ onNew, onTemplate }) {
+function NewFileButton({ onNew, onTemplate, templates = MD_TEMPLATES, onManageTemplates }) {
   const [open, setOpen] = useState(false)
   const caretRef = useRef(null)
   const close = useCallback(() => setOpen(false), [])
@@ -1156,7 +1166,7 @@ function NewFileButton({ onNew, onTemplate }) {
         <ChevronDown size={13} />
       </button>
       {open && (
-        <TemplateMenu anchorRef={caretRef} templates={MD_TEMPLATES} onBlank={onNew} onPick={onTemplate} onClose={close} align="left" label="New file" />
+        <TemplateMenu anchorRef={caretRef} templates={templates} onBlank={onNew} onPick={onTemplate} onManage={onManageTemplates} onClose={close} align="left" label="New file" />
       )}
     </div>
   )
@@ -2117,6 +2127,9 @@ export default function App() {
   const closedFilesRef = useRef([])
   const [canReopen, setCanReopen] = useState(false)
   const [writingStats, setWritingStats] = useState({})
+  const [findOpen, setFindOpen] = useState(false)
+  const [findKey, setFindKey] = useState(0)
+  const [slash, setSlash] = useState(null) // { from, to, query, rect, highlight }
   const [failedImages, setFailedImages] = useState({ key: '', srcs: [] })
   const [editorPrefs, setEditorPrefs] = useState(loadEditorPrefs)
   useEffect(() => {
@@ -2336,6 +2349,12 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setCmdOpen(o => !o)
+      } else if (activeFile && ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.altKey ? e.code === 'KeyF' : e.key.toLowerCase() === 'f') && (e.altKey || view === 'editor' || e.target.closest?.('.editor-pane-host'))
+        || (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'h' && !/Mac|iPhone|iPad/.test(navigator.platform)))) {
+        // Find & replace in the editor.
+        e.preventDefault()
+        setFindOpen(true)
+        setFindKey(k => k + 1)
       } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f' && view !== 'editor' && activeFile) {
         e.preventDefault()
         setSearchOpen(true)
@@ -2678,6 +2697,87 @@ export default function App() {
     else updateActiveContent(next)
   }, [content, updateActiveContent])
 
+  // ── Find & replace in the editor ─────────────────────────────
+  const selectEditorMatch = useCallback((match, { keepFocus = false } = {}) => {
+    const ta = textareaRef.current
+    if (!ta || !match) return
+    const restore = keepFocus ? document.activeElement : null
+    ta.setSelectionRange(match.from, match.to)
+    if (!ta.view) {
+      // Textarea: scroll the match into view and show the selection.
+      ta.focus({ preventScroll: true })
+      const caret = textareaCaretRect(ta, match.from)
+      const box = ta.getBoundingClientRect()
+      const parent = ta.parentElement
+      const offset = caret.top - box.top
+      if (offset < 40 || offset > parent.clientHeight - 60) parent.scrollTop += offset - parent.clientHeight / 3
+    }
+    if (restore && restore !== document.body) restore.focus({ preventScroll: true })
+  }, [])
+  const replaceEditorRange = useCallback((match, text) => {
+    const ta = textareaRef.current
+    if (!ta) return
+    const restore = document.activeElement
+    applyTextareaEdit(ta, { from: match.from, to: match.to, text, cursor: match.from + text.length })
+    if (restore && restore !== document.body) restore.focus({ preventScroll: true })
+  }, [])
+  const replaceAllInActive = useCallback((regex, replacement, useRegex) => {
+    const ta = textareaRef.current
+    const { text, count } = replaceAllIn(content, regex, replacement, useRegex)
+    if (!count) return 0
+    const restore = document.activeElement
+    if (ta) applyTextareaEdit(ta, { from: 0, to: content.length, text, cursor: Math.min(ta.selectionStart, text.length) })
+    else updateActiveContent(text)
+    if (restore && restore !== document.body) restore.focus({ preventScroll: true })
+    return count
+  }, [content, updateActiveContent])
+
+  // ── Slash commands ───────────────────────────────────────────
+  const slashDismissedRef = useRef(null)
+  const refreshSlash = useCallback(() => {
+    // Read after the editor has applied the input (CodeMirror updates asynchronously).
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta || ta.selectionStart !== ta.selectionEnd) { setSlash(null); return }
+      const found = detectSlash(ta.value, ta.selectionStart)
+      if (!found || slashDismissedRef.current === found.from) { setSlash(null); return }
+      const rect = editorCaretRect(ta, found.from)
+      if (!rect) { setSlash(null); return }
+      setSlash(prev => ({ ...found, rect, highlight: prev && prev.from === found.from && prev.query === found.query ? prev.highlight : 0 }))
+    })
+  }, [])
+  const insertSlashCommand = useCallback(command => {
+    const ta = textareaRef.current
+    if (!ta || !slash) return
+    const caret = ta.selectionStart
+    const { text, cursor, cursorEnd } = expandSnippet(command, slash.from)
+    applyTextareaEdit(ta, { from: slash.from, to: Math.max(caret, slash.to), text, cursor, cursorEnd })
+    setSlash(null)
+  }, [slash])
+  const slashCommands = useMemo(() => (slash ? filterSlashCommands(slash.query) : []), [slash])
+  const handleEditorPaneKeyDown = useCallback(event => {
+    if (!slash) {
+      if (event.key === '/') slashDismissedRef.current = null
+      return
+    }
+    const count = slashCommands.length
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!count) return
+      event.preventDefault()
+      event.stopPropagation()
+      setSlash(current => current && { ...current, highlight: (current.highlight + (event.key === 'ArrowDown' ? 1 : -1) + count) % count })
+    } else if ((event.key === 'Enter' || event.key === 'Tab') && count) {
+      event.preventDefault()
+      event.stopPropagation()
+      insertSlashCommand(slashCommands[Math.min(slash.highlight, count - 1)])
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      slashDismissedRef.current = slash.from
+      setSlash(null)
+    }
+  }, [slash, slashCommands, insertSlashCommand])
+
   const handleFormatTables = useCallback(() => {
     const ta = textareaRef.current
     const formatted = formatMarkdownTables(content)
@@ -2942,6 +3042,27 @@ export default function App() {
     navigator.storage?.persisted?.().then(persisted => { if (!persisted) requestPersistentStorage() }).catch(() => {})
   }, [files, workspaceReady])
   const [storageOpen, setStorageOpen] = useState(false)
+
+  // ── Custom templates (stored with the other settings, so backups include them) ──
+  const [customTemplates, setCustomTemplates] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('readme-custom-templates') || '[]')
+      return Array.isArray(saved) ? saved.filter(t => t && typeof t.id === 'string' && typeof t.name === 'string' && typeof t.content === 'string') : []
+    } catch {
+      return []
+    }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('readme-custom-templates', JSON.stringify(customTemplates)) } catch { /* storage is optional */ }
+  }, [customTemplates])
+  const allTemplates = useMemo(() => [...customTemplates, ...MD_TEMPLATES], [customTemplates])
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+  const saveCustomTemplate = useCallback(template => {
+    const saved = { ...template, id: template.id || `tpl-${Date.now().toString(36)}`, custom: true }
+    setCustomTemplates(prev => (prev.some(t => t.id === saved.id) ? prev.map(t => (t.id === saved.id ? saved : t)) : [saved, ...prev]))
+    return saved
+  }, [])
+  const deleteCustomTemplate = useCallback(id => setCustomTemplates(prev => prev.filter(t => t.id !== id)), [])
 
   // ── Backup / restore ─────────────────────────────────────────
   const restoreInputRef = useRef(null)
@@ -3490,6 +3611,8 @@ ${fontCss}
       { id: 'history', label: 'Version history…', hint: 'File', icon: History, run: openHistory },
       { id: 'snapshot', label: 'Save a snapshot of this file', hint: 'File', icon: History, run: () => takeSnapshot(activeFile.id, content, 'Manual snapshot').then(list => list && setToast({ message: 'Snapshot saved to version history.', tone: 'success' })) },
     ] : []),
+    ...(activeFile ? [{ id: 'find-replace', label: 'Find & replace in editor', hint: shortcut('F', { alt: true }), icon: Replace, run: () => { setFindOpen(true); setFindKey(k => k + 1) } }] : []),
+    { id: 'templates', label: 'Manage templates…', hint: 'Templates', icon: LayoutTemplate, run: () => setTemplatesOpen(true) },
     { id: 'storage', label: 'Storage & backup…', hint: 'Workspace', icon: HardDrive, run: () => setStorageOpen(true) },
     { id: 'backup', label: 'Back up workspace (.zip)', hint: 'Workspace', icon: DatabaseBackup, run: handleBackup },
     { id: 'restore', label: 'Restore workspace from backup…', hint: 'Workspace', icon: ArchiveRestore, run: () => restoreInputRef.current?.click() },
@@ -3606,7 +3729,7 @@ ${fontCss}
           <div className="flex items-center gap-1 justify-self-end shrink-0">
             <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt" multiple className="hidden"
               onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
-            <NewFileButton onNew={handleNewFile} onTemplate={handleCreateFromTemplate} />
+            <NewFileButton onNew={handleNewFile} onTemplate={handleCreateFromTemplate} templates={allTemplates} onManageTemplates={() => setTemplatesOpen(true)} />
             <button onClick={handleOpenDiskFiles} className="btn-header" data-tooltip="Open Markdown files or folders" aria-label="Open Markdown files or folders">
               <Upload size={13} /><span className="hidden sm:inline">Upload</span>
             </button>
@@ -3725,7 +3848,7 @@ ${fontCss}
       <main className="flex-1 flex min-h-0">
         {!activeFile ? (
           <EmptyWorkspace
-            templates={MD_TEMPLATES}
+            templates={allTemplates}
             canReopen={canReopen}
             onNew={handleNewFile}
             onOpen={handleOpenDiskFiles}
@@ -3748,6 +3871,9 @@ ${fontCss}
               {/* Formatting toolbar */}
               <FormattingToolbar
                 textareaRef={textareaRef}
+                templates={allTemplates}
+                onManageTemplates={() => setTemplatesOpen(true)}
+                onFindReplace={() => { setFindOpen(true); setFindKey(k => k + 1) }}
                 content={content}
                 onChange={updateActiveContent}
                 onCreateFromTemplate={handleCreateFromTemplate}
@@ -3803,7 +3929,62 @@ ${fontCss}
                 </div>
               </div>
 
-              {/* Editor: CodeMirror (default) or a plain textarea */}
+              {findOpen && (
+                <FindReplacePanel
+                  key={findKey}
+                  content={content}
+                  editorRef={textareaRef}
+                  files={files}
+                  activeFileId={activeFileId}
+                  initialQuery={(() => {
+                    const ta = textareaRef.current
+                    const selected = ta ? ta.value.slice(ta.selectionStart, ta.selectionEnd) : ''
+                    return selected && !selected.includes('\n') ? selected : ''
+                  })()}
+                  onSelectMatch={selectEditorMatch}
+                  onReplaceCurrent={replaceEditorRange}
+                  onReplaceAllHere={(regex, replacement, useRegex) => {
+                    const count = replaceAllInActive(regex, replacement, useRegex)
+                    setToast({ message: count ? `Replaced ${count} match${count === 1 ? '' : 'es'}.` : 'Nothing to replace.', tone: count ? 'success' : 'info' })
+                  }}
+                  onReplaceAllFiles={async (regex, replacement, useRegex) => {
+                    let total = 0
+                    let changedFiles = 0
+                    const updates = new Map()
+                    for (const file of files) {
+                      if (file.id === activeFileId) continue
+                      const { text, count } = replaceAllIn(file.content, regex, replacement, useRegex)
+                      if (!count) continue
+                      await takeSnapshot(file.id, file.content, 'Before replace all')
+                      updates.set(file.id, text)
+                      total += count
+                      changedFiles += 1
+                    }
+                    if (findMatches(content, regex).length) {
+                      await takeSnapshot(activeFileId, content, 'Before replace all')
+                      total += replaceAllInActive(regex, replacement, useRegex)
+                      changedFiles += 1
+                    }
+                    if (updates.size) {
+                      markWorkspaceEdit()
+                      setFiles(prev => prev.map(file => (updates.has(file.id) ? { ...file, content: updates.get(file.id) } : file)))
+                    }
+                    setToast({ message: total ? `Replaced ${total} match${total === 1 ? '' : 'es'} in ${changedFiles} file${changedFiles === 1 ? '' : 's'} (previous versions are in history).` : 'Nothing to replace.', tone: total ? 'success' : 'info', duration: 5000 })
+                  }}
+                  onClose={() => { setFindOpen(false); textareaRef.current?.focus() }}
+                />
+              )}
+
+              {/* Editor host: slash commands listen here for both editor engines */}
+              <div
+                className="editor-pane-host flex-1 min-h-0 flex flex-col"
+                onKeyDownCapture={handleEditorPaneKeyDown}
+                onInput={refreshSlash}
+                onKeyUp={event => { if (!['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key) || !slash) refreshSlash() }}
+                onMouseUp={refreshSlash}
+                onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setSlash(null) }}
+              >
+              {/* Editor: CodeMirror (opt-in) or a plain textarea */}
               {editorPrefs.engine === 'code' ? (
                 <div className="flex-1 min-h-0 overflow-hidden grid-pattern code-editor-pane" style={{ background: 'var(--bg-editor)' }}>
                   <CodeEditor
@@ -3835,10 +4016,21 @@ ${fontCss}
                   onKeyDown={handleEditorKeyDown}
                   onPaste={handleEditorPaste}
                   onDrop={handleEditorDrop}
-                  placeholder={'# Start typing Markdown…\n\nOr drag & drop .md files anywhere. Paste or drop images to embed them.'}
+                  placeholder={'# Start typing Markdown…\n\nOr drag & drop .md files anywhere. Paste or drop images to embed them. Type / for blocks.'}
                   spellCheck={false}
                 />
               </div>
+              )}
+              </div>
+              {slash && (
+                <SlashMenu
+                  commands={slashCommands}
+                  highlight={Math.min(slash.highlight, Math.max(0, slashCommands.length - 1))}
+                  rect={slash.rect}
+                  query={slash.query}
+                  onPick={insertSlashCommand}
+                  onHover={index => setSlash(current => current && { ...current, highlight: index })}
+                />
               )}
             </div>
 
@@ -4286,7 +4478,7 @@ ${fontCss}
           files={files}
           activeFileId={activeFileId}
           headings={headings}
-          templates={MD_TEMPLATES}
+          templates={allTemplates}
           actions={paletteActions}
           onSelectFile={handleSelectFile}
           onNavigateHeading={navigateToHeading}
@@ -4331,6 +4523,18 @@ ${fontCss}
       )}
 
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+
+      {templatesOpen && (
+        <TemplatesDialog
+          builtIn={MD_TEMPLATES}
+          custom={customTemplates}
+          currentFile={activeFile}
+          onSave={saveCustomTemplate}
+          onDelete={deleteCustomTemplate}
+          onUse={handleCreateFromTemplate}
+          onClose={() => setTemplatesOpen(false)}
+        />
+      )}
 
       {storageOpen && (
         <StorageDialog
