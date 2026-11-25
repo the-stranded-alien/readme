@@ -96,7 +96,7 @@ describe('advanced browser features', () => {
     expect(within(petFooter).queryByText('Reading companion')).not.toBeInTheDocument()
     fireEvent.click(within(petFooter).getByRole('button', { name: 'Reading pet settings' }))
     expect(screen.getByRole('button', { name: 'Cat coat' })).toHaveTextContent('Lavender')
-    await waitFor(() => expect(JSON.parse(localStorage.getItem('readme-reading-pet')).version).toBe(3))
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('readme-reading-pet')).version).toBe(4))
     fireEvent.click(screen.getByRole('button', { name: 'Cat coat' }))
     fireEvent.click(screen.getByRole('option', { name: 'Calico' }))
     expect(screen.getByRole('button', { name: 'Cat coat' })).toHaveTextContent('Calico')
@@ -115,6 +115,32 @@ describe('advanced browser features', () => {
     expect(screen.getByLabelText('Cat count')).toHaveTextContent('10')
     expect(screen.getByRole('button', { name: 'Add a cat' })).toBeDisabled()
     await waitFor(() => expect(JSON.parse(localStorage.getItem('readme-reading-pet'))).toMatchObject({ enabled: false, catCount: 10 }))
+  })
+
+  it('exposes and persists the companion appearance, behavior, play, and roaming controls', async () => {
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Reading pet settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cat coat' }))
+    expect(screen.getAllByRole('option')).toHaveLength(24)
+    fireEvent.click(screen.getByRole('button', { name: 'Roam screen' }))
+
+    for (const name of ['Sleep when idle', 'Zoomies while roaming', 'Nap while I type', 'Follow keyboard focus', 'Perch on hovered controls', 'Allow keyboard petting', 'Drag and toss', 'Drop fish treats on double-click', 'Thought bubbles', 'Meow sounds', 'Cats follow one another', 'Remember roaming positions', 'Avoid app toolbars', 'Visit document headings']) {
+      expect(screen.getByRole('switch', { name })).toBeInTheDocument()
+    }
+    fireEvent.click(screen.getByRole('switch', { name: 'Follow keyboard focus' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Thought bubbles' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Pet thought bubbles' }), { target: { value: 'Reading\nTaking a break' } })
+    fireEvent.click(screen.getByRole('switch', { name: 'Meow sounds' }))
+    fireEvent.change(screen.getByRole('slider', { name: 'Pet sound volume' }), { target: { value: '0.7' } })
+
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('readme-reading-pet'))).toMatchObject({
+      roaming: true,
+      followFocus: true,
+      bubbleEnabled: true,
+      bubbleText: 'Reading\nTaking a break',
+      meow: true,
+      volume: 0.7,
+    }))
   })
 
   it('switches interface density and keeps the choice in the workspace UI', async () => {

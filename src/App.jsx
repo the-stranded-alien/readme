@@ -1315,9 +1315,9 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
   )
 }
 
-const READING_PET_SKINS = ['lavender', 'classic', 'black', 'gray', 'calico', 'ginger', 'tuxedo']
+const READING_PET_SKINS = ONEKO_SKINS.map(skin => skin.id)
 
-function ReadingPetCoatDropdown({ value, onChange }) {
+function ReadingPetCoatDropdown({ value, onChange, ariaLabel = 'Cat coat' }) {
   const rootRef = useRef(null)
   const [open, setOpen] = useState(false)
   const selectedSkin = ONEKO_SKINS.find(skin => skin.id === value)
@@ -1344,7 +1344,7 @@ function ReadingPetCoatDropdown({ value, onChange }) {
         type="button"
         className="reading-pet-coat-trigger"
         onClick={() => setOpen(current => !current)}
-        aria-label="Cat coat"
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -1376,21 +1376,67 @@ function ReadingPetCoatDropdown({ value, onChange }) {
   )
 }
 
+function ReadingPetToggle({ label, checked, onChange, disabled = false }) {
+  return (
+    <label className={`reading-pet-toggle-row${disabled ? ' is-disabled' : ''}`}>
+      <span>{label}</span>
+      <button
+        type="button"
+        className="reading-pet-switch"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+      ><span /></button>
+    </label>
+  )
+}
+
 function loadReadingPetPrefs() {
-  const defaults = { enabled: true, roaming: false, skin: 'lavender', speed: 10, scale: 1.25, catCount: 1 }
+  const defaults = {
+    enabled: true, roaming: false, skin: 'lavender', speed: 10, scale: 1.25, catCount: 1,
+    individualCats: false, catProfiles: [], customSprite: '',
+    sleepEnabled: true, zoomies: false, freerunChance: .06, animationSpeed: 1, idleThreshold: 1000,
+    napWhileTyping: false, followFocus: false, perchOnHover: false, parade: true,
+    pettable: true, grabbable: false, treats: false, bubbleEnabled: false, bubbleText: '',
+    meow: false, volume: .35, rememberPosition: false, avoidControls: true, visitHeadings: false,
+  }
   try {
-    const saved = JSON.parse(localStorage.getItem('readme-reading-pet') || '{}')
-    const migratedSkin = saved.version !== 3 && saved.skin === 'classic' ? 'lavender' : saved.skin
+    const parsed = JSON.parse(localStorage.getItem('readme-reading-pet') || '{}')
+    const saved = parsed && typeof parsed === 'object' ? parsed : {}
+    const migratedSkin = saved.version !== 4 && saved.skin === 'classic' ? 'lavender' : saved.skin
+    const boolPrefs = [
+      'enabled', 'roaming', 'individualCats', 'sleepEnabled', 'zoomies', 'napWhileTyping',
+      'followFocus', 'perchOnHover', 'parade', 'pettable', 'grabbable', 'treats',
+      'bubbleEnabled', 'meow', 'rememberPosition', 'avoidControls', 'visitHeadings',
+    ]
+    const normalizedBooleans = Object.fromEntries(boolPrefs.map(key => [key, typeof saved[key] === 'boolean' ? saved[key] : defaults[key]]))
+    const validSprite = typeof saved.customSprite === 'string' && saved.customSprite.startsWith('data:image/') && saved.customSprite.length < 400_000
+      ? saved.customSprite
+      : ''
+    const catProfiles = Array.isArray(saved.catProfiles)
+      ? saved.catProfiles.slice(0, 10).map(profile => ({
+        skin: READING_PET_SKINS.includes(profile?.skin) ? profile.skin : defaults.skin,
+        scale: Number.isFinite(profile?.scale) ? Math.min(1.75, Math.max(.75, profile.scale)) : defaults.scale,
+      }))
+      : []
     return {
       ...defaults,
       ...saved,
-      enabled: typeof saved.enabled === 'boolean' ? saved.enabled : defaults.enabled,
-      roaming: typeof saved.roaming === 'boolean' ? saved.roaming : defaults.roaming,
-      version: 3,
+      ...normalizedBooleans,
+      version: 4,
       skin: READING_PET_SKINS.includes(migratedSkin) ? migratedSkin : defaults.skin,
       speed: Number.isFinite(saved.speed) ? Math.min(18, Math.max(4, saved.speed)) : defaults.speed,
       scale: Number.isFinite(saved.scale) ? Math.min(1.75, Math.max(.75, saved.scale)) : defaults.scale,
       catCount: Number.isFinite(saved.catCount) ? Math.min(10, Math.max(1, Math.round(saved.catCount))) : defaults.catCount,
+      catProfiles,
+      customSprite: validSprite,
+      freerunChance: Number.isFinite(saved.freerunChance) ? Math.min(.2, Math.max(.01, saved.freerunChance)) : defaults.freerunChance,
+      animationSpeed: Number.isFinite(saved.animationSpeed) ? Math.min(2, Math.max(.5, saved.animationSpeed)) : defaults.animationSpeed,
+      idleThreshold: Number.isFinite(saved.idleThreshold) ? Math.min(5000, Math.max(400, saved.idleThreshold)) : defaults.idleThreshold,
+      volume: Number.isFinite(saved.volume) ? Math.min(1, Math.max(0, saved.volume)) : defaults.volume,
+      bubbleText: typeof saved.bubbleText === 'string' ? saved.bubbleText.slice(0, 180) : defaults.bubbleText,
     }
   } catch {
     return defaults
@@ -1401,12 +1447,17 @@ function ReadingPetFooter() {
   const footerRef = useRef(null)
   const catRefs = useRef([])
   const widgetRef = useRef(null)
+  const spriteInputRef = useRef(null)
   const [prefs, setPrefs] = useState(loadReadingPetPrefs)
   const [footerBounds, setFooterBounds] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [spriteError, setSpriteError] = useState('')
 
   useEffect(() => {
-    try { localStorage.setItem('readme-reading-pet', JSON.stringify({ ...prefs, version: 3 })) } catch { /* storage is optional */ }
+    const timer = setTimeout(() => {
+      try { localStorage.setItem('readme-reading-pet', JSON.stringify({ ...prefs, version: 4 })) } catch { /* storage is optional */ }
+    }, 160)
+    return () => clearTimeout(timer)
   }, [prefs])
 
   useLayoutEffect(() => {
@@ -1445,6 +1496,17 @@ function ReadingPetFooter() {
     }
   }, [settingsOpen])
 
+  const catAppearances = useMemo(() => Array.from({ length: prefs.catCount }, (_, index) => {
+    const profile = prefs.catProfiles[index]
+    return prefs.individualCats && profile
+      ? profile
+      : { skin: prefs.skin, scale: prefs.scale }
+  }), [prefs.catCount, prefs.catProfiles, prefs.individualCats, prefs.skin, prefs.scale])
+  const bubbleMessages = useMemo(() => prefs.bubbleText
+    .split('\n')
+    .map(message => message.trim())
+    .filter(Boolean), [prefs.bubbleText])
+
   useEffect(() => {
     if (!prefs.enabled || prefs.roaming || !footerBounds) return undefined
     const left = Math.min(footerBounds.right - 80, Math.max(40, footerBounds.left + 40))
@@ -1454,8 +1516,8 @@ function ReadingPetFooter() {
     const timers = []
     const laneWidth = right - left
     const segmentWidth = laneWidth / prefs.catCount
-    const laneRadius = 16 * prefs.scale
     for (let index = 0; index < prefs.catCount; index += 1) {
+      const laneRadius = 16 * catAppearances[index].scale
       const segmentLeft = left + segmentWidth * index
       const segmentRight = index === prefs.catCount - 1 ? right : left + segmentWidth * (index + 1)
       const inset = Math.min(laneRadius + 4, Math.max(0, (segmentRight - segmentLeft) / 2 - 8))
@@ -1481,25 +1543,63 @@ function ReadingPetFooter() {
       cancelled = true
       timers.forEach(clearTimeout)
     }
-  }, [prefs.enabled, prefs.roaming, prefs.speed, prefs.scale, prefs.catCount, footerBounds])
+  }, [prefs.enabled, prefs.roaming, prefs.speed, prefs.catCount, catAppearances, footerBounds])
 
   const zones = useMemo(() => {
-    if (prefs.roaming) return []
-    const laneZone = []
-    if (footerBounds) {
+    const result = []
+    if (!prefs.roaming && footerBounds) {
       const { width, height } = footerBounds
-      const catRadius = 16 * prefs.scale * Math.SQRT2 + 1
+      const maxScale = Math.max(...catAppearances.map(cat => cat.scale))
+      const catRadius = 16 * maxScale * Math.SQRT2 + 1
       const laneTop = Math.max(0, Math.min(height * .9, height - catRadius * 2 - 2))
-      laneZone.push({ id: 'pet-bottom-lane', type: 'avoid', rect: { left: 0, top: 0, right: width, bottom: laneTop } })
+      result.push({ id: 'pet-bottom-lane', type: 'avoid', rect: { left: 0, top: 0, right: width, bottom: laneTop } })
     }
-    return [
-      ...laneZone,
+    if (prefs.roaming && prefs.avoidControls) {
+      result.push({ id: 'readme-controls', type: 'avoid', selector: '.surface-header, .file-tabs-bar, .reader-preview-toolbar', padding: 4 })
+    }
+    if (prefs.roaming && prefs.visitHeadings) {
+      result.push({ id: 'document-headings', type: 'attract', selector: '.book-page h1, .book-page h2, .book-page h3' })
+    }
+    result.push(
       { id: 'pet-settings-trigger', type: 'avoid', selector: '.reading-pet-trigger', padding: 8 },
       ...(settingsOpen ? [{ id: 'pet-settings-popover', type: 'avoid', selector: '.reading-pet-popover', padding: 8 }] : []),
-    ]
-  }, [footerBounds, prefs.roaming, prefs.scale, settingsOpen])
+    )
+    return result
+  }, [catAppearances, footerBounds, prefs.avoidControls, prefs.roaming, prefs.visitHeadings, settingsOpen])
 
   const updatePref = (key, value) => setPrefs(current => ({ ...current, [key]: value }))
+  const updateCatProfile = (index, key, value) => setPrefs(current => {
+    const profiles = [...current.catProfiles]
+    const base = profiles[index] || { skin: current.skin, scale: current.scale }
+    profiles[index] = { ...base, [key]: value }
+    return { ...current, catProfiles: profiles }
+  })
+  const handleSpriteUpload = event => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (file.type !== 'image/png' || file.size > 256 * 1024) {
+      setSpriteError('Choose a PNG under 256 KB.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onerror = () => setSpriteError('Could not read that image.')
+    reader.onload = () => {
+      const source = String(reader.result || '')
+      const image = new Image()
+      image.onerror = () => setSpriteError('That image could not be opened.')
+      image.onload = () => {
+        if (image.naturalWidth !== 256 || image.naturalHeight !== 128) {
+          setSpriteError('Use a 256 × 128 pixel sprite sheet.')
+          return
+        }
+        setSpriteError('')
+        updatePref('customSprite', source)
+      }
+      image.src = source
+    }
+    reader.readAsDataURL(file)
+  }
   return (
     <>
       <footer ref={footerRef} className="reading-pet-footer no-print" aria-label="Reading companion">
@@ -1521,52 +1621,102 @@ function ReadingPetFooter() {
                 <span>Pet settings</span>
                 <button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close pet settings"><X size={14} /></button>
               </div>
-              <label className="reading-pet-setting">
-                <span>Coat</span>
-                <ReadingPetCoatDropdown value={prefs.skin} onChange={skin => updatePref('skin', skin)} />
-              </label>
-              <div className="reading-pet-count-row">
-                <span>Number of cats</span>
-                <div className="reading-pet-count-control" aria-label="Number of cats">
-                  <button type="button" onClick={() => updatePref('catCount', Math.max(1, prefs.catCount - 1))} disabled={prefs.catCount <= 1} aria-label="Remove a cat">
-                    <Minus size={13} />
-                  </button>
-                  <output aria-live="polite" aria-label="Cat count">{prefs.catCount}</output>
-                  <button type="button" onClick={() => updatePref('catCount', Math.min(10, prefs.catCount + 1))} disabled={prefs.catCount >= 10} aria-label="Add a cat">
-                    <Plus size={13} />
-                  </button>
-                </div>
-              </div>
-              <div className="reading-pet-popover-sliders">
-                <label className="reading-pet-setting reading-pet-range">
-                  <span>Speed <b>{prefs.speed}</b></span>
-                  <input type="range" min="4" max="18" step="1" value={prefs.speed} onChange={event => updatePref('speed', Number(event.target.value))} aria-label="Cat speed" />
-                </label>
-                <label className="reading-pet-setting reading-pet-range">
-                  <span>Size <b>{prefs.scale.toFixed(2)}×</b></span>
-                  <input type="range" min="0.75" max="1.75" step="0.25" value={prefs.scale} onChange={event => updatePref('scale', Number(event.target.value))} aria-label="Cat size" />
-                </label>
-              </div>
-              <div className="reading-pet-actions">
-                <button
-                  type="button"
-                  className="reading-pet-button reading-pet-roam"
-                  onClick={() => updatePref('roaming', !prefs.roaming)}
-                  disabled={!prefs.enabled}
-                  aria-pressed={prefs.roaming}
-                >
-                  {prefs.roaming ? <PanelBottom size={13} /> : <Footprints size={13} />}
-                  <span>{prefs.roaming ? 'Footer only' : 'Roam screen'}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`reading-pet-button reading-pet-toggle${prefs.enabled ? '' : ' is-disabled'}`}
-                  onClick={() => updatePref('enabled', !prefs.enabled)}
-                  aria-pressed={prefs.enabled}
-                >
-                  {prefs.enabled ? <span className="reading-pet-status-dot" /> : <Cat size={13} />}
-                  <span>{prefs.enabled ? 'Disable' : 'Enable'}</span>
-                </button>
+              <div className="reading-pet-options">
+                <section className="reading-pet-section" aria-label="Appearance">
+                  <h3>Appearance</h3>
+                  <label className="reading-pet-setting">
+                    <span>Coat</span>
+                    <ReadingPetCoatDropdown value={prefs.skin} onChange={skin => updatePref('skin', skin)} />
+                  </label>
+                  <div className="reading-pet-count-row">
+                    <span>Number of cats</span>
+                    <div className="reading-pet-count-control" aria-label="Number of cats">
+                      <button type="button" onClick={() => updatePref('catCount', Math.max(1, prefs.catCount - 1))} disabled={prefs.catCount <= 1} aria-label="Remove a cat"><Minus size={13} /></button>
+                      <output aria-live="polite" aria-label="Cat count">{prefs.catCount}</output>
+                      <button type="button" onClick={() => updatePref('catCount', Math.min(10, prefs.catCount + 1))} disabled={prefs.catCount >= 10} aria-label="Add a cat"><Plus size={13} /></button>
+                    </div>
+                  </div>
+                  <div className="reading-pet-popover-sliders">
+                    <label className="reading-pet-setting reading-pet-range">
+                      <span>Speed <b>{prefs.speed}</b></span>
+                      <input type="range" min="4" max="18" step="1" value={prefs.speed} onChange={event => updatePref('speed', Number(event.target.value))} aria-label="Cat speed" />
+                    </label>
+                    <label className="reading-pet-setting reading-pet-range">
+                      <span>Size <b>{prefs.scale.toFixed(2)}×</b></span>
+                      <input type="range" min="0.75" max="1.75" step="0.25" value={prefs.scale} onChange={event => updatePref('scale', Number(event.target.value))} aria-label="Cat size" />
+                    </label>
+                  </div>
+                  <ReadingPetToggle label="Customize each cat" checked={prefs.individualCats} onChange={value => updatePref('individualCats', value)} />
+                  {prefs.individualCats && (
+                    <div className="reading-pet-cat-list">
+                      {catAppearances.map((appearance, index) => (
+                        <div className="reading-pet-cat-profile" key={`cat-profile-${index}`}>
+                          <strong>Cat {index + 1}</strong>
+                          <ReadingPetCoatDropdown value={appearance.skin} ariaLabel={`Cat ${index + 1} coat`} onChange={skin => updateCatProfile(index, 'skin', skin)} />
+                          <label className="reading-pet-setting reading-pet-range">
+                            <span>Size <b>{appearance.scale.toFixed(2)}×</b></span>
+                            <input type="range" min="0.75" max="1.75" step="0.25" value={appearance.scale} onChange={event => updateCatProfile(index, 'scale', Number(event.target.value))} aria-label={`Cat ${index + 1} size`} />
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <input ref={spriteInputRef} className="reading-pet-file-input" type="file" accept="image/png" onChange={handleSpriteUpload} aria-label="Upload custom cat sprite" />
+                  <div className="reading-pet-sprite-actions">
+                    <button type="button" className="reading-pet-secondary-button" onClick={() => spriteInputRef.current?.click()}>
+                      <Upload size={12} /> {prefs.customSprite ? 'Replace artwork' : 'Upload custom artwork'}
+                    </button>
+                    {prefs.customSprite && <button type="button" className="reading-pet-text-button" onClick={() => updatePref('customSprite', '')}>Reset</button>}
+                  </div>
+                  <p className={`reading-pet-hint${spriteError ? ' is-error' : ''}`}>{spriteError || (prefs.customSprite ? 'Custom 256 × 128 sprite is active.' : 'PNG sprite sheet, 256 × 128 pixels, max 256 KB.')}</p>
+                </section>
+
+                <section className="reading-pet-section" aria-label="Behavior">
+                  <h3>Behavior</h3>
+                  <ReadingPetToggle label="Sleep when idle" checked={prefs.sleepEnabled} onChange={value => updatePref('sleepEnabled', value)} />
+                  <ReadingPetToggle label="Zoomies while roaming" checked={prefs.zoomies} onChange={value => updatePref('zoomies', value)} disabled={!prefs.roaming} />
+                  {prefs.zoomies && prefs.roaming && <label className="reading-pet-setting reading-pet-range"><span>Zoomies chance <b>{Math.round(prefs.freerunChance * 100)}%</b></span><input type="range" min="0.01" max="0.2" step="0.01" value={prefs.freerunChance} onChange={event => updatePref('freerunChance', Number(event.target.value))} aria-label="Zoomies chance" /></label>}
+                  <div className="reading-pet-popover-sliders">
+                    <label className="reading-pet-setting reading-pet-range"><span>Idle after <b>{(prefs.idleThreshold / 1000).toFixed(1)}s</b></span><input type="range" min="400" max="5000" step="200" value={prefs.idleThreshold} onChange={event => updatePref('idleThreshold', Number(event.target.value))} aria-label="Idle animation delay" /></label>
+                    <label className="reading-pet-setting reading-pet-range"><span>Animation <b>{prefs.animationSpeed.toFixed(1)}×</b></span><input type="range" min="0.5" max="2" step="0.1" value={prefs.animationSpeed} onChange={event => updatePref('animationSpeed', Number(event.target.value))} aria-label="Idle animation speed" /></label>
+                  </div>
+                </section>
+
+                <section className="reading-pet-section" aria-label="Page reactions">
+                  <h3>Page reactions</h3>
+                  <ReadingPetToggle label="Nap while I type" checked={prefs.napWhileTyping} onChange={value => updatePref('napWhileTyping', value)} disabled={!prefs.roaming} />
+                  <ReadingPetToggle label="Follow keyboard focus" checked={prefs.followFocus} onChange={value => updatePref('followFocus', value)} disabled={!prefs.roaming} />
+                  <ReadingPetToggle label="Perch on hovered controls" checked={prefs.perchOnHover} onChange={value => updatePref('perchOnHover', value)} disabled={!prefs.roaming} />
+                </section>
+
+                <section className="reading-pet-section" aria-label="Play">
+                  <h3>Play</h3>
+                  <ReadingPetToggle label="Allow keyboard petting" checked={prefs.pettable} onChange={value => updatePref('pettable', value)} />
+                  <ReadingPetToggle label="Drag and toss" checked={prefs.grabbable} onChange={value => updatePref('grabbable', value)} disabled={!prefs.roaming} />
+                  <ReadingPetToggle label="Drop fish treats on double-click" checked={prefs.treats} onChange={value => updatePref('treats', value)} disabled={!prefs.roaming} />
+                  <ReadingPetToggle label="Thought bubbles" checked={prefs.bubbleEnabled} onChange={value => updatePref('bubbleEnabled', value)} />
+                  {prefs.bubbleEnabled && <label className="reading-pet-setting"><span>Thoughts (one per line)</span><textarea value={prefs.bubbleText} maxLength={180} onChange={event => updatePref('bubbleText', event.target.value)} placeholder="A little reading break" aria-label="Pet thought bubbles" /></label>}
+                  <ReadingPetToggle label="Meow sounds" checked={prefs.meow} onChange={value => updatePref('meow', value)} />
+                  {prefs.meow && <label className="reading-pet-setting reading-pet-range"><span>Volume <b>{Math.round(prefs.volume * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value={prefs.volume} onChange={event => updatePref('volume', Number(event.target.value))} aria-label="Pet sound volume" /></label>}
+                </section>
+
+                <section className="reading-pet-section" aria-label="Movement">
+                  <h3>Movement</h3>
+                  <div className="reading-pet-actions">
+                    <button type="button" className="reading-pet-button reading-pet-roam" onClick={() => updatePref('roaming', !prefs.roaming)} aria-pressed={prefs.roaming}>
+                      {prefs.roaming ? <PanelBottom size={13} /> : <Footprints size={13} />}
+                      <span>{prefs.roaming ? 'Footer only' : 'Roam screen'}</span>
+                    </button>
+                    <button type="button" className={`reading-pet-button reading-pet-toggle${prefs.enabled ? '' : ' is-disabled'}`} onClick={() => updatePref('enabled', !prefs.enabled)} aria-pressed={prefs.enabled}>
+                      {prefs.enabled ? <span className="reading-pet-status-dot" /> : <Cat size={13} />}
+                      <span>{prefs.enabled ? 'Disable' : 'Enable'}</span>
+                    </button>
+                  </div>
+                  <ReadingPetToggle label="Cats follow one another" checked={prefs.parade} onChange={value => updatePref('parade', value)} disabled={prefs.catCount < 2} />
+                  <ReadingPetToggle label="Remember roaming positions" checked={prefs.rememberPosition} onChange={value => updatePref('rememberPosition', value)} />
+                  <ReadingPetToggle label="Avoid app toolbars" checked={prefs.avoidControls} onChange={value => updatePref('avoidControls', value)} disabled={!prefs.roaming} />
+                  <ReadingPetToggle label="Visit document headings" checked={prefs.visitHeadings} onChange={value => updatePref('visitHeadings', value)} disabled={!prefs.roaming} />
+                </section>
               </div>
             </div>
           )}
@@ -1579,22 +1729,37 @@ function ReadingPetFooter() {
         const initialPos = prefs.roaming
           ? { x: window.innerWidth * (index + 1) / (prefs.catCount + 1), y: window.innerHeight * .9 }
           : { x: left + (right - left) * fraction, y: Math.max(24, (footerBounds?.top ?? window.innerHeight - 64) + 32) }
+        const appearance = catAppearances[index]
         return (
           <Oneko
             key={`${prefs.roaming ? 'pet-screen-roam' : 'pet-footer-lane'}-${index}`}
             ref={cat => { catRefs.current[index] = cat }}
-            skin={prefs.skin}
+            skin={appearance.skin}
+            spriteSrc={prefs.customSprite || undefined}
             speed={prefs.speed}
-            scale={prefs.scale}
+            scale={appearance.scale}
             followCursor={prefs.roaming}
-            chase={index === 0 ? 'cursor' : 'cat'}
-            freerunChance={prefs.roaming ? 0.06 : 0}
+            chase={prefs.parade && index > 0 ? 'cat' : 'cursor'}
+            freerunChance={prefs.roaming && prefs.zoomies ? prefs.freerunChance : 0}
+            sleepEnabled={prefs.sleepEnabled}
+            idleThreshold={prefs.idleThreshold}
+            animationSpeed={prefs.animationSpeed}
+            napWhileTyping={prefs.roaming && prefs.napWhileTyping}
+            followFocus={prefs.roaming && prefs.followFocus}
+            perchOnHover={prefs.roaming && prefs.perchOnHover}
+            grabbable={prefs.roaming && prefs.grabbable}
+            treats={prefs.roaming && prefs.treats}
+            meow={prefs.meow}
+            volume={prefs.volume}
+            soundBasePath="/cat-sounds"
             zones={zones}
-            zoneAttractionChance={0}
-            bubbleEnabled={false}
-            persistPosition={false}
+            zoneAttractionChance={prefs.roaming && prefs.visitHeadings ? .25 : 0}
+            bubbleEnabled={prefs.bubbleEnabled}
+            bubbleText={bubbleMessages}
+            pettable={prefs.pettable}
+            persistPosition={prefs.rememberPosition}
+            storageKey={`readme-reading-pet:${index}`}
             initialPos={initialPos}
-            pettable
             seasonal={false}
             zIndex={50}
           />

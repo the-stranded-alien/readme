@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+const catSoundFiles = readdirSync(fileURLToPath(new URL('./public/cat-sounds/', import.meta.url)))
+  .filter(fileName => fileName.endsWith('.ogg'))
+  .map(fileName => `/cat-sounds/${fileName}`)
 
 function offlinePrecacheManifest() {
   return {
@@ -10,6 +16,7 @@ function offlinePrecacheManifest() {
       const files = Object.keys(bundle)
         .filter(fileName => fileName !== 'sw.js' && !fileName.endsWith('.map'))
         .map(fileName => `/${fileName}`)
+      files.push(...catSoundFiles)
       this.emitFile({
         type: 'asset',
         fileName: 'precache-manifest.json',
