@@ -19,13 +19,14 @@ import {
   X, Download, Maximize2, Minimize2, Hash, ChevronRight,
   List, AlignLeft, PanelLeftOpen, PanelLeftClose,
   Bold, Italic, Strikethrough, Link, Code, Minus,
-  WrapText, ArrowUp, Heading1, Heading2, Quote,
+  WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
   Settings, CircleHelp, Star, Filter, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
 } from 'lucide-react'
 import Oneko, { ONEKO_SKINS } from 'oneko'
-import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from './workspaceDb'
+import { addSnapshot, readHistory, readSyncFolder, readWorkspace, writeSyncFolder, writeWorkspace } from './workspaceDb'
+import { canSyncToFolder, folderPermission, readFolder, syncPath, writeToFolder } from './folderSync'
 import { analyzeDocument, applyQualityFix } from './documentAnalysis'
 import { makeDuplicateFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
@@ -40,8 +41,9 @@ import HistoryDialog from './components/HistoryDialog'
 import CodeEditor from './components/CodeEditor'
 import TemplateMenu from './components/TemplateMenu'
 import StorageDialog from './components/StorageDialog'
-import SettingsDialog, { ThemePicker } from './components/SettingsDialog'
+import SettingsDialog, { FolderSyncCard, ThemePicker } from './components/SettingsDialog'
 import HelpDialog from './components/HelpDialog'
+import { MARK_COLORS, rehypeMarks } from './rehypeMarks'
 import { CONTENT_FILTERS, applyContentFilter, clearContentFilter, filterLabel } from './contentFilter'
 import { THEMES, THEME_IDS, availableThemes, nextTheme, themeById } from './themes'
 import TemplatesDialog from './components/TemplatesDialog'
@@ -597,7 +599,7 @@ function MarkdownRenderer({ content, dark }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-      rehypePlugins={[rehypeKatex, rehypeCallouts, rehypeStandaloneImages, rehypeHeadingSections]}
+      rehypePlugins={[rehypeKatex, rehypeMarks, rehypeCallouts, rehypeStandaloneImages, rehypeHeadingSections]}
       urlTransform={markdownUrlTransform}
       components={components}
     >
@@ -884,26 +886,68 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
 }
 
 // ── FormattingToolbar ──────────────────────────────────────────
+const ANNOTATION_COLORS = [
+  { id: 'yellow', label: 'Yellow', swatch: '#facc15', fill: 'rgba(250, 204, 21, .34)', line: 'rgba(202, 138, 4, .75)' },
+  { id: 'green', label: 'Green', swatch: '#4ade80', fill: 'rgba(74, 222, 128, .3)', line: 'rgba(22, 163, 74, .75)' },
+  { id: 'blue', label: 'Blue', swatch: '#60a5fa', fill: 'rgba(96, 165, 250, .3)', line: 'rgba(37, 99, 235, .75)' },
+  { id: 'pink', label: 'Pink', swatch: '#f472b6', fill: 'rgba(244, 114, 182, .3)', line: 'rgba(219, 39, 119, .75)' },
+  { id: 'purple', label: 'Purple', swatch: '#a78bfa', fill: 'rgba(167, 139, 250, .32)', line: 'rgba(124, 58, 237, .75)' },
+  { id: 'orange', label: 'Orange', swatch: '#fb923c', fill: 'rgba(251, 146, 60, .3)', line: 'rgba(234, 88, 12, .75)' },
+]
+
 const FMT_ACTIONS = [
   { label: 'Heading 1', Icon: Heading1,    mode: 'block',  before: '# '  },
   { label: 'Heading 2', Icon: Heading2,    mode: 'block',  before: '## ' },
+  { label: 'Heading 3', Icon: Heading3,    mode: 'block',  before: '### ' },
   null,
   { label: 'Bold',      Icon: Bold,        mode: 'wrap',   before: '**',  after: '**' },
   { label: 'Italic',    Icon: Italic,      mode: 'wrap',   before: '*',   after: '*'  },
   { label: 'Strike',    Icon: Strikethrough,mode:'wrap',   before: '~~',  after: '~~' },
+  'highlight',
+  { label: 'Inline code',Icon: Code,       mode: 'wrap',   before: '`',   after: '`'  },
   null,
   { label: 'Link',      Icon: Link,        mode: 'wrap',   before: '[',   after: '](url)' },
-  { label: 'Inline code',Icon: Code,       mode: 'wrap',   before: '`',   after: '`'  },
-  { label: 'Blockquote',Icon: Quote,       mode: 'block',  before: '> '  },
-  { label: 'List item', Icon: List,        mode: 'block',  before: '- '  },
+  { label: 'Image',     Icon: Image,       mode: 'wrap',   before: '![',  after: '](image-url)' },
+  { label: 'Footnote',  Icon: Superscript, mode: 'footnote' },
   null,
+  { label: 'Blockquote',Icon: Quote,       mode: 'block',  before: '> '  },
+  { label: 'Callout',   Icon: MessageSquareQuote, mode: 'insert', text: '\n> [!NOTE]\n> ' },
+  { label: 'Bullet list', Icon: List,      mode: 'block',  before: '- '  },
+  { label: 'Numbered list', Icon: ListOrdered, mode: 'block', before: '1. ' },
+  { label: 'Task list', Icon: ListChecks,  mode: 'block',  before: '- [ ] ' },
+  null,
+  { label: 'Code block', Icon: SquareCode, mode: 'wrap',   before: '\n```\n', after: '\n```\n' },
+  { label: 'Table',     Icon: Table,       mode: 'insert', text: '\n| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| Cell | Cell | Cell |\n' },
   { label: 'Divider',   Icon: Minus,       mode: 'insert', text: '\n---\n' },
 ]
+
+function HighlightPicker({ position, onPick, onClose }) {
+  const menuRef = useRef(null)
+  useEffect(() => {
+    menuRef.current?.querySelector('button')?.focus()
+    const onDown = event => { if (!menuRef.current?.contains(event.target)) onClose() }
+    const onKey = event => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [onClose])
+  return createPortal(
+    <div ref={menuRef} className="highlight-picker anim-pop-in no-print" role="menu" aria-label="Highlight colour" style={{ top: position.top, left: position.left }}>
+      {MARK_COLORS.map(color => (
+        <button key={color.id} type="button" role="menuitem" className="highlight-swatch" style={{ background: color.swatch }}
+          onClick={() => onPick(color.id)} aria-label={`${color.label} highlight`} title={`${color.label} highlight`} />
+      ))}
+    </div>,
+    document.body,
+  )
+}
 
 function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme, aiHidden }) {
   const [tplOpen, setTplOpen] = useState(false)
   const tplRef = useRef(null)
   const closeTemplates = useCallback(() => setTplOpen(false), [])
+  const [highlightMenu, setHighlightMenu] = useState(null)
+  const closeHighlightMenu = useCallback(() => setHighlightMenu(null), [])
 
   const apply = useCallback((action) => {
     const ta = textareaRef.current
@@ -912,7 +956,15 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
     const end   = ta.selectionEnd
 
     let result
-    if (action.mode === 'insert') {
+    if (action.mode === 'footnote') {
+      // Reference at the cursor, definition at the end of the document.
+      const numbers = [...content.matchAll(/\[\^(\d+)\]/g)].map(match => Number(match[1]))
+      const n = (numbers.length ? Math.max(...numbers) : 0) + 1
+      const ref = `[^${n}]`
+      const withRef = content.substring(0, start) + ref + content.substring(end)
+      const definition = `${withRef.endsWith('\n') ? '' : '\n'}\n[^${n}]: Footnote text`
+      result = { value: withRef + definition, cursor: [start + ref.length, start + ref.length] }
+    } else if (action.mode === 'insert') {
       result = {
         value: content.substring(0, start) + action.text + content.substring(end),
         cursor: [start + action.text.length, start + action.text.length],
@@ -932,11 +984,18 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
 
   return (
     <div className="fmt-toolbar no-print justify-between">
-      <div className="flex items-center gap-0.5">
+      <div className="fmt-scroll" role="toolbar" aria-label="Formatting"
+        onWheel={event => { if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY }}>
         {FMT_ACTIONS.map((action, i) =>
           action === null
             ? <div key={`sep-${i}`} className="fmt-divider" />
-            : (
+            : action === 'highlight' ? (
+              <button key="highlight" type="button" className="fmt-btn fmt-btn-highlight" title="Highlight (choose a colour)" aria-label="Highlight"
+                aria-haspopup="menu" aria-expanded={Boolean(highlightMenu)}
+                onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setHighlightMenu(menu => (menu ? null : { top: rect.bottom + 6, left: Math.max(8, rect.left - 40) })) }}>
+                <Highlighter size={13} />
+              </button>
+            ) : (
               <button
                 key={action.label}
                 onClick={() => apply(action)}
@@ -946,6 +1005,10 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
                 <action.Icon size={13} />
               </button>
             )
+        )}
+        {highlightMenu && (
+          <HighlightPicker position={highlightMenu} onClose={closeHighlightMenu}
+            onPick={color => { setHighlightMenu(null); apply({ mode: 'wrap', before: color === 'yellow' ? '==' : `=={${color}}`, after: '==' }) }} />
         )}
       </div>
 
@@ -2217,6 +2280,8 @@ export default function App() {
   const [annotationOpen, setAnnotationOpen] = useState(false)
   const [annotationText, setAnnotationText] = useState('')
   const [annotationNote, setAnnotationNote] = useState('')
+  const [annotationColor, setAnnotationColor] = useState(() => localStorage.getItem('readme-annotation-color') || 'yellow')
+  useEffect(() => { try { localStorage.setItem('readme-annotation-color', annotationColor) } catch { /* optional */ } }, [annotationColor])
   const [selectedQuote, setSelectedQuote] = useState('')
 
   const activeFile = useMemo(
@@ -2806,12 +2871,12 @@ export default function App() {
   }, [searchIndex, searchCount])
 
   useEffect(() => {
-    const root = previewScrollRef.current?.querySelector('.rm-prose')
+    const root = previewScrollRef.current?.querySelector('.doc-prose')
     if (!root || !window.CSS?.highlights || !window.Highlight) return
     if (!document.getElementById('readme-highlight-style')) {
       const style = document.createElement('style')
       style.id = 'readme-highlight-style'
-      style.textContent = '::highlight(readme-annotations) { background: rgba(250, 204, 21, .34); color: inherit; text-decoration: underline; text-decoration-color: rgba(202, 138, 4, .75); text-decoration-thickness: 1px; }'
+      style.textContent = ANNOTATION_COLORS.map(color => `::highlight(readme-annotations-${color.id}) { background: ${color.fill}; color: inherit; text-decoration: underline; text-decoration-color: ${color.line}; text-decoration-thickness: 1px; }`).join('\n')
       document.head.append(style)
     }
     const textNodes = []
@@ -2823,7 +2888,7 @@ export default function App() {
       joined += node.nodeValue || ''
       textNodes.push({ node, start, end: joined.length })
     }
-    const ranges = []
+    const ranges = Object.fromEntries(ANNOTATION_COLORS.map(color => [color.id, []]))
     for (const annotation of annotations.filter(item => item.fileId === activeFileId)) {
       const quote = annotation.quote
       const offset = quote ? joined.indexOf(quote) : -1
@@ -2835,11 +2900,14 @@ export default function App() {
       const range = document.createRange()
       range.setStart(first.node, offset - first.start)
       range.setEnd(last.node, end - last.start)
-      ranges.push(range)
+      ranges[ranges[annotation.color] ? annotation.color : 'yellow'].push(range)
     }
-    if (ranges.length) window.CSS.highlights.set('readme-annotations', new window.Highlight(...ranges))
-    else window.CSS.highlights.delete('readme-annotations')
-    return () => window.CSS.highlights.delete('readme-annotations')
+    for (const color of ANNOTATION_COLORS) {
+      const name = `readme-annotations-${color.id}`
+      if (ranges[color.id].length) window.CSS.highlights.set(name, new window.Highlight(...ranges[color.id]))
+      else window.CSS.highlights.delete(name)
+    }
+    return () => ANNOTATION_COLORS.forEach(color => window.CSS.highlights.delete(`readme-annotations-${color.id}`))
   }, [annotations, activeFileId, content, view, mobileTab])
 
   const stepSearch = useCallback((dir) => {
@@ -3860,6 +3928,105 @@ export default function App() {
     }
   }, [activeFile, content, fileName, updateActiveContent, takeSnapshot])
 
+  // ── Sync to a folder on this computer ───────────────────────
+  const [syncFolder, setSyncFolder] = useState(null) // { handle, name, status, error, lastSync }
+  const syncWrittenRef = useRef(new Map()) // path → content last written to / read from the folder
+  const pullFromFolder = useCallback(async (handle, { first = false } = {}) => {
+    const disk = await readFolder(handle)
+    const written = syncWrittenRef.current
+    const byPath = new Map(filesRef.current.map(file => [syncPath(file.name), file]))
+    const imports = []
+    const updates = new Map()
+    for (const entry of disk) {
+      const local = byPath.get(entry.path)
+      if (!local) {
+        // New in the folder (or present before syncing started): open it.
+        if (!written.has(entry.path)) imports.push({ name: entry.path, content: entry.content })
+        written.set(entry.path, entry.content)
+        continue
+      }
+      if (local.content === entry.content) { written.set(entry.path, entry.content); continue }
+      if (first) {
+        // Both sides have this file and they differ: keep the workspace version,
+        // and keep the folder's version in the file's history so nothing is lost.
+        takeSnapshot(local.id, entry.content, 'Folder version before syncing')
+        continue
+      }
+      if (written.has(entry.path) && entry.content !== written.get(entry.path) && local.content === written.get(entry.path)) {
+        // Changed in the folder by another app, unchanged here: take the folder's version.
+        updates.set(local.id, entry.content)
+        written.set(entry.path, entry.content)
+      }
+    }
+    if (updates.size) setFiles(prev => prev.map(file => (updates.has(file.id) ? { ...file, content: updates.get(file.id) } : file)))
+    if (imports.length) setFiles(prev => [...prev, ...imports.map(item => ({ id: createFileId(), ...item }))])
+    return { imported: imports.length, updated: updates.size }
+  }, [takeSnapshot])
+  const runFolderSync = useCallback(async (handle, options) => {
+    try {
+      const pulled = await pullFromFolder(handle, options)
+      const pushed = await writeToFolder(handle, filesRef.current, syncWrittenRef.current)
+      setSyncFolder(current => current && { ...current, status: 'connected', error: '', lastSync: Date.now() })
+      return { ...pulled, pushed }
+    } catch (error) {
+      const permission = await folderPermission(handle).catch(() => 'denied')
+      setSyncFolder(current => current && {
+        ...current,
+        status: permission === 'granted' ? 'error' : 'needs-permission',
+        error: permission === 'granted' ? (error?.message || 'Could not sync with the folder.') : '',
+      })
+      return null
+    }
+  }, [pullFromFolder])
+  useEffect(() => {
+    let cancelled = false
+    readSyncFolder().then(async handle => {
+      if (cancelled || !handle) return
+      const permission = await folderPermission(handle).catch(() => 'denied')
+      setSyncFolder({ handle, name: handle.name, status: permission === 'granted' ? 'connected' : 'needs-permission', error: '', lastSync: null })
+      if (permission === 'granted') runFolderSync(handle, { first: true })
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [runFolderSync])
+  const connectSyncFolder = useCallback(async () => {
+    try {
+      const handle = await window.showDirectoryPicker({ id: 'readme-sync', mode: 'readwrite' })
+      if (await folderPermission(handle, true) !== 'granted') throw new Error('Permission to edit the folder was not given.')
+      syncWrittenRef.current = new Map()
+      await writeSyncFolder(handle).catch(() => {})
+      setSyncFolder({ handle, name: handle.name, status: 'connected', error: '', lastSync: null })
+      const result = await runFolderSync(handle, { first: true })
+      if (result) setToast({ message: `Syncing with “${handle.name}”: ${result.pushed} file${result.pushed === 1 ? '' : 's'} written${result.imported ? `, ${result.imported} opened from the folder` : ''}.`, tone: 'success', duration: 4500 })
+    } catch (error) {
+      if (error?.name !== 'AbortError') setToast({ message: error?.message || 'Could not use that folder.', tone: 'warning', duration: 5000 })
+    }
+  }, [runFolderSync])
+  const reconnectSyncFolder = useCallback(async () => {
+    if (!syncFolder?.handle) return
+    if (await folderPermission(syncFolder.handle, true).catch(() => 'denied') === 'granted') {
+      setSyncFolder(current => current && { ...current, status: 'connected' })
+      runFolderSync(syncFolder.handle, { first: true })
+    }
+  }, [syncFolder, runFolderSync])
+  const disconnectSyncFolder = useCallback(() => {
+    writeSyncFolder(null).catch(() => {})
+    syncWrittenRef.current = new Map()
+    setSyncFolder(null)
+  }, [])
+  // Write changes shortly after editing stops; pick up outside changes when the window regains focus.
+  const syncHandle = syncFolder?.status === 'connected' ? syncFolder.handle : null
+  useEffect(() => {
+    if (!syncHandle) return
+    const timer = setTimeout(() => runFolderSync(syncHandle), 1200)
+    return () => clearTimeout(timer)
+  }, [files, syncHandle, runFolderSync])
+  useEffect(() => {
+    if (!syncHandle) return
+    const onFocus = () => runFolderSync(syncHandle)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [syncHandle, runFolderSync])
+
   // Cmd/Ctrl+S: save everything open in the app (never the browser's "save page as HTML").
   const handleSaveAll = useCallback(async () => {
     try {
@@ -3960,11 +4127,11 @@ export default function App() {
 
   const saveAnnotation = useCallback(() => {
     if (!activeFileId || !annotationText.trim()) return
-    setAnnotations(prev => [...prev, { id: createFileId(), fileId: activeFileId, quote: annotationText.trim(), note: annotationNote.trim(), headingId: activeHeadingId, progress: readProgress, createdAt: Date.now() }])
+    setAnnotations(prev => [...prev, { id: createFileId(), fileId: activeFileId, quote: annotationText.trim(), note: annotationNote.trim(), color: annotationColor, headingId: activeHeadingId, progress: readProgress, createdAt: Date.now() }])
     window.getSelection()?.removeAllRanges?.()
     setSelectedQuote('')
     setAnnotationOpen(false)
-  }, [activeFileId, annotationText, annotationNote, activeHeadingId, readProgress])
+  }, [activeFileId, annotationText, annotationNote, annotationColor, activeHeadingId, readProgress])
 
   const handleDownload = useCallback(() => {
     if (!activeFile) return
@@ -4843,6 +5010,13 @@ ${fontCss}
                           <div className="space-y-2">
                             <div className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Save highlight or note</div>
                             <div className="text-[11px] line-clamp-3 rounded p-2" style={{ color: 'var(--text-2)', background: 'var(--bg-editor)' }}>{selectedQuote}</div>
+                            <div className="annotation-colors" role="radiogroup" aria-label="Highlight colour">
+                              {ANNOTATION_COLORS.map(color => (
+                                <button key={color.id} type="button" role="radio" aria-checked={annotationColor === color.id} aria-label={color.label}
+                                  title={color.label} className={`annotation-color${annotationColor === color.id ? ' is-active' : ''}`}
+                                  style={{ background: color.swatch }} onClick={() => setAnnotationColor(color.id)} />
+                              ))}
+                            </div>
                             <textarea value={annotationNote} onChange={e => setAnnotationNote(e.target.value)} placeholder="Add a note (optional)" className="w-full rounded p-2 text-xs outline-none" rows={3} style={{ background: 'var(--bg-editor)', color: 'var(--text-1)', border: '1px solid var(--border)' }} />
                             <div className="flex justify-end gap-2">
                               <button className="reader-chip" onClick={() => setAnnotationOpen(false)}>Cancel</button>
@@ -4858,7 +5032,7 @@ ${fontCss}
                                   <button className="text-left w-full" onClick={() => {
                                     if (item.headingId) navigateToHeading(item.headingId)
                                     else previewScrollRef.current?.scrollTo({ top: previewScrollRef.current.scrollHeight * item.progress / 100, behavior: scrollBehavior() })
-                                  }}><span className="line-clamp-3">“{item.quote}”</span>{item.note && <span className="block mt-1 opacity-80">{item.note}</span>}</button>
+                                  }}><span className="line-clamp-3"><span className="annotation-dot" style={{ background: (ANNOTATION_COLORS.find(color => color.id === item.color) ?? ANNOTATION_COLORS[0]).swatch }} aria-hidden="true" />“{item.quote}”</span>{item.note && <span className="block mt-1 opacity-80">{item.note}</span>}</button>
                                   <button className="mt-1 opacity-60 hover:opacity-100" onClick={() => setAnnotations(prev => prev.filter(value => value.id !== item.id))}>Remove</button>
                                 </div>
                               ))}
@@ -5335,7 +5509,8 @@ ${fontCss}
       )}
 
       {diffOpen && files.length > 1 && (
-        <FileDiffView files={files} activeFileId={activeFileId} compareWithId={diffCompareId} onClose={() => setDiffOpen(false)} />
+        <FileDiffView files={files} activeFileId={activeFileId} compareWithId={diffCompareId} onClose={() => setDiffOpen(false)}
+          onEdit={(id, text) => { markWorkspaceEdit(); setFiles(prev => prev.map(file => (file.id === id ? { ...file, content: text } : file))) }} />
       )}
 
       <LinkPreview rootRef={previewScrollRef} disabled={!content.trim() || appSettings.lite} />
@@ -5421,6 +5596,10 @@ ${fontCss}
           onDensity={setUiDensity}
           highContrast={highContrast}
           onHighContrast={value => { if (value !== highContrast) toggleHighContrast() }}
+          workspaceExtra={(
+            <FolderSyncCard supported={canSyncToFolder()} state={syncFolder} onConnect={connectSyncFolder}
+              onReconnect={reconnectSyncFolder} onSyncNow={() => syncFolder?.handle && runFolderSync(syncFolder.handle)} onDisconnect={disconnectSyncFolder} />
+          )}
           appearanceExtra={(
             <ThemePicker themes={availableThemes(appSettings.extraThemes)} value={theme} onChange={chooseTheme}
               extraThemes={appSettings.extraThemes} onExtraThemes={value => updateAppSetting('extraThemes', value)} />

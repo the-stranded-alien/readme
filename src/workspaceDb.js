@@ -72,3 +72,7 @@ export async function readAllHistory() {
 export async function writeAllHistory(history) {
   await Promise.all(Object.entries(history || {}).map(([fileId, snapshots]) => (Array.isArray(snapshots) ? put(HISTORY_STORE, fileId, snapshots.slice(0, MAX_SNAPSHOTS)) : null)))
 }
+
+// The folder chosen for "Sync to a folder" (a FileSystemDirectoryHandle).
+export const readSyncFolder = () => get(STORE_NAME, 'sync-folder')
+export const writeSyncFolder = handle => put(STORE_NAME, 'sync-folder', handle ?? undefined)

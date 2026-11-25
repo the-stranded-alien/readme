@@ -2418,3 +2418,64 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 .filter-menu-item { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px; border-radius: 8px; border: 0; background: transparent; color: var(--text-2); font-size: 12.5px; text-align: left; cursor: pointer; }
 .filter-menu-item:hover, .filter-menu-item:focus-visible { background: var(--accent-soft); color: var(--text-1); outline: none; }
 .filter-menu-item.is-active { color: var(--accent); font-weight: 600; }
+
+/* ── Editor toolbar: more options, scrolls when it doesn't fit ─ */
+.fmt-scroll {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; scrollbar-color: transparent transparent; padding-bottom: 1px;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
+}
+.fmt-scroll:hover { scrollbar-color: var(--border-strong) transparent; }
+.fmt-scroll::-webkit-scrollbar { height: 4px; }
+.fmt-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+.fmt-scroll:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
+.fmt-scroll > * { flex-shrink: 0; }
+.fmt-btn-highlight svg { color: #ca8a04; }
+.highlight-picker { position: fixed; z-index: 140; display: flex; gap: 6px; padding: 8px; border-radius: 12px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-xl); }
+.highlight-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--bg-preview); box-shadow: 0 0 0 1px var(--border-strong); cursor: pointer; }
+.highlight-swatch:hover, .highlight-swatch:focus-visible { transform: scale(1.15); box-shadow: 0 0 0 2px var(--accent); outline: none; }
+
+/* ==Highlights== in the page */
+.rm-prose mark.md-mark { color: inherit; padding: .05em .2em; border-radius: .25em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.md-mark-yellow { background: rgba(250, 204, 21, .38); }
+.md-mark-green { background: rgba(74, 222, 128, .34); }
+.md-mark-blue { background: rgba(96, 165, 250, .34); }
+.md-mark-pink { background: rgba(244, 114, 182, .32); }
+.md-mark-purple { background: rgba(167, 139, 250, .36); }
+.md-mark-orange { background: rgba(251, 146, 60, .34); }
+.dark .md-mark-yellow { background: rgba(250, 204, 21, .28); }
+.dark .md-mark-green { background: rgba(74, 222, 128, .24); }
+.dark .md-mark-blue { background: rgba(96, 165, 250, .26); }
+.dark .md-mark-pink { background: rgba(244, 114, 182, .26); }
+.dark .md-mark-purple { background: rgba(167, 139, 250, .28); }
+.dark .md-mark-orange { background: rgba(251, 146, 60, .26); }
+
+/* Reading highlights: colour choice */
+.annotation-colors { display: flex; gap: 6px; }
+.annotation-color { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--bg-preview); box-shadow: 0 0 0 1px var(--border-strong); cursor: pointer; }
+.annotation-color.is-active { box-shadow: 0 0 0 2px var(--accent); }
+.annotation-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; vertical-align: middle; }
+
+/* ── Compare: scrolling + editing ─────────────────────────── */
+.diff-panes { overflow: hidden; }
+.diff-pane { min-height: 0; overflow: hidden; }
+.diff-lines { min-height: 0; }
+.diff-lines:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.diff-pane-title { display: inline-flex; align-items: center; gap: 8px; }
+.diff-edit-toggle { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-editor); color: var(--text-3); font-size: 11px; font-weight: 600; cursor: pointer; }
+.diff-edit-toggle:hover { color: var(--accent); border-color: var(--accent-border); }
+.diff-edit-toggle.is-on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-border); }
+.diff-editor { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; outline: 0; padding: 10px 14px; background: var(--bg-editor); color: var(--text-1); font: 12px/1.7 var(--font-mono); overflow: auto; }
+.diff-editor:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-border); }
+
+/* ── Folder sync ──────────────────────────────────────────── */
+.folder-sync { display: grid; gap: 10px; padding: 14px; border-radius: 12px; border: 1px solid var(--border-light); background: var(--bg-editor); }
+.folder-sync-head { display: flex; gap: 10px; align-items: flex-start; }
+.folder-sync-head > svg { color: var(--accent); margin-top: 2px; flex-shrink: 0; }
+.folder-sync-head div { display: grid; gap: 3px; }
+.folder-sync-head strong { font-size: 13px; color: var(--text-1); }
+.folder-sync-head span { font-size: 11.5px; line-height: 1.5; color: var(--text-3); }
+.folder-sync-status { margin: 0; font-size: 12px; color: var(--text-2); }
+.folder-sync-status.is-connected { color: #15803d; }
+.dark .folder-sync-status.is-connected { color: #4ade80; }
+.folder-sync-status.is-error, .folder-sync-status.is-needs-permission { color: #b45309; }

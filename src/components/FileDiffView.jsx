@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
-import { ArrowLeftRight, Check, ChevronDown, GitCompare, X } from 'lucide-react'
+import { ArrowLeftRight, Check, ChevronDown, Eye, GitCompare, Pencil, X } from 'lucide-react'
 import { diffLines } from '../documentDiff'
 
-function DiffPane({ title, files, selectedId, otherSelectedId, onSelect, rows, side, scrollRef, onSyncScroll }) {
+function DiffPane({ title, files, selectedId, otherSelectedId, onSelect, rows, side, scrollRef, onSyncScroll, onEdit }) {
+  const [editing, setEditing] = useState(false)
   const [selectOpen, setSelectOpen] = useState(false)
   const selectRef = useRef(null)
   const availableFiles = files.filter(file => file.id === selectedId || file.id !== otherSelectedId)
@@ -28,7 +29,15 @@ function DiffPane({ title, files, selectedId, otherSelectedId, onSelect, rows, s
   return (
     <section className="diff-pane">
       <div className="diff-pane-header">
-        <span>{title}</span>
+        <span className="diff-pane-title">
+          {title}
+          {onEdit && selectedFile && (
+            <button type="button" className={`diff-edit-toggle${editing ? ' is-on' : ''}`} onClick={() => setEditing(value => !value)}
+              aria-pressed={editing} aria-label={editing ? `Show differences for ${title.toLowerCase()} file` : `Edit ${title.toLowerCase()} file`}>
+              {editing ? <><Eye size={12} /> Differences</> : <><Pencil size={12} /> Edit</>}
+            </button>
+          )}
+        </span>
         <div className="diff-file-select-wrap" ref={selectRef}>
           <button
             type="button"
@@ -60,7 +69,16 @@ function DiffPane({ title, files, selectedId, otherSelectedId, onSelect, rows, s
           )}
         </div>
       </div>
-      <div className="diff-lines" ref={scrollRef} onScroll={onSyncScroll}>
+      {editing && selectedFile ? (
+        <textarea
+          className="diff-editor"
+          value={selectedFile.content}
+          onChange={event => onEdit(selectedFile.id, event.target.value)}
+          spellCheck={false}
+          aria-label={`Edit ${selectedFile.name}`}
+        />
+      ) : (
+      <div className="diff-lines" ref={scrollRef} onScroll={onSyncScroll} tabIndex={0} aria-label={`${title} lines`}>
         {!rows.length && <div className="diff-pending">Calculating comparison…</div>}
         {rows.map((row, index) => {
           const line = row[side]
@@ -73,11 +91,12 @@ function DiffPane({ title, files, selectedId, otherSelectedId, onSelect, rows, s
           )
         })}
       </div>
+      )}
     </section>
   )
 }
 
-export default function FileDiffView({ files, activeFileId, compareWithId, onClose }) {
+export default function FileDiffView({ files, activeFileId, compareWithId, onClose, onEdit }) {
   const initialLeftId = activeFileId || files[0]?.id
   const initialRightId = (compareWithId && compareWithId !== initialLeftId && files.some(file => file.id === compareWithId) ? compareWithId : null)
     || files.find(file => file.id !== initialLeftId)?.id || files[1]?.id
@@ -92,12 +111,14 @@ export default function FileDiffView({ files, activeFileId, compareWithId, onClo
   const right = files.find(file => file.id === rightId) || files.find(file => file.id !== left?.id) || files[0]
   const leftText = left?.content || ''
   const rightText = right?.content || ''
-  const rows = diffResult?.left === left && diffResult?.right === right ? diffResult.rows : []
+  // Keep showing the last result while a new comparison is calculated (no flicker while editing).
+  const rows = diffResult?.left?.id === left?.id && diffResult?.right?.id === right?.id ? diffResult.rows : []
   useEffect(() => {
     const id = ++diffRequestRef.current
     let timer
     let worker
     const applyDiff = rows => { if (diffRequestRef.current === id) setDiffResult({ left, right, rows }) }
+    const start = () => {
     if ('Worker' in window) {
       try {
         worker = new Worker(new URL('../workers/documentWorker.js', import.meta.url), { type: 'module' })
@@ -111,8 +132,11 @@ export default function FileDiffView({ files, activeFileId, compareWithId, onClo
     } else {
       timer = setTimeout(() => applyDiff(diffLines(leftText, rightText)), 0)
     }
-    return () => { worker?.terminate(); if (timer) clearTimeout(timer) }
-  }, [leftText, rightText, left, right])
+    }
+    // Wait for a pause in typing before re-comparing.
+    const delay = setTimeout(start, diffResult ? 200 : 0)
+    return () => { clearTimeout(delay); worker?.terminate(); if (timer) clearTimeout(timer) }
+  }, [leftText, rightText, left, right]) // eslint-disable-line react-hooks/exhaustive-deps
   const changed = rows.filter(row => ['remove', 'add', 'change', 'summary'].includes(row.kind)).length
   const syncScroll = (source, target) => {
     if (syncLockRef.current || !source.current || !target.current) return
@@ -134,9 +158,9 @@ export default function FileDiffView({ files, activeFileId, compareWithId, onClo
           <button type="button" className="btn-icon !p-1" onClick={onClose} aria-label="Close comparison"><X size={15} /></button>
         </header>
         <div className="diff-panes">
-          <DiffPane title="Original" files={files} selectedId={left?.id} otherSelectedId={right?.id} onSelect={id => { if (id !== right?.id) setLeftId(id) }} rows={rows} side="left" scrollRef={leftScrollRef} onSyncScroll={() => syncScroll(leftScrollRef, rightScrollRef)} />
+          <DiffPane title="Original" files={files} selectedId={left?.id} otherSelectedId={right?.id} onSelect={id => { if (id !== right?.id) setLeftId(id) }} rows={rows} side="left" scrollRef={leftScrollRef} onSyncScroll={() => syncScroll(leftScrollRef, rightScrollRef)} onEdit={onEdit} />
           <div className="diff-gutter" aria-hidden="true"><ArrowLeftRight size={13} /></div>
-          <DiffPane title="Changed" files={files} selectedId={right?.id} otherSelectedId={left?.id} onSelect={id => { if (id !== left?.id) setRightId(id) }} rows={rows} side="right" scrollRef={rightScrollRef} onSyncScroll={() => syncScroll(rightScrollRef, leftScrollRef)} />
+          <DiffPane title="Changed" files={files} selectedId={right?.id} otherSelectedId={left?.id} onSelect={id => { if (id !== left?.id) setRightId(id) }} rows={rows} side="right" scrollRef={rightScrollRef} onSyncScroll={() => syncScroll(rightScrollRef, leftScrollRef)} onEdit={onEdit} />
         </div>
       </div>
     </div>

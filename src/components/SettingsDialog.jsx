@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, HardDrive, Info, Palette, Settings, Sparkles, X, FolderOpen } from 'lucide-react'
+import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, Info, Palette, RefreshCw, Settings, Sparkles, X } from 'lucide-react'
 import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
 
@@ -30,6 +30,41 @@ export function ThemePicker({ themes, value, onChange, extraThemes, onExtraTheme
       </div>
       <SettingsToggle label="Additional themes" description="Adds Neon, Ocean and Forest to the theme switcher." checked={extraThemes} onChange={onExtraThemes} />
     </>
+  )
+}
+
+/** "Sync to a folder" controls (Settings → Workspace). */
+export function FolderSyncCard({ supported, state, onConnect, onReconnect, onSyncNow, onDisconnect }) {
+  return (
+    <div className="folder-sync" role="group" aria-label="Sync to a folder">
+      <div className="folder-sync-head">
+        <FolderSync size={16} aria-hidden="true" />
+        <div>
+          <strong>Sync to a folder</strong>
+          <span>Keep a copy of every file in a folder on your computer. Changes are written automatically, and files changed in other apps are picked up when you come back.</span>
+        </div>
+      </div>
+      {!supported ? (
+        <p className="settings-muted">Your browser can’t save to folders. Use desktop Chrome or Edge, or back up the workspace instead.</p>
+      ) : !state ? (
+        <div className="settings-actions"><button type="button" className="pdf-dialog-primary" onClick={onConnect}><FolderOpen size={13} />Choose a folder…</button></div>
+      ) : (
+        <>
+          <p className={`folder-sync-status is-${state.status}`} role="status">
+            {state.status === 'connected' && <>Syncing with <strong>{state.name}</strong>{state.lastSync ? ` · last synced ${new Date(state.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</>}
+            {state.status === 'needs-permission' && <>The browser needs your permission again to use <strong>{state.name}</strong>.</>}
+            {state.status === 'error' && <>Couldn’t sync with <strong>{state.name}</strong>: {state.error}</>}
+          </p>
+          <div className="settings-actions">
+            {state.status === 'needs-permission'
+              ? <button type="button" className="pdf-dialog-primary" onClick={onReconnect}>Allow access</button>
+              : <button type="button" className="reader-chip" onClick={onSyncNow}><RefreshCw size={12} /> Sync now</button>}
+            <button type="button" className="reader-chip" onClick={onConnect}><FolderOpen size={12} /> Change folder…</button>
+            <button type="button" className="reader-chip" onClick={onDisconnect}>Stop syncing</button>
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 

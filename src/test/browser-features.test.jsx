@@ -372,7 +372,7 @@ describe('advanced browser features', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Highlights and notes' }))
     fireEvent.change(await screen.findByPlaceholderText('Add a note (optional)'), { target: { value: 'Review this section' } })
     fireEvent.click(await screen.findByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(highlights.set).toHaveBeenCalledWith('readme-annotations', expect.any(window.Highlight)))
+    await waitFor(() => expect(highlights.set).toHaveBeenCalledWith('readme-annotations-yellow', expect.any(window.Highlight)))
     fireEvent.click(screen.getByRole('button', { name: 'Highlights and notes' }))
     expect(await screen.findByText('“Welcome to ReadMe”')).toBeInTheDocument()
     expect(screen.getByText('Review this section')).toBeInTheDocument()
@@ -1181,6 +1181,66 @@ describe('advanced browser features', () => {
     expect(Number(handle.getAttribute('aria-valuenow'))).toBe(Math.max(230, Math.round(window.innerWidth * 0.3)))
     for (let i = 0; i < 80; i += 1) fireEvent.keyDown(handle, { key: 'ArrowLeft' })
     expect(Number(handle.getAttribute('aria-valuenow'))).toBe(230)
+  })
+
+  it('edits a file inside the comparison and re-compares', async () => {
+    installApp()
+    fireEvent.click(screen.getAllByRole('button', { name: 'New file' })[0])
+    fireEvent.change(document.querySelector('textarea.editor-textarea'), { target: { value: '# Revised\nnew line' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Open command palette' }))
+    fireEvent.change(screen.getByPlaceholderText('Jump to file, heading, template, or command…'), { target: { value: 'Compare open files' } })
+    fireEvent.click(await screen.findByText('Compare open files'))
+    const diffDialog = await screen.findByRole('dialog', { name: 'Compare open files' })
+    fireEvent.click(within(diffDialog).getByRole('button', { name: 'Edit original file' }))
+    const editor = within(diffDialog).getByRole('textbox', { name: /^Edit / })
+    fireEvent.change(editor, { target: { value: '# Revised\nedited in compare' } })
+    fireEvent.click(within(diffDialog).getByRole('button', { name: 'Show differences for original file' }))
+    await waitFor(() => expect(within(diffDialog).getByText('edited in compare')).toBeInTheDocument(), { timeout: 3000 })
+  })
+
+  it('renders ==highlights== in colours and offers more editor formatting', async () => {
+    const { rehypeMarks } = await import('../rehypeMarks.js')
+    expect(rehypeMarks).toBeTypeOf('function')
+    installApp()
+    const editor = document.querySelector('textarea.editor-textarea')
+    fireEvent.change(editor, { target: { value: '# Doc\n\nSome ==yellow== and =={green}green== text.' } })
+    await waitFor(() => expect(document.querySelector('.doc-prose mark.md-mark-green')).toHaveTextContent('green'))
+    expect(document.querySelector('.doc-prose mark.md-mark-yellow')).toHaveTextContent('yellow')
+    const toolbar = screen.getByRole('toolbar', { name: 'Formatting' })
+    for (const name of ['Heading 3', 'Numbered list', 'Task list', 'Table', 'Code block', 'Image', 'Footnote', 'Callout']) {
+      expect(within(toolbar).getByTitle(name)).toBeInTheDocument()
+    }
+    editor.setSelectionRange(10, 14)
+    fireEvent.click(within(toolbar).getByRole('button', { name: 'Highlight' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Blue highlight' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toContain('=={blue}'))
+    fireEvent.click(within(toolbar).getByTitle('Footnote'))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toMatch(/\[\^1\]: Footnote text$/))
+  })
+
+  it('syncs the workspace to a folder on the computer', async () => {
+    const written = new Map()
+    const makeFile = (name, content) => ({
+      kind: 'file', name,
+      getFile: async () => new File([content], name),
+      createWritable: async () => ({ write: async text => { written.set(name, text) }, close: async () => {} }),
+    })
+    const existing = makeFile('notes.md', '# Notes from the folder')
+    const folder = {
+      kind: 'directory', name: 'My Docs',
+      queryPermission: async () => 'granted', requestPermission: async () => 'granted',
+      async *entries() { yield ['notes.md', existing] },
+      getFileHandle: async (name, { create } = {}) => (name === 'notes.md' ? existing : create ? makeFile(name, '') : Promise.reject(new Error('missing'))),
+      getDirectoryHandle: async () => folder,
+    }
+    vi.stubGlobal('showDirectoryPicker', vi.fn(async () => folder))
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Choose a folder/ }))
+    await waitFor(() => expect(written.has('Welcome.md')).toBe(true))
+    expect(await within(dialog).findByText('My Docs')).toBeInTheDocument()
+    expect(await screen.findByRole('tab', { name: 'notes.md' })).toBeInTheDocument()
   })
 
   it('collapses and expands heading sections, individually and all at once', async () => {
