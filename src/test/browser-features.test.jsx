@@ -8,27 +8,6 @@ import App from '../App.jsx'
 import { analyzeDocument } from '../documentAnalysis.js'
 import { readWorkspace, writeWorkspace } from '../workspaceDb.js'
 
-const { html2canvasMock, pdfSaveMock, pdfCloneStageClass } = vi.hoisted(() => ({
-  html2canvasMock: vi.fn(),
-  pdfSaveMock: vi.fn(),
-  pdfCloneStageClass: { value: '' },
-}))
-
-vi.mock('html2canvas-pro', () => ({ default: html2canvasMock }))
-vi.mock('jspdf', () => ({
-  jsPDF: class {
-    setProperties() {}
-    setFillColor() {}
-    rect() {}
-    setFontSize() {}
-    setTextColor() {}
-    text() {}
-    addPage() {}
-    addImage() {}
-    save(name) { pdfSaveMock(name) }
-  },
-}))
-
 function installApp(root = document.body) {
   return render(<App />, { container: root === document.body ? undefined : root })
 }
@@ -65,9 +44,9 @@ describe('advanced browser features', () => {
     window.showOpenFilePicker = vi.fn(async () => [handle])
     installApp()
 
-    fireEvent.click(screen.getByTitle('Open Markdown files or folders'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Markdown files or folders' }))
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('# Disk document'))
-    fireEvent.click(screen.getByTitle('Save file in place (or choose a location)'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save file in place' }))
     await waitFor(() => expect(write).toHaveBeenCalledWith('# Disk document'))
     expect(close).toHaveBeenCalledOnce()
   })
@@ -160,7 +139,7 @@ describe('advanced browser features', () => {
     window.speechSynthesis = speech
     window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text } }
     installApp()
-    fireEvent.click(screen.getByTitle('Read document aloud'))
+    fireEvent.click(screen.getByRole('button', { name: 'Read document aloud' }))
     await waitFor(() => expect(speak).toHaveBeenCalledOnce())
     expect(speak.mock.calls[0][0].text).toContain('Welcome to ReadMe')
   })
@@ -170,7 +149,7 @@ describe('advanced browser features', () => {
     const request = vi.fn(async () => sentinel)
     Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } })
     installApp()
-    fireEvent.click(screen.getByTitle('Keep screen awake while reading'))
+    fireEvent.click(screen.getByRole('button', { name: 'Keep screen awake while reading' }))
     await waitFor(() => expect(request).toHaveBeenCalledWith('screen'))
   })
 
@@ -190,14 +169,15 @@ describe('advanced browser features', () => {
     const highlights = { set: vi.fn(), delete: vi.fn() }
     vi.stubGlobal('CSS', { highlights })
     window.Highlight = class { constructor(...ranges) { this.ranges = ranges } }
-    window.getSelection = vi.fn(() => ({ toString: () => 'Welcome to ReadMe' }))
+    let selectionText = 'Welcome to ReadMe'
+    window.getSelection = vi.fn(() => ({ toString: () => selectionText, removeAllRanges: () => { selectionText = '' } }))
     installApp()
-    fireEvent.mouseDown(screen.getByTitle('Save selected text as a highlight or note'))
-    fireEvent.click(screen.getByTitle('Save selected text as a highlight or note'))
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Highlights and notes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Highlights and notes' }))
     fireEvent.change(await screen.findByPlaceholderText('Add a note (optional)'), { target: { value: 'Review this section' } })
     fireEvent.click(await screen.findByRole('button', { name: 'Save' }))
     await waitFor(() => expect(highlights.set).toHaveBeenCalledWith('readme-annotations', expect.any(window.Highlight)))
-    fireEvent.click(screen.getByTitle('Reading notes (1)'))
+    fireEvent.click(screen.getByRole('button', { name: 'Highlights and notes' }))
     expect(await screen.findByText('“Welcome to ReadMe”')).toBeInTheDocument()
     expect(screen.getByText('Review this section')).toBeInTheDocument()
   })
@@ -206,36 +186,45 @@ describe('advanced browser features', () => {
     window.prompt = vi.fn(() => 'https://example.test/remote.md')
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => '# Imported URL' })))
     installApp()
-    fireEvent.click(screen.getByTitle('Import Markdown from URL'))
+    fireEvent.click(screen.getByRole('button', { name: 'Import Markdown from URL' }))
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('# Imported URL'))
     expect(fetch).toHaveBeenCalledWith('https://example.test/remote.md')
   })
 
-  it('keeps the live theme and scroll position unchanged while PDF capture runs', async () => {
+  it('uses native print layout without changing the live page theme or scroll', async () => {
     localStorage.setItem('readme-theme', 'dark')
-    html2canvasMock.mockImplementation(async (_block, options) => {
-      const clonedStage = { className: '', style: { opacity: '0' } }
-      const clonedDocument = { getElementById: id => id === 'readme-pdf-staging' ? clonedStage : null }
-      options.onclone(clonedDocument)
-      pdfCloneStageClass.value = clonedStage.className
-      return { width: 100, height: 80, toDataURL: () => 'data:image/png;base64,AA==' }
-    })
+    const handlers = {}
+    const printDocument = document.implementation.createHTMLDocument()
+    const popup = {
+      document: printDocument,
+      addEventListener: vi.fn((type, handler) => { handlers[type] = handler }),
+      requestAnimationFrame: callback => callback(),
+      focus: vi.fn(),
+      print: vi.fn(),
+      close: vi.fn(),
+    }
+    vi.spyOn(window, 'open').mockReturnValue(popup)
     const { container } = installApp()
     await waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(true))
     const scroller = container.querySelector('.surface-preview.overflow-auto')
     scroller.scrollTop = 90
     const originalScrollTop = scroller.scrollTop
+    const sourceArticle = container.querySelector('.book-page')
+    const sourceArticleStyle = sourceArticle.getAttribute('style')
     window.HTMLElement.prototype.scrollIntoView.mockClear()
 
-    fireEvent.click(screen.getByTitle('Download & export options'))
-    fireEvent.click(await screen.findByText('Download as PDF'))
-    await waitFor(() => expect(pdfSaveMock).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: 'Download and export options' }))
+    fireEvent.click(await screen.findByText('Print / Save as PDF'))
+    await waitFor(() => expect(popup.print).toHaveBeenCalledOnce())
 
     expect(document.documentElement.classList.contains('dark')).toBe(true)
-    expect(document.documentElement.classList.contains('pdf-export-active')).toBe(false)
     expect(scroller.scrollTop).toBe(originalScrollTop)
+    expect(sourceArticle.getAttribute('style')).toBe(sourceArticleStyle)
     expect(window.HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled()
-    expect(pdfCloneStageClass.value).toBe('')
-    expect(document.getElementById('readme-pdf-staging')).toBeNull()
+    expect(printDocument.documentElement.classList.contains('dark')).toBe(true)
+    expect(printDocument.body.querySelector('.book-page')).toBeTruthy()
+    expect(printDocument.body.querySelector('.book-folio-header, .book-folio-footer, button')).toBeNull()
+    expect(Array.from(printDocument.head.querySelectorAll('style')).some(style => style.textContent.includes('@page'))).toBe(true)
+    expect(printDocument.body.querySelector('canvas')).toBeNull()
   })
 })

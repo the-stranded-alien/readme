@@ -16,9 +16,9 @@ import {
   List, AlignLeft, PanelLeftOpen, PanelLeftClose,
   Bold, Italic, Strikethrough, Link, Code, Minus,
   WrapText, ArrowUp, Heading1, Heading2, Quote,
-  FileDown, Loader2, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
+  FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, StickyNote, MonitorUp, Globe, Save,
+  Volume2, Pause, Play, Highlighter, MonitorUp, Globe, Save,
 } from 'lucide-react'
 import { readWorkspace, writeWorkspace } from './workspaceDb'
 import { analyzeDocument } from './documentAnalysis'
@@ -924,7 +924,6 @@ function ReaderSettingsPopover({ prefs, onChange, onClose }) {
 function DownloadMenuButton({
   disabled,
   canExportPdf,
-  exportingPdf,
   fileCount,
   onDownloadMd,
   onExportPdf,
@@ -952,17 +951,19 @@ function DownloadMenuButton({
         type="button"
         onClick={onDownloadMd}
         disabled={disabled}
-        title="Download Markdown (.md)"
+        data-tooltip="Download Markdown (.md)"
+        aria-label="Download Markdown"
         className="split-download-main"
       >
-        {exportingPdf ? <Loader2 size={13} className="spin-loader" /> : <Download size={13} />}
-        <span className="hidden sm:inline">{exportingPdf ? 'Exporting…' : 'Download'}</span>
+        <Download size={13} />
+        <span className="hidden sm:inline">Download</span>
       </button>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
         disabled={disabled && fileCount === 0}
-        title="Download & export options"
+        data-tooltip="Download and export options"
+        aria-label="Download and export options"
         aria-haspopup="menu"
         aria-expanded={open}
         className="split-download-caret"
@@ -992,12 +993,12 @@ function DownloadMenuButton({
             type="button"
             role="menuitem"
             className="download-menu-item"
-            disabled={!canExportPdf || exportingPdf}
+            disabled={!canExportPdf}
             onClick={() => { setOpen(false); onExportPdf() }}
           >
             <span className="flex items-center gap-2">
-              {exportingPdf ? <Loader2 size={13} className="spin-loader" /> : <FileDown size={13} style={{ color: 'var(--accent)' }} />}
-              <span>{exportingPdf ? 'Exporting PDF…' : 'Download as PDF'}</span>
+              <FileDown size={13} style={{ color: 'var(--accent)' }} />
+              <span>Print / Save as PDF</span>
             </span>
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
               style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
@@ -1195,7 +1196,6 @@ export default function App() {
   const [showScrollTop, setShowScrollTop]     = useState(false)
   const [themeKey, setThemeKey]     = useState(0)
   const [copyAllDone, setCopyAllDone] = useState(false)
-  const [exportingPdf, setExportingPdf] = useState(false)
   const [readerPrefs, setReaderPrefs] = useState(loadReaderPrefs)
   const [readingBookmarks, setReadingBookmarks] = useState(loadReadingBookmarks)
   const [readerOpen, setReaderOpen]   = useState(false)
@@ -1795,6 +1795,8 @@ export default function App() {
   const saveAnnotation = useCallback(() => {
     if (!activeFileId || !annotationText.trim()) return
     setAnnotations(prev => [...prev, { id: createFileId(), fileId: activeFileId, quote: annotationText.trim(), note: annotationNote.trim(), headingId: activeHeadingId, progress: readProgress, createdAt: Date.now() }])
+    window.getSelection()?.removeAllRanges?.()
+    setSelectedQuote('')
     setAnnotationOpen(false)
   }, [activeFileId, annotationText, annotationNote, activeHeadingId, readProgress])
 
@@ -1807,135 +1809,79 @@ export default function App() {
     a.click(); URL.revokeObjectURL(a.href)
   }, [activeFile, content, fileName])
 
-  // Export the rendered preview to a paginated PDF.
-  // Each top-level markdown block (heading, paragraph, code block, table, …)
-  // is captured as its own canvas and flowed onto PDF pages, so blocks don't
-  // get sliced across a page break the way a single flat screenshot would.
-  const handleExportPdf = useCallback(async () => {
-    if (exportingPdf) return
-    const scroller = previewScrollRef.current
-    const sourceArticle = scroller?.querySelector('.book-page')
-    if (!sourceArticle || !scroller) return
+  // Use the browser's print layout engine so text, code colors, and diagrams
+  // remain vector content instead of rasterized screenshots.
+  const handleExportPdf = useCallback(() => {
+    const sourceArticle = previewScrollRef.current?.querySelector('.book-page')
+    if (!sourceArticle) return
 
-    setExportingPdf(true)
-    const yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0))
-    let staging = null
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      alert('Allow pop-ups for this page to print or save as PDF.')
+      return
+    }
 
     try {
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import('html2canvas-pro'),
-        import('jspdf'),
-      ])
+      const printDocument = printWindow.document
+      printDocument.documentElement.className = document.documentElement.className
+      printDocument.documentElement.lang = document.documentElement.lang || 'en'
+      printDocument.title = `${(fileName || 'Document').replace(/\.[^.]+$/, '')} — Print`
 
-      await document.fonts?.ready
-      staging = document.createElement('div')
-      staging.id = 'readme-pdf-staging'
-      const configuredMax = READER_WIDTHS[readerPrefs.width]?.maxW
-      const configuredWidth = configuredMax?.endsWith('px') ? Number.parseInt(configuredMax, 10) : window.innerWidth - 48
-      const stageWidth = sourceArticle.getBoundingClientRect().width || Math.min(window.innerWidth - 24, configuredWidth || 740)
-      staging.style.cssText = `position:fixed;left:0;top:0;width:${stageWidth}px;height:auto;overflow:visible;opacity:0;pointer-events:none;z-index:-1;`
-      staging.append(sourceArticle.cloneNode(true))
-      document.body.append(staging)
-      await new Promise(resolve => requestAnimationFrame(resolve))
-      const root = staging.querySelector('.rm-prose')
-      if (!root) throw new Error('Could not prepare the document for export')
+      const base = printDocument.createElement('base')
+      base.href = document.baseURI
+      printDocument.head.append(base)
 
-      const rootVars = getComputedStyle(document.documentElement)
-      const bgColor     = rootVars.getPropertyValue('--bg-preview').trim() || (isDark ? '#1c1d2f' : '#ffffff')
-      const footerColor = isDark ? '#8b8fa8' : isSepia ? '#88775e' : '#8a8fa3'
+      document.head.querySelectorAll('link[rel="stylesheet"], style').forEach(sourceStyle => {
+        const copiedStyle = sourceStyle.cloneNode(true)
+        if (copiedStyle.tagName === 'LINK') copiedStyle.href = sourceStyle.href
+        printDocument.head.append(copiedStyle)
+      })
 
-      const PAGE_W = 210, PAGE_H = 297               // A4, mm
-      const MARGIN_X = 16, MARGIN_TOP = 18, MARGIN_BOTTOM = 16
-      const CONTENT_W    = PAGE_W - MARGIN_X * 2
-      const PAGE_BOTTOM  = PAGE_H - MARGIN_BOTTOM
-      const GAP = 3.2                                  // space between blocks, mm
+      const printStyles = printDocument.createElement('style')
+      printStyles.textContent = `
+        @page { size: A4 portrait; margin: 16mm; }
+        html, body { width: auto !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
+        body { display: block !important; margin: 0 !important; padding: 0 !important; background: var(--bg-preview) !important; color: var(--text-1) !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .book-page { width: auto !important; max-width: 100% !important; margin: 0 auto !important; box-shadow: none !important; }
+        .rm-prose { max-width: none !important; }
+        .rm-prose h1, .rm-prose h2, .rm-prose h3 { break-after: avoid-page; page-break-after: avoid; }
+        .rm-prose p, .rm-prose li { orphans: 3; widows: 3; }
+        .rm-prose table, .rm-prose tr, .code-wrapper, blockquote, img, .mermaid-svg { break-inside: avoid-page; page-break-inside: avoid; }
+        .code-body { overflow: visible !important; }
+        .code-body pre { white-space: pre-wrap !important; overflow-wrap: anywhere !important; }
+        *, *::before, *::after { animation: none !important; transition: none !important; }
+      `
+      printDocument.head.append(printStyles)
 
-      const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
-      const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
-      pdf.setProperties({ title: docTitle, creator: 'ReadMe' })
+      const article = sourceArticle.cloneNode(true)
+      article.querySelectorAll('.book-folio-header, .book-folio-footer, .heading-anchor, .code-actions, button').forEach(element => element.remove())
+      article.querySelectorAll('*').forEach(element => {
+        Array.from(element.classList).filter(className => className.startsWith('anim-')).forEach(className => element.classList.remove(className))
+      })
+      article.classList.remove('anim-slide-up')
+      printDocument.body.replaceChildren(article)
 
-      let cursorY = MARGIN_TOP
-      let pageIndex = 1
-      const paintPageBg = () => { pdf.setFillColor(bgColor); pdf.rect(0, 0, PAGE_W, PAGE_H, 'F') }
-      const stampFooter = () => {
-        pdf.setFontSize(8)
-        pdf.setTextColor(footerColor)
-        pdf.text(String(pageIndex), PAGE_W / 2, PAGE_H - 8, { align: 'center' })
-      }
-      const newPage = () => {
-        stampFooter()
-        pdf.addPage()
-        pageIndex += 1
-        paintPageBg()
-        cursorY = MARGIN_TOP
-      }
-      paintPageBg()
-
-      const scale = Math.min(window.devicePixelRatio || 1, 1.5)
-      const blocks = Array.from(root.children)
-
-      for (const block of blocks) {
-        // Let input, scrolling, and paint run between captures. This detached,
-        // invisible copy stays outside the reader's scroll container.
-        await yieldToBrowser()
-
-        const canvas = await html2canvas(block, {
-          scale, backgroundColor: bgColor, useCORS: true, logging: false,
-          ignoreElements: element => element.matches?.('.heading-anchor, .code-actions, .book-folio-header, .book-folio-footer, .reading-progress-track, .preview-search-bar'),
-          onclone: clonedDocument => {
-            const clone = clonedDocument.getElementById('readme-pdf-staging')
-            if (clone) clone.style.opacity = '1'
-          },
+      printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true })
+      const startPrint = () => {
+        printWindow.requestAnimationFrame(() => {
+          printWindow.focus()
+          printWindow.print()
         })
-        if (!canvas.width || !canvas.height) continue
-
-        const imgW = CONTENT_W
-        const imgH = (canvas.height * imgW) / canvas.width
-        const isHeading = /^H[1-3]$/.test(block.tagName)
-
-        // Don't leave a heading stranded alone at the bottom of a page.
-        if (isHeading && PAGE_BOTTOM - cursorY < 26) newPage()
-
-        if (imgH > PAGE_BOTTOM - MARGIN_TOP) {
-          // Block taller than one page (long code block/table) — slice across pages.
-          let drawn = 0
-          while (drawn < imgH) {
-            if (PAGE_BOTTOM - cursorY < 10) newPage()
-            const spaceLeft = PAGE_BOTTOM - cursorY
-            const sliceMm = Math.min(spaceLeft, imgH - drawn)
-            const slicePx = Math.max(1, Math.round((sliceMm / imgH) * canvas.height))
-            const sliceCanvas = document.createElement('canvas')
-            sliceCanvas.width = canvas.width
-            sliceCanvas.height = slicePx
-            sliceCanvas.getContext('2d').drawImage(
-              canvas, 0, Math.round((drawn / imgH) * canvas.height),
-              canvas.width, slicePx, 0, 0, canvas.width, slicePx,
-            )
-            pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', MARGIN_X, cursorY, imgW, sliceMm)
-            cursorY += sliceMm
-            drawn += sliceMm
-          }
-          cursorY += GAP
-        } else {
-          if (cursorY + imgH > PAGE_BOTTOM) newPage()
-          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', MARGIN_X, cursorY, imgW, imgH)
-          cursorY += imgH + GAP
-        }
-        canvas.width = 0
-        canvas.height = 0
-        await yieldToBrowser()
       }
-      stampFooter()
-
-      pdf.save(`${docTitle}.pdf`)
-    } catch (err) {
-      console.error('PDF export failed', err)
-      alert('Sorry, exporting to PDF failed. Please try again.')
-    } finally {
-      staging?.remove()
-      setExportingPdf(false)
+      const stylesheetLoads = Array.from(printDocument.querySelectorAll('link[rel="stylesheet"]')).map(link => {
+        if (link.sheet) return Promise.resolve()
+        return new Promise(resolve => {
+          link.addEventListener('load', resolve, { once: true })
+          link.addEventListener('error', resolve, { once: true })
+        })
+      })
+      Promise.all([...stylesheetLoads, printDocument.fonts?.ready]).then(startPrint, startPrint)
+    } catch (error) {
+      printWindow.close()
+      console.error('Could not prepare the print view', error)
+      alert('Could not prepare the print view. Please try again.')
     }
-  }, [exportingPdf, fileName, headings, isDark, isSepia, readerPrefs.width])
+  }, [fileName])
 
   const handleCopyAll = useCallback(async () => {
     try {
@@ -2103,7 +2049,7 @@ export default function App() {
     ...(activeFile ? [
       { id: 'dl-md', label: 'Download Markdown (.md)', hint: 'Export', icon: Download, run: handleDownload },
       { id: 'dl-html', label: 'Export Standalone HTML (.html)', hint: 'Export', icon: FileCode2, run: handleExportHtml },
-      { id: 'dl-pdf', label: 'Download as PDF (.pdf)', hint: 'Export', icon: FileDown, run: handleExportPdf },
+    { id: 'dl-pdf', label: 'Print / Save as PDF', hint: 'Export', icon: FileDown, run: handleExportPdf },
     ] : []),
     ...(files.length > 0 ? [
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
@@ -2167,42 +2113,42 @@ export default function App() {
           <div className="flex items-center gap-1">
             <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt" multiple className="hidden"
               onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
-            <button onClick={handleNewFile} title="New file" className="btn-header">
+            <button onClick={handleNewFile} data-tooltip="Create a new Markdown file" aria-label="New file" className="btn-header">
               <FilePlus size={14} /><span className="hidden sm:inline">New</span>
             </button>
-            <button onClick={handleOpenDiskFiles} className="btn-header" title="Open Markdown files or folders">
+            <button onClick={handleOpenDiskFiles} className="btn-header" data-tooltip="Open Markdown files or folders" aria-label="Open Markdown files or folders">
               <Upload size={13} /><span className="hidden sm:inline">Upload</span>
-            </button>
-            <button onClick={handleImportUrl} className="btn-icon hidden sm:flex" title="Import Markdown from URL">
-              <Globe size={14} />
-            </button>
-            <button onClick={handleSaveInPlace} disabled={!activeFile} className="btn-icon hidden sm:flex disabled:opacity-40" title="Save file in place (or choose a location)">
-              <Save size={14} />
             </button>
             <DownloadMenuButton
               disabled={!activeFile}
               canExportPdf={Boolean(activeFile && content.trim())}
-              exportingPdf={exportingPdf}
               fileCount={files.length}
               onDownloadMd={handleDownload}
               onExportPdf={handleExportPdf}
               onExportHtml={handleExportHtml}
               onExportZip={handleExportZip}
             />
+            <button onClick={handleImportUrl} className="btn-icon hidden sm:flex" data-tooltip="Import Markdown from URL" aria-label="Import Markdown from URL">
+              <Globe size={14} />
+            </button>
+            <button onClick={handleSaveInPlace} disabled={!activeFile} className="btn-icon hidden sm:flex disabled:opacity-40" data-tooltip="Save file in place or choose a location" aria-label="Save file in place">
+              <Save size={14} />
+            </button>
             <button
               onClick={() => setCmdOpen(true)}
-              title="Command palette (Cmd/Ctrl + K)"
+              data-tooltip="Command palette (Cmd/Ctrl + K)"
+              aria-label="Command palette"
               className="btn-icon hidden sm:flex"
             >
               <Command size={15} />
             </button>
-            <button onClick={toggleFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            <button onClick={toggleFullscreen} data-tooltip={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               className="btn-icon hidden sm:flex">
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
             <button
               onClick={cycleDocFont}
-              title={`Reading font: ${activeFont.label} (click to change)`}
+              data-tooltip={`Reading font: ${activeFont.label} (click to change)`}
               aria-label={`Reading font ${activeFont.label} (${readerPrefs.fontIndex + 1} of ${DOC_FONTS.length}). Click to change.`}
               className="btn-icon"
               style={{ position: 'relative' }}
@@ -2212,14 +2158,15 @@ export default function App() {
             </button>
             <button
               onClick={() => setHighContrast(h => !h)}
-              title={highContrast ? 'Standard contrast' : 'High contrast'}
+              data-tooltip={highContrast ? 'Standard contrast' : 'High contrast'}
+              aria-label={highContrast ? 'Standard contrast' : 'High contrast'}
               aria-pressed={highContrast}
               className="btn-icon"
               style={highContrast ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-border)' } : undefined}
             >
               <Contrast size={15} />
             </button>
-            <button onClick={toggleTheme} title={`Color mode: ${theme[0].toUpperCase()}${theme.slice(1)} (click to change)`} aria-label={`Color mode ${theme}. Click to switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'sepia' : isDark ? 'light' : 'dark'} mode.`} className="btn-icon" key={themeKey}>
+            <button onClick={toggleTheme} data-tooltip={`Color mode: ${theme[0].toUpperCase()}${theme.slice(1)} (click to change)`} aria-label={`Color mode ${theme}. Click to switch to ${ENABLE_SEPIA_THEME && theme === 'dark' ? 'sepia' : isDark ? 'light' : 'dark'} mode.`} className="btn-icon" key={themeKey}>
               {ENABLE_SEPIA_THEME && theme === 'sepia'
                 ? <BookOpen size={15} className="theme-icon-enter" style={{ color: '#a16207' }} />
                 : isDark
@@ -2326,7 +2273,8 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setSyncScroll(s => !s)}
-                    title={syncScroll ? 'Synchronized scroll on' : 'Synchronized scroll off'}
+                    data-tooltip={syncScroll ? 'Synchronized scroll on' : 'Synchronized scroll off'}
+                    aria-label={syncScroll ? 'Synchronized scroll on' : 'Synchronized scroll off'}
                     className="flex items-center gap-1 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
                     style={{
                       fontSize: 10, fontWeight: 500,
@@ -2340,7 +2288,7 @@ export default function App() {
                   <span style={{ fontSize: 10, color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
                     {lineCount} lines · {wordCount} words
                   </span>
-                  <button onClick={() => updateActiveContent('')} title="Clear editor"
+                  <button onClick={() => updateActiveContent('')} data-tooltip="Clear editor" aria-label="Clear editor"
                     className="cursor-pointer transition-colors"
                     style={{ color: 'var(--text-4)' }}
                     onMouseOver={e => e.currentTarget.style.color = '#f38ba8'}
@@ -2377,11 +2325,12 @@ export default function App() {
               }}
             >
               {/* Preview toolbar */}
-              <div className="no-print shrink-0 flex items-center justify-between px-4 py-1.5 surface-toolbar relative">
-                <div className="flex items-center gap-2">
+              <div className="no-print shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 surface-toolbar relative reader-preview-toolbar">
+                <div className="flex items-center gap-2 reader-toolbar-left">
                   <button
                     onClick={() => setTocVisible(v => !v)}
-                    title={tocVisible ? 'Hide outline' : 'Show outline'}
+                    data-tooltip={tocVisible ? 'Hide outline' : 'Show outline'}
+                    aria-label={tocVisible ? 'Hide outline' : 'Show outline'}
                     className="flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer transition-all"
                     style={{
                       background: tocVisible ? 'var(--accent-soft)' : 'transparent',
@@ -2391,24 +2340,26 @@ export default function App() {
                     }}
                   >
                     {tocVisible ? <PanelLeftClose size={11} /> : <PanelLeftOpen size={11} />}
-                    <span className="hidden sm:inline">Outline</span>
+                    <span className="hidden sm:inline reader-toolbar-label">Outline</span>
                   </button>
                   <BookOpen size={11} style={{ color: 'var(--text-4)' }} />
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-4)' }}>
+                  <span className="hidden md:inline reader-toolbar-label" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-4)' }}>
                     Reader
                   </span>
                 </div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 reader-toolbar-controls">
                   {wordCount > 0 && (
-                    <span className="status-badge">
-                      {readProgress > 0 ? `${readProgress}% · ` : ''}~{readingTime} min read
+                    <span className="status-badge" title={`${readProgress}% read · ~${readingTime} min read`}>
+                      <span className="tabular-nums">{readProgress}%</span><span className="reader-toolbar-label"> · </span>
+                      <span className="reader-toolbar-full-time reader-toolbar-label">~{readingTime} min read</span>
+                      <span className="reader-toolbar-compact-time">~{readingTime}m</span>
                     </span>
                   )}
                   <button
                     type="button"
                     onClick={saveReadingBookmark}
                     disabled={!activeFile}
-                    title={activeBookmark ? 'Update saved reading position' : 'Bookmark this reading position'}
+                    data-tooltip={activeBookmark ? 'Update saved reading position' : 'Bookmark this reading position'}
                     aria-label={activeBookmark ? 'Update bookmark at current reading position' : 'Bookmark current reading position'}
                     className="btn-icon !p-1 disabled:opacity-40"
                     style={{
@@ -2417,25 +2368,25 @@ export default function App() {
                     }}
                   >
                     <BookmarkPlus size={12} />
-                    {view === 'preview' && <span className="text-[10px] font-medium whitespace-nowrap">{activeBookmark ? 'Update spot' : 'Save spot'}</span>}
+                    {view === 'preview' && <span className="reader-toolbar-label text-[10px] font-medium whitespace-nowrap">{activeBookmark ? 'Update spot' : 'Save spot'}</span>}
                   </button>
                   {activeBookmark && (
                     <button
                       type="button"
                       onClick={jumpToReadingBookmark}
-                      title={`Return to saved reading position (${activeBookmark.progress}%)`}
+                      data-tooltip={`Return to saved reading position (${activeBookmark.progress}%)`}
                       aria-label={`Return to saved reading position at ${activeBookmark.progress} percent`}
                       className="btn-icon !p-1"
                       style={{ color: 'var(--accent)' }}
                     >
                       <BookmarkCheck size={12} />
-                      {view === 'preview' && <span className="text-[10px] font-medium whitespace-nowrap">Resume {activeBookmark.progress}%</span>}
+                      {view === 'preview' && <span className="reader-toolbar-label text-[10px] font-medium whitespace-nowrap">Resume {activeBookmark.progress}%</span>}
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={toggleSpeech}
-                    title={!speechActive ? 'Read document aloud' : speechPaused ? 'Resume read aloud' : 'Pause read aloud'}
+                    data-tooltip={!speechActive ? 'Read document aloud' : speechPaused ? 'Resume read aloud' : 'Pause read aloud'}
                     aria-label={!speechActive ? 'Read document aloud' : speechPaused ? 'Resume reading' : 'Pause reading'}
                     className="btn-icon !p-1"
                   >
@@ -2444,7 +2395,8 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setKeepAwake(value => !value)}
-                    title={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
+                    data-tooltip={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
+                    aria-label={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
                     aria-pressed={keepAwake}
                     className="btn-icon !p-1"
                     style={{ color: keepAwake ? 'var(--accent)' : undefined }}
@@ -2455,20 +2407,21 @@ export default function App() {
                     <button
                       type="button"
                       onMouseDown={e => e.preventDefault()}
-                      onClick={captureSelection}
-                      title="Save selected text as a highlight or note"
+                      onClick={() => {
+                        if (window.getSelection()?.toString().trim()) captureSelection()
+                        else {
+                          setSelectedQuote('')
+                          setAnnotationText('')
+                          setAnnotationNote('')
+                          setAnnotationOpen(value => !value)
+                        }
+                      }}
+                      data-tooltip={`Highlights and notes (${annotations.filter(item => item.fileId === activeFileId).length})`}
+                      aria-label="Highlights and notes"
                       className="btn-icon !p-1"
+                      style={{ color: annotationOpen || annotations.some(item => item.fileId === activeFileId) ? 'var(--accent)' : undefined }}
                     >
                       <Highlighter size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setSelectedQuote(''); setAnnotationText(''); setAnnotationNote(''); setAnnotationOpen(value => !value) }}
-                      title={`Reading notes (${annotations.filter(item => item.fileId === activeFileId).length})`}
-                      className="btn-icon !p-1"
-                      style={{ color: annotations.some(item => item.fileId === activeFileId) ? 'var(--accent)' : undefined }}
-                    >
-                      <StickyNote size={12} />
                     </button>
                     {annotationOpen && (
                       <div className="reader-popover anim-drop-in no-print" style={{ right: 0, top: 'calc(100% + 8px)', width: 300 }}>
@@ -2506,7 +2459,7 @@ export default function App() {
                     onClick={() =>
                       setReaderPrefs(p => ({ ...p, width: p.width === 'full' ? 'book' : 'full' }))
                     }
-                    title={readerPrefs.width === 'full' ? 'Restore book page width' : 'Expand to full width'}
+                    data-tooltip={readerPrefs.width === 'full' ? 'Restore book page width' : 'Expand to full width'}
                     className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
                     style={{
                       fontSize: 10, fontWeight: 500,
@@ -2515,14 +2468,15 @@ export default function App() {
                     }}
                   >
                     {readerPrefs.width === 'full' ? <FoldHorizontal size={11} /> : <UnfoldHorizontal size={11} />}
-                    <span className="hidden md:inline">{readerPrefs.width === 'full' ? 'Compact' : 'Wide'}</span>
+                    <span className="hidden md:inline reader-toolbar-label">{readerPrefs.width === 'full' ? 'Compact' : 'Wide'}</span>
                   </button>
                   <button
                     onClick={() => {
                       setSearchOpen(s => !s)
                       requestAnimationFrame(() => searchInputRef.current?.focus())
                     }}
-                    title="Find in document (Cmd/Ctrl + F)"
+                    data-tooltip="Find in document (Cmd/Ctrl + F)"
+                    aria-label="Find in document"
                     className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
                     style={{
                       fontSize: 10, fontWeight: 500,
@@ -2531,12 +2485,13 @@ export default function App() {
                     }}
                   >
                     <Search size={11} />
-                    <span className="hidden md:inline">Find</span>
+                    <span className="hidden md:inline reader-toolbar-label">Find</span>
                   </button>
                   <div className="relative">
                     <button
                       onClick={() => setReaderOpen(o => !o)}
-                      title="Reader comfort settings"
+                      data-tooltip="Reader comfort settings"
+                      aria-label="Reader comfort settings"
                       className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
                       style={{
                         fontSize: 10, fontWeight: 600,
@@ -2545,7 +2500,7 @@ export default function App() {
                       }}
                     >
                       <Type size={11} />
-                      <span className="hidden md:inline">Aa</span>
+                      <span className="hidden md:inline reader-toolbar-label">Aa</span>
                     </button>
                     {readerOpen && (
                       <ReaderSettingsPopover
@@ -2556,10 +2511,12 @@ export default function App() {
                     )}
                   </div>
                   <button onClick={handleCopyAll}
-                    className="flex items-center gap-1 cursor-pointer transition-colors"
+                    data-tooltip={copyAllDone ? 'Markdown copied' : 'Copy Markdown'}
+                    aria-label={copyAllDone ? 'Markdown copied' : 'Copy Markdown'}
+                    className="reader-toolbar-copy flex shrink-0 items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
                     style={{ fontSize: 10, fontWeight: 500, color: copyAllDone ? '#40a02b' : 'var(--text-4)' }}>
                     {copyAllDone ? <Check size={11} /> : <Copy size={11} />}
-                    <span className="hidden sm:inline">{copyAllDone ? 'Copied!' : 'Copy MD'}</span>
+                    <span className="hidden sm:inline reader-toolbar-label">{copyAllDone ? 'Copied!' : 'Copy MD'}</span>
                   </button>
                 </div>
               </div>

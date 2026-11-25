@@ -1075,10 +1075,76 @@ mark.rm-search-hit.current {
 /* ── Status badge ─────────────────────────────────────────── */
 .status-badge {
   display: inline-flex; align-items: center; gap: 4px;
+  flex: 0 0 auto; white-space: nowrap;
   padding: 2px 8px; border-radius: 99px;
   background: var(--accent-soft); color: var(--accent);
   border: 1px solid var(--accent-border);
   font-size: 10px; font-weight: 600; letter-spacing: .03em;
+}
+
+/* Keep the preview toolbar on one line as its pane narrows. */
+.reader-preview-toolbar {
+  container: reader-toolbar / inline-size;
+}
+.reader-toolbar-label { white-space: nowrap; }
+.reader-toolbar-compact-time { display: none; }
+button[data-tooltip] { position: relative; }
+button[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 1000;
+  top: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(240px, 70vw);
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-editor);
+  color: var(--text-1);
+  box-shadow: var(--shadow-md);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .15s ease 2s, visibility 0s linear 2s;
+}
+button[data-tooltip]:hover::after,
+button[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 2s;
+}
+button[data-tooltip]:not(:hover)::after,
+button[data-tooltip]:not(:focus-visible)::after {
+  transition-delay: 0s;
+}
+/* Anchor tooltips inward at the edges of the header and reader toolbar. */
+.surface-header button[data-tooltip]::after,
+.reader-toolbar-controls button[data-tooltip]::after {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+.reader-toolbar-left button[data-tooltip]::after {
+  right: auto;
+  left: 0;
+  transform: none;
+}
+@container reader-toolbar (max-width: 760px) {
+  .reader-toolbar-label { display: none !important; }
+  .reader-toolbar-controls { gap: 6px !important; }
+  .reader-toolbar-left { gap: 4px !important; }
+}
+@container reader-toolbar (max-width: 560px) {
+  .reader-toolbar-controls { gap: 3px !important; }
+  .reader-toolbar-full-time { display: none !important; }
+  .reader-toolbar-compact-time { display: inline; }
 }
 
 /* ── Frontmatter pill card, KaTeX & Mermaid ───────────────── */
