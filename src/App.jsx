@@ -4724,6 +4724,7 @@ ${fontCss}
             onOpen={handleOpenDiskFiles}
             onImportUrl={handleImportUrl}
             onReopen={handleReopenClosed}
+            onRestore={() => restoreInputRef.current?.click()}
             onTemplate={handleCreateFromTemplate}
             onWriteReadme={() => setWriteReadmeOpen(true)}
           />
