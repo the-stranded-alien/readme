@@ -1470,7 +1470,7 @@ button[data-tooltip]:not(:focus-visible)::after {
 .quality-issue-list strong { color: var(--text-1); font-size: 10px; font-weight: 600; }
 .quality-issue-list span { color: var(--text-3); font-size: 10px; line-height: 1.4; }
 .quality-trigger { position: relative; }
-.quality-trigger > span { position: absolute; top: -4px; right: -5px; min-width: 12px; height: 12px; padding: 0 2px; border-radius: 99px; background: #b91c1c; color: white; font-size: 8px; line-height: 12px; text-align: center; }
+.quality-trigger > span:not(.i-icon) { position: absolute; top: -4px; right: -5px; min-width: 12px; height: 12px; padding: 0 2px; border-radius: 99px; background: #b91c1c; color: white; font-size: 8px; line-height: 12px; text-align: center; }
 .diff-backdrop { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 4vh 3vw; background: rgba(12,13,24,.62); backdrop-filter: blur(5px); }
 .diff-dialog { width: min(1440px, 100%); height: min(820px, 92vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--bg-preview); box-shadow: var(--shadow-xl); }
 .diff-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text-1); }
@@ -2512,7 +2512,6 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 .fmt-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
 .fmt-scroll:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
 .fmt-scroll > * { flex-shrink: 0; }
-.fmt-btn-highlight svg { color: #ca8a04; }
 .highlight-picker { position: fixed; z-index: 140; display: flex; gap: 6px; padding: 8px; border-radius: 12px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-xl); }
 .highlight-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--bg-preview); box-shadow: 0 0 0 1px var(--border-strong); cursor: pointer; }
 .highlight-swatch:hover, .highlight-swatch:focus-visible { transform: scale(1.15); box-shadow: 0 0 0 2px var(--accent); outline: none; }
@@ -2807,7 +2806,7 @@ html.high-contrast {
   --ip-mc-inner-fill: color-mix(in srgb, var(--accent-2) 42%, var(--bg-preview));
   --ip-tone-opacity: .22;
 }
-html.high-contrast .ip svg :is(path, rect, circle, ellipse, line, polyline, polygon)[stroke-width] { stroke-width: 4.8; }
+html.high-contrast .ip svg :is(path, rect, circle, ellipse, line, polyline, polygon)[stroke-width] { stroke-width: 4.2; }
 
 /* Logo: a filled page on the theme-coloured tile (same look as before). */
 .logo-glow .ip { --ip-stroke: #ffffff; --ip-on-fill: color-mix(in srgb, var(--accent) 70%, #1b1035); }
@@ -2828,3 +2827,7 @@ html:not(.high-contrast) .empty-card-icon {
 }
 html:not(.high-contrast) .empty-card-icon .ip { --ip-mc-fill: var(--tile); --ip-stroke: var(--tile); }
 html:not(.high-contrast) .empty-card:hover { border-color: color-mix(in srgb, var(--tile) 45%, transparent); }
+
+/* The highlighter looks the same in the editor and page toolbars: a yellow marker tint. */
+.ip.i-icon-high-light { --ip-tone: #facc15; --ip-tone-opacity: .7; }
+html.high-contrast .ip.i-icon-high-light { --ip-tone-opacity: .5; }
