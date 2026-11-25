@@ -112,7 +112,7 @@ body { margin: 0; font-family: var(--font-sans); }
 .theme-sepia {
   --bg-app:        #ece5da;
   --bg-editor:     #faf4e9;
-  --bg-preview:    #fffaf1;
+  --bg-preview:    #faf4e9;
   --bg-header:     rgba(255,250,242,0.97);
   --bg-toolbar:    rgba(246,239,228,0.98);
   --bg-toc:        rgba(249,242,231,0.99);
@@ -130,8 +130,8 @@ body { margin: 0; font-family: var(--font-sans); }
   --accent-glow:  rgba(109,40,217,0.18);
   --surface-highlight: rgba(255,254,250,0.72);
   /* Warm code surfaces that sit on the parchment page; syntax colours stay vivid. */
-  --code-bg:            #f7f0e4;
-  --code-header-bg:     #efe5d5;
+  --code-bg:            #f3eadb;
+  --code-header-bg:     #ebe0cd;
   --code-header-border: #e2d6c5;
   --code-lang-color:    #7a6a55;
   --code-border:        #e2d6c5;
@@ -337,12 +337,12 @@ body { margin: 0; font-family: var(--font-sans); }
     repeating-linear-gradient(-45deg, rgba(167,139,250,.028) 0, rgba(167,139,250,.028) 1px, transparent 1px, transparent 16px);
 }
 .theme-sepia .surface-preview {
-  background-color: #e4e0d8;
+  background-color: #e9e0d1;
   background-image:
-    radial-gradient(ellipse 80% 45% at 50% 0%, rgba(121,102,79,.04) 0%, transparent 70%),
-    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(91,83,71,.03) 0%, transparent 70%),
-    repeating-linear-gradient(45deg, rgba(91,83,71,.014) 0, rgba(91,83,71,.014) 1px, transparent 1px, transparent 14px),
-    repeating-linear-gradient(-45deg, rgba(91,83,71,.014) 0, rgba(91,83,71,.014) 1px, transparent 1px, transparent 14px);
+    radial-gradient(ellipse 80% 45% at 50% 0%, rgba(153,113,65,.05) 0%, transparent 70%),
+    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(121,83,51,.04) 0%, transparent 70%),
+    repeating-linear-gradient(45deg, rgba(121,92,58,.025) 0, rgba(121,92,58,.025) 1px, transparent 1px, transparent 14px),
+    repeating-linear-gradient(-45deg, rgba(121,92,58,.025) 0, rgba(121,92,58,.025) 1px, transparent 1px, transparent 14px);
 }
 
 /* ── Book page / folio container ──────────────────────────── */
