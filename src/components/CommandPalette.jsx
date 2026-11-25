@@ -4,6 +4,8 @@ import { Search, FileText, Hash, ArrowRight, LayoutTemplate, Sparkles, X } from 
 export default function CommandPalette({
   open,
   onClose,
+  initialQuery = '',
+  onQueryChange,
   files,
   activeFileId,
   headings,
@@ -13,13 +15,13 @@ export default function CommandPalette({
   onNavigateHeading,
   onCreateFromTemplate,
 }) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [activeIdx, setActiveIdx] = useState(0)
   const inputRef = useRef(null)
 
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    if (open) inputRef.current?.focus()
+  }, [open])
 
   const items = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -110,7 +112,7 @@ export default function CommandPalette({
             ref={inputRef}
             type="text"
             value={query}
-            onChange={e => { setQuery(e.target.value); setActiveIdx(0) }}
+            onChange={e => { setQuery(e.target.value); onQueryChange?.(e.target.value); setActiveIdx(0) }}
             onKeyDown={e => {
               if (e.key === 'Escape') {
                 e.preventDefault()

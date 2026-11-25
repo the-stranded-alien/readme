@@ -18,7 +18,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Volume2, Pause, Play, Highlighter, MonitorUp, Globe, Save,
+  Volume2, Pause, Play, Highlighter, MonitorUp, MonitorDown, Globe, Save,
 } from 'lucide-react'
 import { readWorkspace, writeWorkspace } from './workspaceDb'
 import { analyzeDocument } from './documentAnalysis'
@@ -198,6 +198,29 @@ function normalizeLang(lang) {
   return LANG_ALIASES[l] || l || 'text'
 }
 
+const vibrantLightCodeTheme = {
+  ...oneLight,
+  comment: { color: '#526175', fontStyle: 'italic' },
+  prolog: { color: '#526175' },
+  cdata: { color: '#526175' },
+  keyword: { color: '#7c2d12', fontWeight: '600' },
+  operator: { color: '#334155' },
+  punctuation: { color: '#334155' },
+  string: { color: '#166534' },
+  char: { color: '#166534' },
+  attrValue: { color: '#166534' },
+  number: { color: '#9a3412' },
+  boolean: { color: '#9a3412', fontWeight: '600' },
+  function: { color: '#1d4ed8' },
+  'class-name': { color: '#6d28d9' },
+  builtin: { color: '#0e7490' },
+  property: { color: '#9d174d' },
+  tag: { color: '#9f1239' },
+  'attr-name': { color: '#854d0e' },
+  selector: { color: '#9f1239' },
+  important: { color: '#9f1239', fontWeight: '700' },
+}
+
 // ── CodeBlock ──────────────────────────────────────────────────
 const sepiaCodeTheme = {
   ...oneLight,
@@ -267,7 +290,7 @@ function CodeBlock({ rawLang, code }) {
       <div className="code-body">
         <SyntaxHighlighter
           language={prismLang}
-          style={dark ? oneDark : sepia ? sepiaCodeTheme : oneLight}
+          style={dark ? oneDark : sepia ? sepiaCodeTheme : vibrantLightCodeTheme}
           showLineNumbers={lineCount > 4}
           wrapLongLines={wrapped}
           customStyle={{
@@ -1044,7 +1067,7 @@ function DownloadMenuButton({
 }
 
 // ── FileTabBar ─────────────────────────────────────────────────
-function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename }) {
+function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename, searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette }) {
   const tabRefs = useRef({})
   const [editingId, setEditingId] = useState(null)
   const [draftName, setDraftName] = useState('')
@@ -1069,8 +1092,8 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
   }
 
   return (
-    <div className="file-tabs-bar no-print" role="tablist" aria-label="Open files">
-      <div className="file-tabs-scroll">
+    <div className="file-tabs-bar no-print">
+      <div className="file-tabs-scroll" role="tablist" aria-label="Open files">
         {files.map(file => {
           const isActive = file.id === activeFileId
           const isEditing = editingId === file.id
@@ -1166,6 +1189,29 @@ function FileTabBar({ files, activeFileId, onSelect, onClose, onCreate, onRename
       >
         {files.length} {files.length === 1 ? 'file' : 'files'}
       </span>
+      <div className="file-tabs-search-region">
+        <label className="file-tabs-command-search">
+          <Search size={13} aria-hidden="true" />
+          <input
+            type="search"
+            value={searchValue}
+            onChange={event => onSearchChange(event.target.value)}
+            onFocus={onSearchFocus}
+            placeholder="Search commands…"
+            aria-label="Search files, headings, and commands"
+          />
+          <kbd>⌘ K</kbd>
+        </label>
+        <button
+          type="button"
+          onClick={onOpenCommandPalette}
+          className="file-tabs-command-button"
+          data-tooltip="Open command palette (Cmd/Ctrl + K)"
+          aria-label="Open command palette"
+        >
+          <Command size={14} />
+        </button>
+      </div>
     </div>
   )
 }
@@ -1207,6 +1253,7 @@ export default function App() {
   const [lightboxImg, setLightboxImg] = useState(null)
   const [syncScroll, setSyncScroll]   = useState(true)
   const [cmdOpen, setCmdOpen]         = useState(false)
+  const [cmdQuery, setCmdQuery]       = useState('')
   const [speechActive, setSpeechActive] = useState(false)
   const [speechPaused, setSpeechPaused] = useState(false)
   const [keepAwake, setKeepAwake] = useState(false)
@@ -2097,30 +2144,25 @@ export default function App() {
 
       {/* ── Header ────────────────────────────────────── */}
       <header className="no-print shrink-0 z-40 surface-header header-blur">
-        <div className="px-4 sm:px-5 h-14 flex items-center justify-between gap-3">
+        <div className="px-4 sm:px-5 h-14 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4">
           {/* Logo */}
-          <div className="flex items-center gap-2.5 shrink-0 select-none">
-            <div className="w-7 h-7 rounded-lg logo-glow flex items-center justify-center">
-              <FileText size={14} className="text-white" />
+          <div className="flex items-center shrink-0">
+            <div className="flex items-center gap-2.5 select-none">
+              <div className="w-7 h-7 rounded-lg logo-glow flex items-center justify-center">
+                <FileText size={14} className="text-white" />
+              </div>
+              <span className="font-semibold text-[15px] tracking-tight" style={{ color: 'var(--text-1)' }}>
+                Read<span style={{ color: 'var(--accent)' }}>Me</span>
+              </span>
             </div>
-            <span className="font-semibold text-[15px] tracking-tight" style={{ color: 'var(--text-1)' }}>
-              Read<span style={{ color: 'var(--accent)' }}>Me</span>
-            </span>
+          </div>
+          <div className="justify-self-center">
+            <PillSwitcher view={view} onChange={setView} />
           </div>
 
-          <PillSwitcher view={view} onChange={setView} />
-
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 justify-self-end shrink-0">
             <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt" multiple className="hidden"
               onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
-            <button
-              onClick={() => setCmdOpen(true)}
-              data-tooltip="Command palette (Cmd/Ctrl + K)"
-              aria-label="Command palette"
-              className="btn-icon hidden sm:flex"
-            >
-              <Command size={15} />
-            </button>
             <button onClick={handleNewFile} data-tooltip="Create a new Markdown file" aria-label="New file" className="btn-header">
               <FilePlus size={14} /><span className="hidden sm:inline">New</span>
             </button>
@@ -2141,6 +2183,17 @@ export default function App() {
             </button>
             <button onClick={handleSaveInPlace} disabled={!activeFile} className="btn-icon hidden sm:flex disabled:opacity-40" data-tooltip="Save file in place or choose a location" aria-label="Save file in place">
               <Save size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setKeepAwake(value => !value)}
+              data-tooltip={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
+              aria-label={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
+              aria-pressed={keepAwake}
+              className="btn-icon"
+              style={keepAwake ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-border)' } : undefined}
+            >
+              {keepAwake ? <MonitorUp size={15} /> : <MonitorDown size={15} />}
             </button>
             <button onClick={toggleFullscreen} data-tooltip={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               className="btn-icon hidden sm:flex">
@@ -2186,6 +2239,10 @@ export default function App() {
         onClose={handleCloseFile}
         onCreate={handleNewFile}
         onRename={handleRenameFile}
+        searchValue={cmdQuery}
+        onSearchChange={value => { setCmdQuery(value); setCmdOpen(true) }}
+        onSearchFocus={() => setCmdOpen(true)}
+        onOpenCommandPalette={() => setCmdOpen(true)}
       />
 
       {/* Mobile tabs */}
@@ -2391,17 +2448,6 @@ export default function App() {
                     className="btn-icon !p-1"
                   >
                     {!speechActive ? <Volume2 size={12} /> : speechPaused ? <Play size={12} /> : <Pause size={12} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setKeepAwake(value => !value)}
-                    data-tooltip={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
-                    aria-label={keepAwake ? 'Allow screen to sleep' : 'Keep screen awake while reading'}
-                    aria-pressed={keepAwake}
-                    className="btn-icon !p-1"
-                    style={{ color: keepAwake ? 'var(--accent)' : undefined }}
-                  >
-                    <MonitorUp size={12} />
                   </button>
                   <div className="relative">
                     <button
@@ -2668,7 +2714,9 @@ export default function App() {
       {cmdOpen && (
         <CommandPalette
           open={cmdOpen}
-          onClose={() => setCmdOpen(false)}
+          initialQuery={cmdQuery}
+          onQueryChange={setCmdQuery}
+          onClose={() => { setCmdOpen(false); setCmdQuery('') }}
           files={files}
           activeFileId={activeFileId}
           headings={headings}

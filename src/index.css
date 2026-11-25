@@ -516,26 +516,26 @@ mark.rm-search-hit.current {
 .pill-track {
   position: relative; display: flex; align-items: center; gap: 1px;
   padding: 3px; border-radius: 12px;
-  background: rgba(20,24,80,.035); border: 1px solid var(--border);
-  box-shadow: inset 0 1px 2px rgba(20,24,80,.04);
+  background: var(--accent-soft); border: 1px solid var(--accent-border);
+  box-shadow: inset 0 1px 2px rgba(109,40,217,.06);
 }
 .dark .pill-track {
-  background: rgba(255,255,255,.03);
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.25);
+  background: var(--accent-soft);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.18);
 }
 .pill-indicator {
   position: absolute; border-radius: 9px;
-  background: #fff;
-  border: 1px solid rgba(20,24,80,.06);
-  box-shadow: 0 2px 8px rgba(20,24,80,.09), 0 1px 2px rgba(20,24,80,.05);
+  background: var(--bg-preview);
+  border: 1px solid var(--accent-border);
+  box-shadow: 0 2px 8px rgba(109,40,217,.12), 0 1px 2px rgba(109,40,217,.06);
   transition: left .22s cubic-bezier(.4,0,.2,1), width .22s cubic-bezier(.4,0,.2,1),
               top  .22s cubic-bezier(.4,0,.2,1), height .22s cubic-bezier(.4,0,.2,1);
   pointer-events: none;
 }
 .dark .pill-indicator {
-  background: #232542;
-  border-color: rgba(255,255,255,.08);
-  box-shadow: 0 2px 8px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06);
+  background: var(--bg-preview);
+  border-color: var(--accent-border);
+  box-shadow: 0 2px 8px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.05);
 }
 .pill-btn {
   position: relative; z-index: 1; display: flex; align-items: center; gap: 5px;
@@ -544,7 +544,7 @@ mark.rm-search-hit.current {
   user-select: none; border: none; background: none; color: var(--text-3);
 }
 .pill-btn:hover { color: var(--text-2); }
-.pill-btn.active { color: var(--text-1); }
+.pill-btn.active { color: var(--accent); }
 
 /* ── Buttons ──────────────────────────────────────────────── */
 .btn-icon {
@@ -679,17 +679,79 @@ mark.rm-search-hit.current {
 /* ── File tabs bar ────────────────────────────────────────── */
 .file-tabs-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 5px 12px 0;
+  box-sizing: border-box;
+  padding: 4px 12px;
   background: var(--bg-toolbar);
   border-bottom: 1px solid var(--border);
-  min-height: 38px;
+  min-height: 42px;
 }
 .file-tabs-scroll {
   display: flex; align-items: flex-end; gap: 3px;
   overflow-x: auto; flex: 1; min-width: 0;
   scrollbar-width: none;
+  transform: translateY(4px);
 }
 .file-tabs-scroll::-webkit-scrollbar { display: none; }
+.file-tabs-search-region {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding-left: 10px;
+  margin-left: 4px;
+  border-left: 1px solid var(--border-strong);
+}
+.file-tabs-command-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: clamp(160px, 19vw, 240px);
+  height: 29px;
+  padding: 0 9px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.file-tabs-command-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.file-tabs-command-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 10px;
+}
+.file-tabs-command-search input::placeholder { color: var(--text-4); }
+.file-tabs-command-search kbd {
+  flex: 0 0 auto;
+  padding: 2px 4px;
+  border: 1px solid var(--accent-border);
+  border-radius: 4px;
+  background: var(--bg-preview);
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+}
+.file-tabs-command-search svg { flex: 0 0 auto; }
+.file-tabs-command-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 29px;
+  height: 29px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+}
+.file-tabs-command-button:hover { background: var(--bg-preview); }
 
 .file-tab {
   position: relative; display: flex; align-items: center; gap: 6px;
