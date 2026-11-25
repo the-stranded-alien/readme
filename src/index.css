@@ -3002,3 +3002,37 @@ button[aria-expanded="true"][data-tooltip]::after { display: none; }
 .fmt-group .fmt-btn { height: 26px; min-width: 26px; border-radius: 6px; }
 .fmt-group + .fmt-group { margin-left: 0; }
 .fmt-group { height: 18px; align-items: center; overflow: visible; }
+
+/* ── Presentation: each slide is a framed card with a thick, theme-coloured border ── */
+.presentation { background: var(--bg-app); }
+.presentation-stage { padding: 4vh 4vw 96px; }
+.presentation-slide.rm-prose {
+  box-sizing: border-box;
+  min-height: min(72vh, 680px);
+  display: flex; flex-direction: column; justify-content: center;
+  padding: clamp(28px, 5vh, 64px) clamp(28px, 5vw, 80px);
+  border: 6px solid transparent;
+  border-radius: 28px;
+  background:
+    linear-gradient(var(--bg-preview), var(--bg-preview)) padding-box,
+    var(--rainbow, linear-gradient(135deg, var(--accent), var(--accent-2))) border-box;
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-xl);
+}
+.presentation-slide.rm-prose > :first-child { margin-top: 0; }
+.presentation-slide.rm-prose > :last-child { margin-bottom: 0; }
+html.high-contrast .presentation-slide.rm-prose { background: var(--bg-preview); border: 6px solid var(--text-1); box-shadow: none; }
+@media (max-width: 640px) { .presentation-slide.rm-prose { border-width: 4px; border-radius: 18px; } }
+
+/* The slide frame fills the screen, with a small margin; text stays a readable width inside. */
+.presentation-stage { padding: 14px; align-items: stretch; justify-content: stretch; }
+.presentation-slide.rm-prose {
+  width: 100%; max-width: none; margin: 0;
+  min-height: 100%; height: auto;
+  padding: clamp(32px, 7vh, 96px) max(clamp(32px, 6vw, 110px), calc((100% - 1100px) / 2));
+  border-width: 7px; border-radius: 24px;
+}
+@media (max-width: 640px) { .presentation-stage { padding: 8px; } .presentation-slide.rm-prose { border-width: 4px; border-radius: 16px; padding: 24px 20px 72px; } }
+.presentation-stage { padding: 28px; }
+@media (max-width: 640px) { .presentation-stage { padding: 14px; } }
+.presentation-controls { bottom: 52px; }
+@media (max-width: 640px) { .presentation-controls { bottom: 32px; } }
