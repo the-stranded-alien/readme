@@ -40,6 +40,7 @@ body { margin: 0; font-family: var(--font-sans); }
 
 /* ── Color tokens ─────────────────────────────────────────── */
 :root {
+  color-scheme: light;
   --bg-app:        #ebecf6;
   --bg-editor:     #f8f9fe;
   --bg-preview:    #ffffff;
@@ -75,6 +76,7 @@ body { margin: 0; font-family: var(--font-sans); }
 }
 
 .dark {
+  color-scheme: dark;
   --bg-app:        #11121d;
   --bg-editor:     #171829;
   --bg-preview:    #1b1c2e;
@@ -206,7 +208,7 @@ body { margin: 0; font-family: var(--font-sans); }
   --copy-border:        #828ab8;
 }
 
-.app-shell.theme-sepia.high-contrast {
+.theme-sepia.high-contrast {
   --bg-app:        #e8ded0;
   --bg-editor:     #fffdf9;
   --bg-preview:    #fffdf9;
@@ -240,6 +242,7 @@ body { margin: 0; font-family: var(--font-sans); }
 .high-contrast .grid-pattern {
   background-image: none;
 }
+.high-contrast .header-blur { backdrop-filter: none; -webkit-backdrop-filter: none; }
 .high-contrast .book-page {
   background: var(--bg-preview) !important;
   background-image: none !important;
@@ -273,7 +276,7 @@ body { margin: 0; font-family: var(--font-sans); }
     radial-gradient(rgba(167,139,250,.055) 1px, transparent 1px);
   background-size: auto, auto, 22px 22px;
 }
-.app-shell.theme-sepia {
+.theme-sepia .app-shell {
   background-color: var(--bg-app);
   background-image:
     radial-gradient(ellipse 75% 55% at 8% 0%, rgba(153,113,65,.065) 0%, transparent 58%),
@@ -766,12 +769,13 @@ mark.rm-search-hit.current {
   background: var(--accent-soft); color: var(--accent);
   border-color: var(--accent-border); border-style: solid;
 }
-.app-shell.theme-sepia .surface-header,
-.app-shell.theme-sepia .file-tabs-bar { color: #322a21; }
-.app-shell.theme-sepia .file-tab { color: #594936; }
-.app-shell.theme-sepia .file-tab:hover { color: #322a21; }
-.app-shell.theme-sepia .file-tab.active { color: #211c16; }
-.app-shell.theme-sepia .file-tab-rename { color: #211c16; }
+/* Warm tab/header text for sepia; high contrast uses its own tokens instead. */
+.theme-sepia:not(.high-contrast) .surface-header,
+.theme-sepia:not(.high-contrast) .file-tabs-bar { color: #322a21; }
+.theme-sepia:not(.high-contrast) .file-tab { color: #594936; }
+.theme-sepia:not(.high-contrast) .file-tab:hover { color: #322a21; }
+.theme-sepia:not(.high-contrast) .file-tab.active { color: #211c16; }
+.theme-sepia:not(.high-contrast) .file-tab-rename { color: #211c16; }
 
 /* ── Formatting toolbar ───────────────────────────────────── */
 .fmt-toolbar {

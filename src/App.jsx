@@ -1830,17 +1830,21 @@ export default function App() {
     lastLocalEditAtRef.current = Math.max(Date.now(), lastLocalEditAtRef.current + 1)
   }, [])
 
-  // Dark mode & high-contrast mode
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark)
-    document.documentElement.classList.toggle('theme-sepia', isSepia)
-    localStorage.setItem('readme-theme', theme)
-  }, [theme, isDark, isSepia])
+  // Theme classes live only on <html> and are applied before paint, so every
+  // surface (including portals) switches in the same frame.
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle('dark', isDark)
+    root.classList.toggle('theme-sepia', isSepia)
+    root.classList.toggle('high-contrast', highContrast)
+  }, [isDark, isSepia, highContrast])
 
   useEffect(() => {
-    document.documentElement.classList.toggle('high-contrast', highContrast)
-    localStorage.setItem('readme-high-contrast', String(highContrast))
-  }, [highContrast])
+    try {
+      localStorage.setItem('readme-theme', theme)
+      localStorage.setItem('readme-high-contrast', String(highContrast))
+    } catch { /* storage is optional */ }
+  }, [theme, highContrast])
 
   useEffect(() => {
     localStorage.setItem('readme-ui-density', uiDensity)
@@ -2659,7 +2663,7 @@ export default function App() {
   return (
     <div
       ref={appRef}
-      className={`h-screen flex flex-col app-shell overflow-hidden anim-fade-in${isSepia ? ' theme-sepia' : ''}${isSepia && highContrast ? ' high-contrast' : ''}`}
+      className="h-screen flex flex-col app-shell overflow-hidden anim-fade-in"
       data-density={uiDensity}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
