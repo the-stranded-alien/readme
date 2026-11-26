@@ -348,6 +348,22 @@ Rules learned the hard way:
 - **Escape unwinds one layer at a time:** blank screen → active tool → exit.
 - **Popovers close on an outside click, not on hover-out,** and always have a visible × and Escape.
 
+### Never use the browser's own dialogs
+
+- **No `alert()`, `confirm()` or `prompt()`.** They look foreign, block the page and can't be styled or tested well. Use the app's components instead:
+  - messages and errors → a **toast** (`tone: 'success' | 'warning' | 'info'`, optional `action: { label, run }` such as Undo);
+  - questions → **`askConfirm({ title, message, details, confirmLabel, danger, icon })`**, which resolves `true`/`false` (`ConfirmDialog`, `role="alertdialog"`; `danger` makes the button red and focuses Cancel so Enter can't destroy anything);
+  - text input → **`askText({ title, label, placeholder, hint, validate, confirmLabel })`**, which resolves the text or `null` (`PromptDialog`, inline validation, Enter/Escape).
+- Destructive actions confirm first *and* offer Undo in the toast afterwards.
+
+### Tooltips inside scrolling areas
+
+- Buttons in toolbars use `data-tooltip` (CSS, drawn inside the button). Anything inside a scrolling container (tab bar, file list) uses **`data-tip`** instead: one floating `GlobalTooltip` draws it above everything in the same style, so it is never clipped. Never use the native `title` attribute for tooltips.
+
+### Export formats
+
+- Confluence export uses **storage format** (XHTML + `ac:`/`ri:` macros: code macro, `ac:task-list`, info/tip/note/warning panels, `ac:image`), built from the Markdown AST (unified + remark), not by scraping the rendered page. The clipboard carries storage format as `text/plain` and clean HTML as `text/html`, so pasting into the Confluence editor *and* into its source editor both work. Tests check the output is well-formed XML.
+
 ## 7. Layout, responsiveness, motion
 
 - The header is a three-column grid (`auto | minmax(0,1fr) | auto`) so items never overlap. At 1280, 1100 and 900px, check that header items don't overlap.
@@ -522,7 +538,7 @@ Pitfalls:
 - Don't make changes the user didn't ask for. If you spot problems, list them as suggestions.
 - Respect explicit constraints (for example: don't modify the code editor component; keep the simple editor as the default).
 - Pre-existing bugs found during verification get fixed or reported, never hidden.
-- **Version every deployment.** The app version lives in one place (`src/version.js`, shown in Settings → About). Every push to `main` deploys, so bump the minor number in the same commit: 1.3 → 1.4 → 1.5. Use a major bump (2.0) only when the user asks for one.
+- **Version every deployment.** The app version and release notes live in one place (`src/version.js`: `APP_VERSION` shown in Settings → About, `RELEASES` shown in Settings → Versions). Every push to `main` deploys, so in the same commit bump the minor number (1.3 → 1.4 → 1.5) and add a release entry at the top: date plus only meaningful changes (at most 4 points, fewer is fine; skip small fixes), keeping the last 5. Use a major bump (2.0) only when the user asks for one.
 - Keep a task list file (for example `Pending.md`) when the user maintains one. Mark items ✅ with a one-line note on what was done, and keep it out of commits unless asked.
 
 ---
@@ -540,4 +556,4 @@ Pitfalls:
 - [ ] Zero axe violations in every theme, with and without high contrast. No console errors.
 - [ ] `eslint .` is clean, `vitest run` passes, `vite build` succeeds, the browser scripts pass, and screenshots have been reviewed.
 - [ ] Help, the shortcuts sheet and the About text are updated for new features.
-- [ ] The version in `src/version.js` is bumped for this deployment.
+- [ ] The version in `src/version.js` is bumped and a `RELEASES` entry (date + meaningful changes only) is added.

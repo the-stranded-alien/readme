@@ -19,7 +19,7 @@ const HELP_SECTIONS = [
     id: 'files', title: 'Files & tabs',
     items: [
       ['Tabs', 'Drag tabs to reorder them. Right-click a tab to rename, duplicate, pin, colour, compare, download or close it.'],
-      ['File tree', 'The folder icon at the left of the tab bar shows your files as a tree, grouped by folder. Files you close stay listed there (marked closed) — click one to reopen it.'],
+      ['File tree', 'The folder icon at the left of the tab bar shows your files as a tree, grouped by folder. Files you close stay listed there (marked closed) — click one to reopen it. New folder asks for a name and makes an empty folder; hover a folder to add a file, rename it or delete it (with its files, after you confirm — Undo brings it back).'],
       ['Link files', 'Drag a file from the Files panel into the editor to insert a link to it. Clicking the link in the preview opens that file.'],
       ['Delete', 'Right-click a tab (or use the trash icon in the Files panel) → Delete permanently. You can undo it from the notice.'],
       ['Compare', 'Right-click a tab → Compare to see the differences between two files side by side.'],
@@ -33,7 +33,7 @@ const HELP_SECTIONS = [
       ['Formatting toolbar', 'Headings, bold, italic, links, code, quotes, lists, tables and more. Scroll the toolbar sideways if it doesn’t fit.'],
       ['Slash commands', 'Type / at the start of a line to insert headings, lists, tables, code blocks, callouts and more.'],
       ['Find & replace', `${shortcut('F', { alt: true })} opens find & replace in the editor, with match case, whole word, regular expressions and replace across all files.`],
-      ['Templates', 'Use Templates in the editor toolbar or the New menu. Manage templates to save your own.'],
+      ['Templates', 'Use Templates in the editor toolbar or the New menu. Manage templates to save your own. The Markdown Guide template shows every Markdown feature ReadMe supports, with the text to type for each — a handy tutorial.'],
       ['Write a README', 'Describe a project and a README is written into a new file — with on-device AI in supported Chrome, or the built-in generator everywhere else.'],
       ['Images', 'Paste or drop an image into the editor to embed it in the document.'],
     ],
@@ -62,7 +62,8 @@ const HELP_SECTIONS = [
   {
     id: 'export', title: 'Export & share',
     items: [
-      ['Download', 'Download as Markdown, PDF (with options), Word, HTML, or all files as a .zip.'],
+      ['Download', 'Download as Markdown, PDF (with options), Word, HTML, Confluence (.xml), or all files as a .zip.'],
+      ['Confluence', 'Copy XHTML (next to Copy MD) copies the page for Confluence: paste into a Confluence page, or into its storage-format (source) editor or API, which gets Confluence storage format — XHTML with code, task list and info-panel macros. Download → Export for Confluence saves the same as a .xml file.'],
       ['Share link', 'Copy share link puts the whole document in the link itself — no server involved.'],
       ['Present', 'Present shows one slide per heading. Use the arrow keys, F for fullscreen, T to switch theme and + / − to make the text bigger or smaller (kept for every slide). In the contents bar, hover a heading and click its slide icon to present from there, or use the slide icon at the top to present only your bookmarked sections.'],
       ['Slide contents', 'While presenting, the list button at the left of the toolbar (or O) opens the slide list on the left so you can jump to any slide. Close it from the toolbar or the button at the top of the list.'],

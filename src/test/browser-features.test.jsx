@@ -381,11 +381,19 @@ describe('advanced browser features', () => {
   })
 
   it('imports a public Markdown URL with fetch', async () => {
-    window.prompt = vi.fn(() => 'https://example.test/remote.md')
+    window.prompt = vi.fn()
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => '# Imported URL' })))
     installApp()
     fireEvent.click(screen.getByRole('button', { name: 'Upload options' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: /Import Markdown from URL/ }))
+    // The app's own dialog asks for the URL.
+    const ask = await screen.findByRole('dialog', { name: 'Import from a URL' })
+    const field = within(ask).getByRole('textbox', { name: 'Markdown file URL' })
+    fireEvent.change(field, { target: { value: 'ftp://nope' } })
+    expect(within(ask).getByText('Use an http or https URL.')).toBeInTheDocument()
+    fireEvent.change(field, { target: { value: 'https://example.test/remote.md' } })
+    fireEvent.click(within(ask).getByRole('button', { name: 'Import' }))
+    expect(window.prompt).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('# Imported URL'))
     expect(fetch).toHaveBeenCalledWith('https://example.test/remote.md')
   })
@@ -749,8 +757,13 @@ describe('advanced browser features', () => {
     window.confirm = vi.fn(() => true)
     fireEvent.contextMenu(screen.getByRole('tab', { name: 'doomed.md' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: /Delete permanently/ }))
+    const confirmDelete = await screen.findByRole('alertdialog', { name: 'Delete file?' })
+    expect(confirmDelete).toHaveTextContent('Delete “doomed.md” permanently?')
+    // Cancel is focused, so Enter can't delete by accident.
+    expect(within(confirmDelete).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    fireEvent.click(within(confirmDelete).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(screen.queryByRole('tab', { name: 'doomed.md' })).not.toBeInTheDocument())
-    expect(window.confirm).toHaveBeenCalled()
+    expect(window.confirm).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
     expect(within(await screen.findByRole('tree', { name: 'Files' })).queryByText('doomed.md')).not.toBeInTheDocument()
     fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
@@ -1131,6 +1144,67 @@ describe('advanced browser features', () => {
     expect(screen.queryByRole('dialog', { name: 'Highlights and notes' })).toBeNull()
   })
 
+  it('ships a Markdown Guide template that covers every supported feature', async () => {
+    const { MD_TEMPLATES } = await import('../templates.js')
+    const guide = MD_TEMPLATES.find(template => template.id === 'markdown-guide')
+    expect(guide).toBeTruthy()
+    for (const piece of ['---\ntitle:', '###### Heading 6', '**Bold**', '~~strikethrough~~', '==highlight==', '[Inline link]', '![', '- [x] Done',
+      '| :----------- | :------: |', '> > And quotes', '> [!CAUTION]', '```javascript', '```mermaid', '$E = mc^2$', '[^1]:', '\\*not italic', '???']) {
+      expect(guide.content).toContain(piece)
+    }
+    // The figure image is an inline data URL, so the guide works offline.
+    expect(guide.content).toMatch(/!\[[^\]]+\]\(data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+ "The title shows on hover"\)/)
+  })
+
+  it('converts Markdown to well-formed Confluence storage format', async () => {
+    const { toConfluenceStorage, toConfluenceHtml, isWellFormedStorage } = await import('../confluenceExport.js')
+    const md = [
+      '---', 'title: Hidden', '---',
+      '# Title & 1 < 2', '',
+      'Some **bold**, *em*, ~~gone~~, `x < y`, a [link](https://example.com?a=1&b=2) and line  ', 'break.', '',
+      '> [!WARNING] Careful', '> Do not do this.', '',
+      '> Plain quote', '',
+      '- [x] done', '- [ ] todo', '',
+      '1. one', '2. two', '',
+      '| A | B |', '| :- | -: |', '| 1 | 2 |', '',
+      '```ts', 'const a = "]]>" && 1 < 2', '```', '',
+      '```mermaid', 'graph TD; A-->B', '```', '',
+      '![Logo](https://example.com/logo.png) ![Local](images/pic%20one.png)', '',
+      'Press <kbd>Ctrl</kbd> + <kbd>S</kbd><br>now.', '',
+      '$$', 'e = mc^2', '$$', '',
+      'Note[^1].', '', '[^1]: The footnote.', '',
+      '---',
+    ].join('\n')
+    const out = toConfluenceStorage(md)
+    expect(isWellFormedStorage(out)).toBe(true)
+    expect(out).not.toContain('Hidden')
+    expect(out).toContain('<h1>Title &amp; 1 &lt; 2</h1>')
+    expect(out).toContain('<strong>bold</strong>')
+    expect(out).toContain('<del>gone</del>')
+    expect(out).toContain('<code>x &lt; y</code>')
+    expect(out).toContain('<a href="https://example.com?a=1&amp;b=2">link</a>')
+    expect(out).toContain('<br />')
+    expect(out).toContain('<ac:structured-macro ac:name="note" ac:schema-version="1"><ac:parameter ac:name="title">Careful</ac:parameter><ac:rich-text-body><p>Do not do this.</p>')
+    expect(out).toContain('<blockquote><p>Plain quote</p></blockquote>')
+    expect(out).toContain('<ac:task-list><ac:task><ac:task-status>complete</ac:task-status><ac:task-body>done</ac:task-body></ac:task><ac:task><ac:task-status>incomplete</ac:task-status>')
+    expect(out).toContain('<ol><li>one</li><li>two</li></ol>')
+    expect(out).toContain('<th style="text-align: left;">A</th><th style="text-align: right;">B</th>')
+    expect(out).toContain('<ac:parameter ac:name="language">typescript</ac:parameter>')
+    expect(out).toContain('<![CDATA[const a = "]]]]><![CDATA[>" && 1 < 2]]>')
+    expect(out).toContain('<ac:parameter ac:name="title">Mermaid diagram</ac:parameter>')
+    expect(out).toContain('<ac:image ac:alt="Logo"><ri:url ri:value="https://example.com/logo.png" /></ac:image>')
+    expect(out).toContain('<ri:attachment ri:filename="pic one.png" />')
+    expect(out).toContain('<kbd>Ctrl</kbd> + <kbd>S</kbd><br />now.')
+    expect(out).toContain('<ac:parameter ac:name="title">Math (LaTeX)</ac:parameter>')
+    expect(out).toContain('<sup>[1]</sup>')
+    expect(out).toContain('<li>The footnote.</li>')
+    // The paste-friendly HTML has no Confluence macros.
+    const html = toConfluenceHtml(md)
+    expect(html).not.toContain('ac:')
+    expect(html).toContain('<pre><code class="language-typescript">')
+    expect(html).toContain('☑ done')
+  })
+
   it('shows folders in a file tree and moves files between them', async () => {
     window.prompt = vi.fn()
     await writeWorkspace({ activeId: 'a', files: [
@@ -1189,6 +1263,19 @@ describe('advanced browser features', () => {
     // An empty folder can be removed.
     fireEvent.click(within(tree).getByRole('button', { name: 'Remove empty folder 2026' }))
     await waitFor(() => expect(within(tree).queryByRole('treeitem', { name: 'Folder drafts' })).toBeNull())
+
+    // Deleting a folder with files asks in the app's dialog and can be undone.
+    fireEvent.click(within(tree).getByRole('button', { name: 'Delete folder notes' }))
+    const ask = await screen.findByRole('alertdialog', { name: 'Delete folder?' })
+    expect(ask).toHaveTextContent('Delete “notes” and the 1 file in it permanently?')
+    fireEvent.click(within(ask).getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('tab', { name: 'notes/plan.md' })).toBeInTheDocument()
+    fireEvent.click(within(tree).getByRole('button', { name: 'Delete folder notes' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Delete folder?' })).getByRole('button', { name: 'Delete folder and 1 file' }))
+    await waitFor(() => expect(screen.queryByRole('tab', { name: 'notes/plan.md' })).toBeNull())
+    expect(within(tree).queryByRole('treeitem', { name: 'Folder notes' })).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+    expect(await screen.findByRole('tab', { name: 'notes/plan.md' })).toBeInTheDocument()
   })
 
   it('keeps closed files in the file tree so they can be reopened, across reloads', async () => {
@@ -1358,6 +1445,13 @@ describe('advanced browser features', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'About' }))
     expect(within(dialog).getByText('Sahil Gupta')).toBeInTheDocument()
     expect(within(dialog).getByText(/^Version \d+\.\d+$/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Versions' }))
+    const { APP_VERSION, RELEASES } = await import('../version.js')
+    expect(RELEASES[0].version).toBe(APP_VERSION)
+    expect(within(dialog).getByText(`Version ${APP_VERSION}`)).toBeInTheDocument()
+    expect(within(dialog).getByText('Current')).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('listitem').filter(item => item.classList.contains('release-item')).length).toBeLessThanOrEqual(5)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'About' }))
     expect(within(dialog).getByRole('link', { name: 'View on GitHub' })).toHaveAttribute('href', 'https://github.com/the-stranded-alien/readme')
     document.documentElement.classList.remove('lite-mode')
   })

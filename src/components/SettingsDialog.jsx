@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
-import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, Info, Palette, Presentation, RefreshCw, Settings, Sparkles, X } from '../icons'
+import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, History, Info, Palette, Presentation, RefreshCw, Settings, Sparkles, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
 import { THEMES, themeClasses } from '../themes'
-import { APP_VERSION } from '../version'
+import { APP_VERSION, RELEASES } from '../version'
 
 export const REPO_URL = 'https://github.com/the-stranded-alien/readme'
 
@@ -13,6 +13,7 @@ const SECTIONS = [
   { id: 'presentation', label: 'Presentation', icon: Presentation },
   { id: 'features', label: 'Features', icon: Sparkles },
   { id: 'storage', label: 'Storage', icon: HardDrive },
+  { id: 'versions', label: 'Versions', icon: History },
   { id: 'about', label: 'About', icon: Info },
 ]
 
@@ -140,7 +141,7 @@ export default function SettingsDialog({
               </button>
             ))}
           </nav>
-          <div className="settings-panel" role="region" aria-label={SECTIONS.find(item => item.id === section)?.label}>
+          <div className="settings-panel" role="region" tabIndex={0} aria-label={SECTIONS.find(item => item.id === section)?.label}>
             {section === 'workspace' && (
               <>
                 <h3>Workspace</h3>
@@ -190,6 +191,26 @@ export default function SettingsDialog({
                 <h3>Presentation</h3>
                 <p className="settings-muted">Defaults for Present. The pen, laser, contents and text size can also be changed from the slide toolbar.</p>
                 {presentationExtra}
+              </>
+            )}
+            {section === 'versions' && (
+              <>
+                <h3>Versions</h3>
+                <p className="settings-muted">You are on version {APP_VERSION}. What changed in recent releases:</p>
+                <ol className="release-list">
+                  {RELEASES.slice(0, 5).map(release => (
+                    <li key={release.version} className="release-item">
+                      <div className="release-head">
+                        <strong>Version {release.version}</strong>
+                        {release.version === APP_VERSION && <span className="release-current">Current</span>}
+                        <time dateTime={release.date}>{new Date(`${release.date}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</time>
+                      </div>
+                      <ul>
+                        {release.notes.slice(0, 4).map(note => <li key={note}>{note}</li>)}
+                      </ul>
+                    </li>
+                  ))}
+                </ol>
               </>
             )}
             {section === 'about' && (

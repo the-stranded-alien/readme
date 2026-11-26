@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
   FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
@@ -53,6 +53,7 @@ import { sectionSlides, slideForHeading } from './presentation'
 import { PRESENTATION_THEME_KEY, loadPresentationSettings, savePresentationSettings, splitOptions } from './presentationSettings'
 import PresentationSettings from './components/PresentationSettings'
 import PromptDialog from './components/PromptDialog'
+import ConfirmDialog from './components/ConfirmDialog'
 import GlobalTooltip from './components/GlobalTooltip'
 import { ALL_THEME_CLASSES, THEME_IDS, availableThemes, nextTheme, themeById, themeClasses } from './themes'
 import TemplatesDialog from './components/TemplatesDialog'
@@ -1587,6 +1588,7 @@ function DownloadMenuButton({
   onExportPdf,
   onExportHtml,
   onExportDocx,
+  onExportConfluence,
   onCopyShareLink,
   onExportZip,
   onBackup,
@@ -1710,6 +1712,23 @@ function DownloadMenuButton({
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
               style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
               .docx
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="download-menu-item"
+            disabled={!canExportPdf}
+            onClick={() => { setOpen(false); onExportConfluence() }}
+            data-tooltip="Confluence storage format: XHTML with Confluence macros"
+          >
+            <span className="flex items-center gap-2">
+              <Code2 size={13} style={{ color: 'var(--accent)' }} />
+              <span>Export for Confluence</span>
+            </span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+              .xml
             </span>
           </button>
           <button
@@ -2460,6 +2479,7 @@ export default function App() {
   const [showScrollTop, setShowScrollTop]     = useState(false)
   const [themeKey, setThemeKey]     = useState(0)
   const [copyAllDone, setCopyAllDone] = useState(false)
+  const [copyConfluenceDone, setCopyConfluenceDone] = useState(false)
   const [readerPrefs, setReaderPrefs] = useState(loadReaderPrefs)
   const [uiDensity, setUiDensity] = useState(() => localStorage.getItem('readme-ui-density') === 'compact' ? 'compact' : 'comfortable')
   const [readingBookmarks, setReadingBookmarks] = useState(loadReadingBookmarks)
@@ -2612,6 +2632,12 @@ export default function App() {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
   const [folderPrompt, setFolderPrompt] = useState(null) // { mode: 'new' } | { mode: 'rename', path }
+  // The app's own confirm / text-input dialogs (never the browser's confirm() or prompt()).
+  // Both return a promise: askConfirm → true/false, askText → the text or null.
+  const [appDialog, setAppDialog] = useState(null)
+  const askConfirm = useCallback(options => new Promise(resolve => setAppDialog({ kind: 'confirm', options, resolve })), [])
+  const askText = useCallback(options => new Promise(resolve => setAppDialog({ kind: 'text', options, resolve })), [])
+  const settleAppDialog = useCallback(value => setAppDialog(current => { current?.resolve(value); return null }), [])
   const [treeCollapsed, setTreeCollapsed] = useState(() => { try { return JSON.parse(localStorage.getItem('readme-file-tree-collapsed') || '[]') } catch { return [] } })
   useEffect(() => {
     try {
@@ -3574,14 +3600,14 @@ export default function App() {
   }, [activeFileId])
   const restoreSnapshot = useCallback(async snapshot => {
     if (!activeFile || !snapshot) return
-    if (!window.confirm('Restore this version? The current text is saved as a snapshot first, so you can undo this from history.')) return
+    if (!(await askConfirm({ title: 'Restore this version?', message: 'The current text is saved as a snapshot first, so you can undo this from history.', confirmLabel: 'Restore', icon: History }))) return
     await takeSnapshot(activeFile.id, content, 'Before restore')
     const ta = textareaRef.current
     if (ta) applyTextareaEdit(ta, { from: 0, to: ta.value.length, text: snapshot.content, cursor: 0 })
     else updateActiveContent(snapshot.content)
     setHistoryState(null)
     setToast({ message: 'Version restored. The previous text is in history.', tone: 'success' })
-  }, [activeFile, content, takeSnapshot, updateActiveContent])
+  }, [activeFile, content, takeSnapshot, updateActiveContent, askConfirm])
   const [historyCompare, setHistoryCompare] = useState(null)
 
   // ── Browser integration: open files from the OS, share target, storage ──
@@ -4031,13 +4057,18 @@ export default function App() {
     try {
       const backup = await readBackup(file)
       const when = backup.createdAt ? new Date(backup.createdAt).toLocaleString() : 'an unknown date'
-      if (!window.confirm(`Restore the backup from ${when}?\n\nIt contains ${backup.files.length} file(s)${backup.closed.length ? ` and ${backup.closed.length} closed file(s)` : ''}. Your current open files and settings will be replaced.`)) return
+      const ok = await askConfirm({
+        title: 'Restore this backup?', danger: true, confirmLabel: 'Replace and restore', icon: ArchiveRestore,
+        message: `The backup is from ${when}. Your current open files and settings will be replaced.`,
+        details: [`${backup.files.length} file${backup.files.length === 1 ? '' : 's'}${backup.closed.length ? ` and ${backup.closed.length} closed file${backup.closed.length === 1 ? '' : 's'}` : ''}`],
+      })
+      if (!ok) return
       await applyBackup(backup)
       window.location.reload()
     } catch (error) {
       setToast({ message: error?.message || 'Could not restore this backup.', tone: 'warning', duration: 6000 })
     }
-  }, [])
+  }, [askConfirm])
 
   // Cmd/Ctrl+Shift+T (installed app) or Alt+Shift+T (anywhere) reopens the last closed tab.
   useEffect(() => {
@@ -4186,7 +4217,7 @@ export default function App() {
     const valid = incoming.filter(f => /\.(md|markdown|txt)$/i.test(f.name))
     const invalidCount = incoming.length - valid.length
     if (!valid.length) {
-      alert('Please upload .md, .markdown, or .txt files')
+      setToast({ message: 'Please upload .md, .markdown or .txt files.', tone: 'warning' })
       return
     }
     try {
@@ -4205,11 +4236,11 @@ export default function App() {
       setShowScrollTop(false)
       setMobileTab('preview')
       if (invalidCount > 0) {
-        alert(`${invalidCount} unsupported file(s) skipped. Only .md, .markdown, and .txt files are supported.`)
+        setToast({ message: `${invalidCount} unsupported file${invalidCount === 1 ? '' : 's'} skipped. Only .md, .markdown and .txt files are supported.`, tone: 'warning', duration: 6000 })
       }
     } catch (err) {
       console.error('Failed to read uploaded file(s)', err)
-      alert('Failed to read one or more files. Please try again.')
+      setToast({ message: 'Could not read one or more files. Please try again.', tone: 'warning' })
     }
   }, [markWorkspaceEdit])
 
@@ -4287,7 +4318,7 @@ export default function App() {
         return
       }
       if (handle.queryPermission && await handle.queryPermission({ mode: 'readwrite' }) !== 'granted' && await handle.requestPermission({ mode: 'readwrite' }) !== 'granted') {
-        alert('Allow file access to save this document in place.')
+        setToast({ message: 'Allow file access to save this document in place.', tone: 'warning' })
         return
       }
       // Align table pipes on save.
@@ -4301,7 +4332,7 @@ export default function App() {
       takeSnapshot(savedId, savedContent, 'Saved to disk')
       handle.getFile?.().then(file => diskStampRef.current.set(savedId, file.lastModified)).catch(() => {})
     } catch (error) {
-      if (error?.name !== 'AbortError') { console.error('Save file failed', error); alert('Could not save this file. Use Download as a fallback.') }
+      if (error?.name !== 'AbortError') { console.error('Save file failed', error); setToast({ message: 'Could not save this file. Use Download instead.', tone: 'warning', duration: 6000 }) }
     }
   }, [activeFile, content, fileName, updateActiveContent, takeSnapshot])
 
@@ -4429,48 +4460,80 @@ export default function App() {
     state.running = run
     try { return await run } finally { state.running = null }
   }, [pullFromFolder])
-  // Delete permanently: removes the file from ReadMe (open or closed) and from the sync folder
-  // (only when nobody changed it there). A file opened from disk stays on disk. The toast offers Undo.
-  const handleDeleteFile = useCallback(async id => {
-    const openIndex = files.findIndex(file => file.id === id)
-    const closedEntry = closedFiles.find(entry => entry.file.id === id)
-    const file = openIndex >= 0 ? files[openIndex] : closedEntry?.file
-    if (!file) return
-    const path = syncPath(file.name)
-    const syncedHere = Boolean(syncFolder?.handle && syncFolder.status === 'connected' && syncWrittenRef.current.has(path))
-    const where = [
-      syncedHere && `It is also deleted from the sync folder “${syncFolder.name}”.`,
-      (file.diskHandle || diskHandlesRef.current.has(id)) && 'The file on your computer is not touched.',
-    ].filter(Boolean).join(' ')
-    if (!window.confirm(`Delete “${file.name}” permanently?${where ? `\n\n${where}` : ''}`)) return
-    if (openIndex >= 0) closeFiles([id], { remember: false })
-    else setClosedFiles(prev => prev.filter(entry => entry.file.id !== id))
+  // Delete permanently: removes files from ReadMe (open or closed) and from the sync folder
+  // (only copies nobody changed there). Files opened from disk stay on disk. Asks first in the
+  // app's own dialog; the toast offers Undo. `folder` deletes a whole folder (and its empty sub-folders).
+  const deleteEntries = useCallback(async (ids, { folder } = {}) => {
+    const entries = ids.map(id => {
+      const openIndex = files.findIndex(file => file.id === id)
+      const closedEntry = closedFiles.find(entry => entry.file.id === id)
+      return { id, openIndex, closedEntry, file: openIndex >= 0 ? files[openIndex] : closedEntry?.file }
+    }).filter(entry => entry.file)
+    const removedFolders = folder ? emptyFolders.filter(item => item === folder || item.startsWith(`${folder}/`)) : []
+    if (!entries.length && !removedFolders.length) return
+    const syncConnected = Boolean(syncFolder?.handle && syncFolder.status === 'connected')
+    const synced = syncConnected ? entries.filter(entry => syncWrittenRef.current.has(syncPath(entry.file.name))) : []
+    const onDisk = entries.filter(entry => entry.file.diskHandle || diskHandlesRef.current.has(entry.id))
+    const count = entries.length
+    const details = [
+      synced.length > 0 && `${synced.length === count && count === 1 ? 'It is' : `${synced.length} ${synced.length === 1 ? 'file is' : 'files are'}`} also deleted from the sync folder “${syncFolder.name}”.`,
+      onDisk.length > 0 && `${onDisk.length === count && count === 1 ? 'The file' : `${onDisk.length} ${onDisk.length === 1 ? 'file' : 'files'}`} on your computer ${onDisk.length === 1 ? 'is' : 'are'} not touched.`,
+      'You can undo this right after.',
+    ].filter(Boolean)
+    const ok = await askConfirm(folder ? {
+      title: 'Delete folder?', danger: true, icon: Trash2, confirmLabel: count ? `Delete folder and ${count} file${count === 1 ? '' : 's'}` : 'Delete folder',
+      message: count ? `Delete “${folder}” and the ${count} file${count === 1 ? '' : 's'} in it permanently?` : `Delete the empty folder “${folder}”?`,
+      details,
+    } : {
+      title: 'Delete file?', danger: true, icon: Trash2, confirmLabel: 'Delete',
+      message: `Delete “${entries[0].file.name}” permanently?`,
+      details,
+    })
+    if (!ok) return
+    const openIds = entries.filter(entry => entry.openIndex >= 0).map(entry => entry.id)
+    const closedIds = new Set(entries.filter(entry => entry.openIndex < 0).map(entry => entry.id))
+    if (openIds.length) closeFiles(openIds, { remember: false })
+    if (closedIds.size) setClosedFiles(prev => prev.filter(entry => !closedIds.has(entry.file.id)))
+    if (removedFolders.length) setEmptyFolders(list => list.filter(item => !removedFolders.includes(item)))
     markWorkspaceEdit()
-    let folderKept = false
-    if (syncedHere) {
+    let keptInFolder = 0
+    for (const entry of synced) {
+      const path = syncPath(entry.file.name)
       const removed = await removeFromFolder(syncFolder.handle, path, syncWrittenRef.current.get(path))
-      folderKept = !removed
+      if (!removed) keptInFolder += 1
       syncWrittenRef.current.delete(path)
-      syncPathsRef.current.delete(id)
-      writeSyncState({ name: syncFolder.handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
+      syncPathsRef.current.delete(entry.id)
     }
+    if (synced.length) writeSyncState({ name: syncFolder.handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
+    const what = folder ? `folder “${folder}”` : `“${entries[0].file.name}”`
     setToast({
-      message: folderKept ? `Deleted “${file.name}”. The copy in the sync folder was changed elsewhere, so it was kept.` : `Deleted “${file.name}”.`,
+      message: `Deleted ${what}.${keptInFolder ? ` ${keptInFolder === 1 ? 'A copy' : `${keptInFolder} copies`} in the sync folder changed elsewhere, so ${keptInFolder === 1 ? 'it was' : 'they were'} kept.` : ''}`,
       tone: 'info', duration: 8000,
       action: {
         label: 'Undo',
         run: () => {
           markWorkspaceEdit()
-          if (openIndex >= 0) {
-            setFiles(prev => { if (prev.some(item => item.id === id)) return prev; const next = [...prev]; next.splice(Math.min(openIndex, next.length), 0, file); return orderPinnedFirst(next) })
-            setActiveFileId(id)
-          } else if (closedEntry) {
-            setClosedFiles(prev => (prev.some(entry => entry.file.id === id) ? prev : [...prev, closedEntry]))
+          const reopen = entries.filter(entry => entry.openIndex >= 0).sort((a, b) => a.openIndex - b.openIndex)
+          if (reopen.length) {
+            setFiles(prev => {
+              const next = [...prev]
+              for (const entry of reopen) if (!next.some(item => item.id === entry.id)) next.splice(Math.min(entry.openIndex, next.length), 0, entry.file)
+              return orderPinnedFirst(next)
+            })
+            setActiveFileId(reopen[0].id)
           }
+          const closedBack = entries.filter(entry => entry.openIndex < 0 && entry.closedEntry).map(entry => entry.closedEntry)
+          if (closedBack.length) setClosedFiles(prev => [...prev, ...closedBack.filter(entry => !prev.some(item => item.file.id === entry.file.id))])
+          if (removedFolders.length) setEmptyFolders(list => [...new Set([...list, ...removedFolders])])
         },
       },
     })
-  }, [files, closedFiles, syncFolder, closeFiles, markWorkspaceEdit])
+  }, [files, closedFiles, emptyFolders, syncFolder, closeFiles, markWorkspaceEdit, askConfirm])
+  const handleDeleteFile = useCallback(id => deleteEntries([id]), [deleteEntries])
+  const handleDeleteFolder = useCallback(path => {
+    const ids = [...files, ...closedFiles.map(entry => entry.file)].filter(file => file.name.startsWith(`${path}/`)).map(file => file.id)
+    return deleteEntries(ids, { folder: path })
+  }, [files, closedFiles, deleteEntries])
   // Reconnect the saved folder once the workspace has loaded (so its files aren't mistaken for new ones).
   const syncStartedRef = useRef(false)
   useEffect(() => {
@@ -4577,10 +4640,14 @@ export default function App() {
   }, [handleSaveAll])
 
   const handleImportUrl = useCallback(async () => {
-    const url = window.prompt('Paste a public Markdown file URL (the server must allow CORS):')
+    const url = await askText({
+      title: 'Import from a URL', icon: Globe, label: 'Markdown file URL', placeholder: 'https://example.com/README.md', confirmLabel: 'Import',
+      description: 'ReadMe downloads the file in your browser.', hint: 'The server must allow cross-origin (CORS) access.',
+      validate: value => { try { return ['http:', 'https:'].includes(new URL(value.trim()).protocol) ? null : 'Use an http or https URL.' } catch { return value.trim() ? 'Enter a full URL, starting with https://' : 'Paste a URL.' } },
+    })
     if (!url) return
     try {
-      const parsed = new URL(url)
+      const parsed = new URL(url.trim())
       if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Use an http or https URL')
       const response = await fetch(parsed.href)
       if (!response.ok) throw new Error(`Request failed (${response.status})`)
@@ -4592,9 +4659,9 @@ export default function App() {
       setActiveFileId(id)
       setMobileTab('preview')
     } catch (error) {
-      alert(`Could not import URL: ${error.message}. Cross-origin servers must allow browser CORS access.`)
+      setToast({ message: `Could not import the URL: ${error.message}. The server must allow cross-origin (CORS) access.`, tone: 'warning', duration: 8000 })
     }
-  }, [markWorkspaceEdit])
+  }, [markWorkspaceEdit, askText])
 
   const toggleSpeech = useCallback(() => {
     if (!('speechSynthesis' in window)) return
@@ -4707,7 +4774,7 @@ export default function App() {
       await exportMarkdownDocx(markdownBody, { title: headings[0]?.text || baseName, fileName: `${baseName}.docx`, meta: frontmatterMeta })
     } catch (error) {
       console.error('Could not generate the Word document', error)
-      alert('Could not generate the Word document. Please try again.')
+      setToast({ message: 'Could not create the Word document. Please try again.', tone: 'warning' })
     }
   }, [activeFile, markdownBody, fileName, headings, frontmatterMeta])
   const openPdfDialog = useCallback(() => { if (activeFile && markdownBody.trim()) setPdfDialogOpen(true) }, [activeFile, markdownBody])
@@ -4726,7 +4793,7 @@ export default function App() {
       setPdfDialogOpen(false)
     } catch (error) {
       console.error('Could not generate the PDF', error)
-      alert('Could not generate the PDF. Please try again.')
+      setToast({ message: 'Could not create the PDF. Please try again.', tone: 'warning' })
     } finally {
       setPdfExporting(false)
     }
@@ -4749,9 +4816,41 @@ export default function App() {
       setTimeout(() => setCopyAllDone(false), 2000)
     } catch (error) {
       console.error('Copy failed', error)
-      alert('Could not access the clipboard. Check browser clipboard permissions.')
+      setToast({ message: 'Could not access the clipboard. Check the browser’s clipboard permission.', tone: 'warning' })
     }
   }, [content])
+
+  // Confluence: storage format (XHTML + ac: macros) as plain text, for Confluence's source /
+  // storage editor or its API, plus clean HTML so pasting into the page editor works too.
+  const handleCopyConfluence = useCallback(async () => {
+    try {
+      const { toConfluenceStorage, toConfluenceHtml } = await import('./confluenceExport')
+      const storage = toConfluenceStorage(content)
+      if (navigator.clipboard?.write && window.ClipboardItem) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([toConfluenceHtml(content)], { type: 'text/html' }),
+          'text/plain': new Blob([storage], { type: 'text/plain' }),
+        })])
+      } else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(storage)
+      else throw new Error('Clipboard is unavailable')
+      setCopyConfluenceDone(true)
+      setTimeout(() => setCopyConfluenceDone(false), 2000)
+      setToast({ message: 'Copied for Confluence. Paste into a page, or into its storage-format (source) editor.', tone: 'success' })
+    } catch (error) {
+      console.error('Copy failed', error)
+      setToast({ message: 'Could not access the clipboard. Check browser clipboard permissions.', tone: 'warning' })
+    }
+  }, [content])
+  const handleExportConfluence = useCallback(async () => {
+    const { toConfluenceStorage } = await import('./confluenceExport')
+    const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([toConfluenceStorage(content)], { type: 'application/xml' })),
+      download: `${docTitle}.confluence.xml`,
+    })
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }, [content, fileName, headings])
 
   const handleCreateFromTemplate = useCallback((tpl) => {
     markWorkspaceEdit()
@@ -4935,6 +5034,8 @@ ${fontCss}
     ...(activeFile ? [
       { id: 'dl-md', label: 'Download Markdown (.md)', hint: 'Export', icon: Download, run: handleDownload },
       { id: 'dl-html', label: 'Export Standalone HTML (.html)', hint: 'Export', icon: FileCode2, run: handleExportHtml },
+      { id: 'dl-confluence', label: 'Export for Confluence (storage format XHTML)', hint: 'Export', icon: Code2, run: handleExportConfluence },
+      { id: 'copy-confluence', label: 'Copy as Confluence XHTML', hint: 'Copy', icon: Copy, run: handleCopyConfluence },
     { id: 'dl-pdf', label: 'Download PDF…', hint: 'Export', icon: FileDown, run: openPdfDialog },
     { id: 'dl-docx', label: 'Export Word Document (.docx)', hint: 'Export', icon: FileText, run: handleExportDocx },
     { id: 'share-link', label: 'Copy share link', hint: 'Share', icon: Share2, run: handleCopyShareLink },
@@ -4945,7 +5046,7 @@ ${fontCss}
   ], [
     handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
-    handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
+    handleExportHtml, handleExportConfluence, handleCopyConfluence, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
     openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes, activeFont.label, cycleDocFont, handleSaveInPlace, isFullscreen, keepAwake, toggleFullscreen, openPresentation,
   ])
@@ -5048,6 +5149,7 @@ ${fontCss}
               onExportPdf={openPdfDialog}
               onExportHtml={handleExportHtml}
               onExportDocx={handleExportDocx}
+              onExportConfluence={handleExportConfluence}
               onCopyShareLink={handleCopyShareLink}
               onExportZip={handleExportZip}
               onBackup={handleBackup}
@@ -5175,6 +5277,7 @@ ${fontCss}
             onNewFolder={createFolder}
             onRenameFolder={renameFolder}
             onCloseFolder={closeFolder}
+            onDeleteFolder={handleDeleteFolder}
             onClose={() => setFileTreeOpen(false)}
           />
         )}
@@ -5731,6 +5834,14 @@ ${fontCss}
                     {copyAllDone ? <Check size={11} /> : <Copy size={11} />}
                     <span className="hidden sm:inline reader-toolbar-label">{copyAllDone ? 'Copied!' : 'Copy MD'}</span>
                   </button>
+                  <button onClick={handleCopyConfluence}
+                    data-tooltip={copyConfluenceDone ? 'Copied for Confluence' : 'Copy as XHTML for Confluence (storage format)'}
+                    aria-label={copyConfluenceDone ? 'Copied for Confluence' : 'Copy as Confluence XHTML'}
+                    className="reader-toolbar-copy flex shrink-0 items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
+                    style={{ fontSize: 10, fontWeight: 500, color: copyConfluenceDone ? '#40a02b' : 'var(--text-4)' }}>
+                    {copyConfluenceDone ? <Check size={11} /> : <Code2 size={11} />}
+                    <span className="hidden sm:inline reader-toolbar-label">{copyConfluenceDone ? 'Copied!' : 'Copy XHTML'}</span>
+                  </button>
                 </div>
               </div>
 
@@ -6095,6 +6206,12 @@ ${fontCss}
           onSubmit={submitFolderPrompt}
           onCancel={() => setFolderPrompt(null)}
         />
+      )}
+      {appDialog?.kind === 'confirm' && (
+        <ConfirmDialog {...appDialog.options} onConfirm={() => settleAppDialog(true)} onCancel={() => settleAppDialog(false)} />
+      )}
+      {appDialog?.kind === 'text' && (
+        <PromptDialog {...appDialog.options} onSubmit={value => settleAppDialog(value)} onCancel={() => settleAppDialog(null)} />
       )}
       <GlobalTooltip />
 

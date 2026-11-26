@@ -3286,3 +3286,24 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .dark .prompt-help.is-error { color: #fca5a5; }
 .prompt-dialog .pdf-dialog-primary:disabled { opacity: .45; cursor: not-allowed; }
 .file-tree-empty-folder { padding: 4px 10px 6px calc(14px + (var(--depth, 0) + 1) * 14px); font-size: 11.5px; font-style: italic; color: var(--text-3); }
+
+/* ── App confirmation dialog ── */
+.confirm-dialog { width: min(440px, calc(100vw - 32px)); }
+.confirm-dialog-icon { color: var(--accent); }
+.confirm-dialog.is-danger .confirm-dialog-icon { color: #dc2626; --ip-tone: #dc2626; --ip-mc-fill: #dc2626; --ip-mc-stroke: #7f1d1d; --ip-body: #dc2626; }
+.confirm-dialog-message { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; }
+.confirm-dialog-details { margin: -4px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 12px; line-height: 1.55; color: var(--text-3); }
+.pdf-dialog-primary.is-danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+.pdf-dialog-primary.is-danger:hover { background: #b91c1c; border-color: #b91c1c; }
+.pdf-dialog-primary.is-danger:focus-visible { outline-color: #dc2626; }
+
+/* ── Settings → Versions ── */
+.release-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.release-item { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-light); background: var(--bg-editor); }
+.release-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.release-head strong { font-size: 13px; color: var(--text-1); }
+.release-head time { margin-left: auto; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.release-current { padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border); }
+.release-item ul { margin: 0; padding-left: 18px; list-style: disc; display: grid; gap: 3px; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.settings-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.release-item ul li::marker { color: var(--text-3); }

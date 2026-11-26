@@ -36,7 +36,7 @@ const sortFiles = entries => [...entries].sort((a, b) => (Boolean(a.closed) - Bo
 const countFiles = node => node.files.length + [...node.folders.values()].reduce((sum, child) => sum + countFiles(child), 0)
 
 export default function FileTree({
-  files, closedFiles = [], emptyFolders = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onClose,
+  files, closedFiles = [], emptyFolders = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onDeleteFolder, onClose,
 }) {
   const closedList = useMemo(() => closedFiles.map(entry => entry.file), [closedFiles])
   const tree = useMemo(() => buildFileTree(files, closedList, emptyFolders), [files, closedList, emptyFolders])
@@ -81,6 +81,7 @@ export default function FileTree({
             <button type="button" onClick={() => onNewFile(node.path)} data-tip={`New file in ${node.name}`} aria-label={`New file in ${node.name}`}><FilePlus size={12} /></button>
             <button type="button" onClick={() => onRenameFolder(node.path)} data-tip="Rename folder" aria-label={`Rename folder ${node.name}`}><Pencil size={12} /></button>
             <button type="button" onClick={() => onCloseFolder(node.path)} data-tip={countFiles(node) ? 'Close all files in this folder' : 'Remove this empty folder'} aria-label={countFiles(node) ? `Close folder ${node.name}` : `Remove empty folder ${node.name}`}><X size={12} /></button>
+            {onDeleteFolder && <button type="button" className="is-danger" onClick={() => onDeleteFolder(node.path)} data-tip={countFiles(node) ? 'Delete this folder and its files' : 'Delete this folder'} aria-label={`Delete folder ${node.name}`}><Trash2 size={12} /></button>}
           </span>
         </div>
         {open && (
