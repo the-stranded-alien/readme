@@ -3264,3 +3264,25 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .presentation-controls .presentation-pen-color.presentation-pen-color:hover:not(:disabled) { background-color: var(--ink) !important; }
 .presentation-controls .presentation-pen-summary { width: auto; height: 30px; gap: 5px; padding: 0 8px 0 10px; color: var(--text-3); }
 .presentation-pen-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 1px var(--border-strong); }
+
+/* ── Floating tooltip for [data-tip] (same look as button[data-tooltip]) ── */
+.app-tooltip {
+  position: fixed; z-index: 2000; width: max-content; max-width: min(280px, 80vw);
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-editor); color: var(--text-1); box-shadow: var(--shadow-md);
+  font-size: 10px; font-weight: 500; line-height: 1.35; white-space: pre-line; text-align: center;
+  pointer-events: none; animation: tipIn .15s ease both;
+}
+@keyframes tipIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── App text-input dialog (new / rename folder) ── */
+.prompt-dialog { width: min(420px, calc(100vw - 32px)); }
+.prompt-field { display: grid; gap: 6px; }
+.prompt-field input { height: 36px; padding: 0 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-preview); color: var(--text-1); font-size: 13px; }
+.prompt-field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.prompt-field input[aria-invalid="true"] { border-color: #dc2626; }
+.prompt-help { margin: -6px 0 0; min-height: 16px; font-size: 11.5px; color: var(--text-3); }
+.prompt-help.is-error { color: #b91c1c; }
+.dark .prompt-help.is-error { color: #fca5a5; }
+.prompt-dialog .pdf-dialog-primary:disabled { opacity: .45; cursor: not-allowed; }
+.file-tree-empty-folder { padding: 4px 10px 6px calc(14px + (var(--depth, 0) + 1) * 14px); font-size: 11.5px; font-style: italic; color: var(--text-3); }

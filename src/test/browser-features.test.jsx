@@ -1132,7 +1132,7 @@ describe('advanced browser features', () => {
   })
 
   it('shows folders in a file tree and moves files between them', async () => {
-    window.prompt = vi.fn(() => 'archive')
+    window.prompt = vi.fn()
     await writeWorkspace({ activeId: 'a', files: [
       { id: 'a', name: 'notes/plan.md', content: '# Plan' },
       { id: 'b', name: 'notes/ideas.md', content: '# Ideas' },
@@ -1151,7 +1151,44 @@ describe('advanced browser features', () => {
     fireEvent.drop(folderRow, { dataTransfer })
     await waitFor(() => expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('aria-label'))).toContain('notes/todo.md'))
     fireEvent.click(within(tree).getByRole('button', { name: 'Rename folder notes' }))
+    // The app's own dialog, not the browser's prompt.
+    const rename = await screen.findByRole('dialog', { name: 'Rename folder' })
+    expect(window.prompt).not.toHaveBeenCalled()
+    fireEvent.change(within(rename).getByRole('textbox', { name: 'Folder name' }), { target: { value: 'archive' } })
+    fireEvent.click(within(rename).getByRole('button', { name: 'Rename' }))
     await waitFor(() => expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('aria-label'))).toEqual(expect.arrayContaining(['archive/plan.md', 'archive/ideas.md', 'archive/todo.md'])))
+  })
+
+  it('creates an empty folder from its own dialog, without a file', async () => {
+    window.prompt = vi.fn()
+    await writeWorkspace({ activeId: 'a', files: [{ id: 'a', name: 'notes/plan.md', content: '# Plan' }] })
+    installApp()
+    await screen.findByRole('tab', { name: 'notes/plan.md' })
+    fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
+    const tree = await screen.findByRole('tree', { name: 'Files' })
+    fireEvent.click(screen.getByRole('button', { name: 'New folder' }))
+    const dialog = await screen.findByRole('dialog', { name: 'New folder' })
+    const input = within(dialog).getByRole('textbox', { name: 'Folder name' })
+    expect(within(dialog).getByRole('button', { name: 'Create folder' })).toBeDisabled()
+    fireEvent.change(input, { target: { value: 'notes' } })
+    expect(within(dialog).getByText(/already exists/)).toBeInTheDocument()
+    fireEvent.change(input, { target: { value: ' drafts / 2026 ' } })
+    fireEvent.submit(input.closest('form'))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New folder' })).toBeNull())
+    expect(window.prompt).not.toHaveBeenCalled()
+    // The folder shows, empty, and no file was created.
+    const drafts = within(tree).getByRole('treeitem', { name: 'Folder drafts' })
+    expect(within(drafts).getByRole('treeitem', { name: 'Folder 2026' })).toHaveTextContent('0')
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    expect(JSON.parse(localStorage.getItem('readme-empty-folders'))).toEqual(['drafts/2026'])
+    // Escape cancels the dialog.
+    fireEvent.click(screen.getByRole('button', { name: 'New folder' }))
+    await screen.findByRole('dialog', { name: 'New folder' })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New folder' })).toBeNull())
+    // An empty folder can be removed.
+    fireEvent.click(within(tree).getByRole('button', { name: 'Remove empty folder 2026' }))
+    await waitFor(() => expect(within(tree).queryByRole('treeitem', { name: 'Folder drafts' })).toBeNull())
   })
 
   it('keeps closed files in the file tree so they can be reopened, across reloads', async () => {

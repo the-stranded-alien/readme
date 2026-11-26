@@ -4,8 +4,17 @@ import { FILE_DRAG_TYPE, isModifiedFromDisk, labelColor } from '../fileUtils'
 
 
 /** Builds a folder tree from "folder/sub/file.md" style names. */
-function buildFileTree(files, closedFiles = []) {
+function buildFileTree(files, closedFiles = [], emptyFolders = []) {
   const root = { name: '', path: '', folders: new Map(), files: [] }
+  // Folders made with "New folder" show even before they hold a file.
+  for (const folder of emptyFolders) {
+    let node = root
+    for (const part of folder.split('/').filter(Boolean)) {
+      const path = node.path ? `${node.path}/${part}` : part
+      if (!node.folders.has(part)) node.folders.set(part, { name: part, path, folders: new Map(), files: [] })
+      node = node.folders.get(part)
+    }
+  }
   const entries = [...files.map(file => ({ file })), ...closedFiles.map(file => ({ file, closed: true }))]
   for (const { file, closed } of entries) {
     const parts = file.name.split('/').filter(Boolean)
@@ -27,10 +36,10 @@ const sortFiles = entries => [...entries].sort((a, b) => (Boolean(a.closed) - Bo
 const countFiles = node => node.files.length + [...node.folders.values()].reduce((sum, child) => sum + countFiles(child), 0)
 
 export default function FileTree({
-  files, closedFiles = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onClose,
+  files, closedFiles = [], emptyFolders = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onClose,
 }) {
   const closedList = useMemo(() => closedFiles.map(entry => entry.file), [closedFiles])
-  const tree = useMemo(() => buildFileTree(files, closedList), [files, closedList])
+  const tree = useMemo(() => buildFileTree(files, closedList, emptyFolders), [files, closedList, emptyFolders])
   const [dropTarget, setDropTarget] = useState(null)
   const hasDrag = event => Array.from(event.dataTransfer?.types || []).includes(FILE_DRAG_TYPE)
 
@@ -69,15 +78,18 @@ export default function FileTree({
             <span className="file-tree-count">{countFiles(node)}</span>
           </button>
           <span className="file-tree-actions">
-            <button type="button" onClick={() => onNewFile(node.path)} title={`New file in ${node.name}`} aria-label={`New file in ${node.name}`}><FilePlus size={12} /></button>
-            <button type="button" onClick={() => onRenameFolder(node.path)} title="Rename folder" aria-label={`Rename folder ${node.name}`}><Pencil size={12} /></button>
-            <button type="button" onClick={() => onCloseFolder(node.path)} title="Close all files in this folder" aria-label={`Close folder ${node.name}`}><X size={12} /></button>
+            <button type="button" onClick={() => onNewFile(node.path)} data-tip={`New file in ${node.name}`} aria-label={`New file in ${node.name}`}><FilePlus size={12} /></button>
+            <button type="button" onClick={() => onRenameFolder(node.path)} data-tip="Rename folder" aria-label={`Rename folder ${node.name}`}><Pencil size={12} /></button>
+            <button type="button" onClick={() => onCloseFolder(node.path)} data-tip={countFiles(node) ? 'Close all files in this folder' : 'Remove this empty folder'} aria-label={countFiles(node) ? `Close folder ${node.name}` : `Remove empty folder ${node.name}`}><X size={12} /></button>
           </span>
         </div>
         {open && (
           <ul role="group">
             {sortFolders(node.folders).map(child => renderFolder(child, depth + 1))}
             {sortFiles(node.files).map(entry => renderFile(entry, depth + 1))}
+            {node.folders.size === 0 && node.files.length === 0 && (
+              <li className="file-tree-empty-folder" style={{ '--depth': depth }}>Empty. Use + or drag a file here.</li>
+            )}
           </ul>
         )}
       </li>
@@ -88,7 +100,7 @@ export default function FileTree({
     if (closed) return (
       <li key={`closed:${file.id}`} role="treeitem" aria-selected={false} aria-label={`${file.name} (closed)`}>
         <div className="file-tree-row is-closed" style={{ '--depth': depth }}>
-          <button type="button" className="file-tree-main" onClick={() => onReopen(file.id)} title={`Reopen ${file.name}`}
+          <button type="button" className="file-tree-main" onClick={() => onReopen(file.id)} data-tip={`Reopen ${file.name}`}
             draggable onDragStart={event => { event.dataTransfer.setData(FILE_DRAG_TYPE, file.id); event.dataTransfer.setData('text/plain', file.name); event.dataTransfer.effectAllowed = 'copyMove' }}>
             <span className="file-tree-chevron-spacer" aria-hidden="true" />
             <FileText size={13} aria-hidden="true" />
@@ -96,9 +108,9 @@ export default function FileTree({
             <span className="file-tree-closed-tag">closed</span>
           </button>
           <span className="file-tree-actions">
-            <button type="button" onClick={() => onReopen(file.id)} title="Reopen" aria-label={`Reopen ${file.name}`}><RotateCcw size={12} /></button>
-            {onDelete && <button type="button" onClick={() => onDelete(file.id)} title="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>}
-            <button type="button" onClick={() => onForget([file.id])} title="Remove from list" aria-label={`Remove ${file.name} from the list`}><X size={12} /></button>
+            <button type="button" onClick={() => onReopen(file.id)} data-tip="Reopen" aria-label={`Reopen ${file.name}`}><RotateCcw size={12} /></button>
+            {onDelete && <button type="button" onClick={() => onDelete(file.id)} data-tip="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>}
+            <button type="button" onClick={() => onForget([file.id])} data-tip="Remove from list" aria-label={`Remove ${file.name} from the list`}><X size={12} /></button>
           </span>
         </div>
       </li>
@@ -118,7 +130,7 @@ export default function FileTree({
               event.dataTransfer.effectAllowed = 'copyMove'
             }}
             onClick={() => onSelect(file.id)}
-            title={file.name}
+            data-tip={file.name}
           >
             <span className="file-tree-chevron-spacer" aria-hidden="true" />
             <FileText size={13} aria-hidden="true" style={color ? { color } : undefined} />
@@ -127,7 +139,7 @@ export default function FileTree({
           </button>
           {onDelete && (
             <span className="file-tree-actions">
-              <button type="button" onClick={() => onDelete(file.id)} title="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>
+              <button type="button" onClick={() => onDelete(file.id)} data-tip="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>
             </span>
           )}
         </div>
@@ -140,15 +152,15 @@ export default function FileTree({
       <div className="file-tree-header">
         <span>Files</span>
         <span className="file-tree-header-actions">
-          <button type="button" onClick={() => onNewFile('')} title="New file" aria-label="New file at top level"><FilePlus size={13} /></button>
-          <button type="button" onClick={onNewFolder} title="New folder" aria-label="New folder"><FolderPlus size={13} /></button>
-          <button type="button" onClick={onClose} title="Hide files" aria-label="Hide file tree"><X size={13} /></button>
+          <button type="button" onClick={() => onNewFile('')} data-tip="New file" aria-label="New file at top level"><FilePlus size={13} /></button>
+          <button type="button" onClick={onNewFolder} data-tip="New folder" aria-label="New folder"><FolderPlus size={13} /></button>
+          <button type="button" onClick={onClose} data-tip="Hide files" aria-label="Hide file tree"><X size={13} /></button>
         </span>
       </div>
       <ul className={`file-tree-list${dropTarget === '' ? ' is-drop-target' : ''}`} role="tree" aria-label="Files" {...dropProps('')}>
         {sortFolders(tree.folders).map(child => renderFolder(child, 0))}
         {sortFiles(tree.files).map(entry => renderFile(entry, 0))}
-        {files.length === 0 && closedList.length === 0 && <li className="file-tree-empty">No files yet</li>}
+        {files.length === 0 && closedList.length === 0 && emptyFolders.length === 0 && <li className="file-tree-empty">No files yet</li>}
       </ul>
       {closedList.length > 0 && (
         <button type="button" className="file-tree-clear-closed" onClick={() => onForget(closedList.map(file => file.id))}>

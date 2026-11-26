@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, SlidersHorizontal, FolderOpen, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
   FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
@@ -52,6 +52,8 @@ import { CONTENT_FILTERS, applyContentFilter, clearContentFilter, filterLabel } 
 import { sectionSlides, slideForHeading } from './presentation'
 import { PRESENTATION_THEME_KEY, loadPresentationSettings, savePresentationSettings, splitOptions } from './presentationSettings'
 import PresentationSettings from './components/PresentationSettings'
+import PromptDialog from './components/PromptDialog'
+import GlobalTooltip from './components/GlobalTooltip'
 import { ALL_THEME_CLASSES, THEME_IDS, availableThemes, nextTheme, themeById, themeClasses } from './themes'
 import TemplatesDialog from './components/TemplatesDialog'
 import SlashMenu from './components/SlashMenu'
@@ -2596,6 +2598,20 @@ export default function App() {
   const summaryAbortRef = useRef(null)
   // File tree sidebar (folders come from "folder/file.md" names).
   const [fileTreeOpen, setFileTreeOpen] = useState(() => { try { return localStorage.getItem('readme-file-tree-open') === 'true' } catch { return false } })
+  // Folders made with "New folder" that don't hold a file yet (folders otherwise come from file paths).
+  const [emptyFolders, setEmptyFolders] = useState(() => {
+    try { const list = JSON.parse(localStorage.getItem('readme-empty-folders') || '[]'); return Array.isArray(list) ? list.filter(item => typeof item === 'string') : [] } catch { return [] }
+  })
+  useEffect(() => { try { localStorage.setItem('readme-empty-folders', JSON.stringify(emptyFolders)) } catch { /* storage is optional */ } }, [emptyFolders])
+  useEffect(() => {
+    const onStorage = event => {
+      if (event.key !== 'readme-empty-folders') return
+      try { const list = JSON.parse(event.newValue || '[]'); if (Array.isArray(list)) setEmptyFolders(list) } catch { /* ignore */ }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+  const [folderPrompt, setFolderPrompt] = useState(null) // { mode: 'new' } | { mode: 'rename', path }
   const [treeCollapsed, setTreeCollapsed] = useState(() => { try { return JSON.parse(localStorage.getItem('readme-file-tree-collapsed') || '[]') } catch { return [] } })
   useEffect(() => {
     try {
@@ -4113,23 +4129,42 @@ export default function App() {
     setMobileTab('editor')
     requestAnimationFrame(() => textareaRef.current?.focus())
   }, [markWorkspaceEdit, view])
-  const createFolder = useCallback(() => {
-    const raw = window.prompt('Folder name (use "/" for nested folders):', 'notes')
-    const folder = raw?.trim().replace(/^\/+|\/+$/g, '').replace(/[\\:*?"<>|]+/g, '-')
-    if (!folder) return
-    setTreeCollapsed(list => list.filter(item => item !== folder))
-    createFileInFolder(folder)
-  }, [createFileInFolder])
-  const renameFolder = useCallback(path => {
-    const raw = window.prompt('Rename folder:', path)
-    const next = raw?.trim().replace(/^\/+|\/+$/g, '').replace(/[\\:*?"<>|]+/g, '-')
-    if (!next || next === path) return
+  const cleanFolderName = raw => raw.trim().replace(/\s*\/\s*/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/{2,}/g, '/').replace(/[\\:*?"<>|]+/g, '-')
+  const folderExists = useCallback(path => (
+    emptyFolders.includes(path)
+    || files.some(file => file.name.startsWith(`${path}/`))
+    || closedFiles.some(entry => entry.file.name.startsWith(`${path}/`))
+  ), [emptyFolders, files, closedFiles])
+  // New folder: asks for a name in the app's own dialog and adds an empty folder (no file).
+  const createFolder = useCallback(() => setFolderPrompt({ mode: 'new' }), [])
+  const renameFolder = useCallback(path => setFolderPrompt({ mode: 'rename', path }), [])
+  const submitFolderPrompt = useCallback(raw => {
+    const prompt = folderPrompt
+    setFolderPrompt(null)
+    const name = cleanFolderName(raw)
+    if (!prompt || !name) return
+    if (prompt.mode === 'new') {
+      setEmptyFolders(list => (list.includes(name) ? list : [...list, name]))
+      // Open the new folder and the folders around it.
+      setTreeCollapsed(list => list.filter(item => !(name === item || name.startsWith(`${item}/`))))
+      return
+    }
+    const path = prompt.path
+    if (name === path) return
     markWorkspaceEdit()
-    const move = file => (file.name.startsWith(`${path}/`) ? { ...file, name: `${next}/${file.name.slice(path.length + 1)}` } : file)
-    setFiles(prev => prev.map(move))
-    setClosedFiles(prev => prev.map(entry => ({ ...entry, file: move(entry.file) })))
-    setTreeCollapsed(list => list.map(item => (item === path || item.startsWith(`${path}/`) ? next + item.slice(path.length) : item)))
-  }, [markWorkspaceEdit])
+    const moveName = value => (value === path ? name : value.startsWith(`${path}/`) ? `${name}/${value.slice(path.length + 1)}` : value)
+    const move = file => ({ ...file, name: moveName(file.name) })
+    setFiles(prev => prev.map(file => (file.name.startsWith(`${path}/`) ? move(file) : file)))
+    setClosedFiles(prev => prev.map(entry => (entry.file.name.startsWith(`${path}/`) ? { ...entry, file: move(entry.file) } : entry)))
+    setEmptyFolders(list => [...new Set(list.map(moveName))])
+    setTreeCollapsed(list => list.map(moveName))
+  }, [folderPrompt, markWorkspaceEdit])
+  const closeFolder = useCallback(path => {
+    const ids = files.filter(file => file.name.startsWith(`${path}/`)).map(file => file.id)
+    if (ids.length) closeFiles(ids)
+    // An empty folder (or one left empty) is removed from the list.
+    else setEmptyFolders(list => list.filter(item => item !== path && !item.startsWith(`${path}/`)))
+  }, [files, closeFiles])
 
   const handleRevealOutline = useCallback(id => {
     setActiveFileId(id)
@@ -5127,6 +5162,7 @@ ${fontCss}
           <FileTree
             files={files}
             closedFiles={closedFiles}
+            emptyFolders={emptyFolders}
             activeFileId={activeFileId}
             collapsed={treeCollapsed}
             onToggleFolder={path => setTreeCollapsed(list => (list.includes(path) ? list.filter(item => item !== path) : [...list, path]))}
@@ -5138,7 +5174,7 @@ ${fontCss}
             onNewFile={createFileInFolder}
             onNewFolder={createFolder}
             onRenameFolder={renameFolder}
-            onCloseFolder={path => closeFiles(files.filter(file => file.name.startsWith(`${path}/`)).map(file => file.id))}
+            onCloseFolder={closeFolder}
             onClose={() => setFileTreeOpen(false)}
           />
         )}
@@ -6037,6 +6073,30 @@ ${fontCss}
           </div>
         </div>
       )}
+
+      {folderPrompt && (
+        <PromptDialog
+          key={folderPrompt.mode + (folderPrompt.path ?? '')}
+          icon={folderPrompt.mode === 'new' ? FolderPlus : Pencil}
+          title={folderPrompt.mode === 'new' ? 'New folder' : 'Rename folder'}
+          description={folderPrompt.mode === 'new' ? 'Folders group your files in the Files panel.' : `Files inside “${folderPrompt.path}” move with it.`}
+          label="Folder name"
+          initialValue={folderPrompt.mode === 'new' ? '' : folderPrompt.path}
+          placeholder="notes"
+          hint='Use "/" for a folder inside another, like notes/2026.'
+          confirmLabel={folderPrompt.mode === 'new' ? 'Create folder' : 'Rename'}
+          validate={value => {
+            const name = cleanFolderName(value)
+            if (!name) return 'Enter a folder name.'
+            if (folderPrompt.mode === 'rename' && name === folderPrompt.path) return null
+            if (folderExists(name)) return `A folder called “${name}” already exists.`
+            return null
+          }}
+          onSubmit={submitFolderPrompt}
+          onCancel={() => setFolderPrompt(null)}
+        />
+      )}
+      <GlobalTooltip />
 
       {toast && (
         <div className={`app-toast anim-pop-in is-${toast.tone || 'info'}`} role="status" aria-live="polite">

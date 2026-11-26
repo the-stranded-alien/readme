@@ -87,7 +87,7 @@ function TabContextMenu({ menu, file, files, canReopen, actions, onClose }) {
               role="menuitemradio"
               aria-checked={file.color === color.id}
               aria-label={`${color.name} label`}
-              title={color.name}
+              data-tip={color.name}
               className="tab-color-swatch"
               style={{ '--swatch': color.value }}
               onClick={run(() => actions.onSetColor(file.id, file.color === color.id ? null : color.id))}
@@ -100,7 +100,7 @@ function TabContextMenu({ menu, file, files, canReopen, actions, onClose }) {
             role="menuitemradio"
             aria-checked={!file.color}
             aria-label="No label"
-            title="No label"
+            data-tip="No label"
             className="tab-color-swatch is-none"
             onClick={run(() => actions.onSetColor(file.id, null))}
           />
@@ -361,7 +361,7 @@ export default function FileTabBar({
                 } else if (event.key === 'F2') { event.preventDefault(); startRename(file.id) }
                 else if (event.key === 'Delete') { event.preventDefault(); onClose(file.id) }
               }}
-              title={`${file.name}${modified ? ' — unsaved changes' : diskBacked ? ' — saved to disk' : ''}\nDouble-click to rename · right-click for options`}
+              data-tip={`${file.name}${modified ? ' — unsaved changes' : diskBacked ? ' — saved to disk' : ''}\nDouble-click to rename · right-click for options`}
               aria-label={`${file.name}${file.pinned ? ', pinned' : ''}${modified ? ', unsaved changes' : ''}`}
               aria-keyshortcuts="Delete F2 Shift+F10"
               className={`file-tab${isActive ? ' active' : ''}${file.pinned ? ' is-pinned' : ''}${color ? ' has-label' : ''}${dragId === file.id ? ' is-dragging' : ''}${groupBreak ? ' group-start' : ''}${dropClass}`}
