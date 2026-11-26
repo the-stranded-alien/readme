@@ -388,7 +388,7 @@ describe('advanced browser features', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: /Import Markdown from URL/ }))
     // The app's own dialog asks for the URL.
     const ask = await screen.findByRole('dialog', { name: 'Import from a URL' })
-    const field = within(ask).getByRole('textbox', { name: 'Markdown file URL' })
+    const field = within(ask).getByRole('textbox', { name: 'Markdown file or web page URL' })
     fireEvent.change(field, { target: { value: 'ftp://nope' } })
     expect(within(ask).getByText('Use an http or https URL.')).toBeInTheDocument()
     fireEvent.change(field, { target: { value: 'https://example.test/remote.md' } })
@@ -869,6 +869,100 @@ describe('advanced browser features', () => {
     fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Restore this version?' })).getByRole('button', { name: 'Restore' }))
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea')).toHaveValue('# Earlier version'))
     expect(screen.queryByRole('dialog', { name: 'Version history' })).toBeNull()
+  })
+
+  it('pastes rich text as Markdown (plain text first, so one undo keeps it plain)', async () => {
+    await writeWorkspace({ activeId: 'p', files: [{ id: 'p', name: 'Paste.md', content: 'Start\n' }] })
+    installApp()
+    const editor = await screen.findByDisplayValue(/Start/)
+    editor.setSelectionRange(6, 6)
+    const clipboard = types => ({ files: [], getData: type => types[type] ?? '' })
+    fireEvent.paste(editor, { clipboardData: clipboard({ 'text/html': '<h2>Title</h2><p>A <b>bold</b> <a href="https://x.dev">link</a></p>', 'text/plain': 'Title\nA bold link' }) })
+    await waitFor(() => expect(editor.value).toBe('Start\n## Title\n\nA **bold** [link](https://x.dev)'))
+    expect(await screen.findByText(/Pasted as Markdown/)).toBeInTheDocument()
+    // Spreadsheet cells (tabs) become a table; plain HTML paragraphs stay plain text.
+    editor.setSelectionRange(editor.value.length, editor.value.length)
+    fireEvent.paste(editor, { clipboardData: clipboard({ 'text/plain': 'a\tb\n1\t2' }) })
+    await waitFor(() => expect(editor.value).toContain('| a | b |\n| --- | --- |\n| 1 | 2 |'))
+    const before = editor.value
+    fireEvent.paste(editor, { clipboardData: clipboard({ 'text/html': '<p>just text</p>', 'text/plain': 'just text' }) })
+    await waitFor(() => expect(editor.value).toBe(`${before}just text`))
+  })
+
+  it('edits a table in a grid from the preview, and inserts one from the toolbar', async () => {
+    await writeWorkspace({ activeId: 't', files: [{ id: 't', name: 'Table.md', content: '# T\n\n| Name | Qty |\n| --- | --- |\n| Pear | 5 |\n\nAfter' }] })
+    installApp()
+    await screen.findByDisplayValue(/Pear/)
+    fireEvent.click(document.querySelector('.table-wrap [data-edit-table]'))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit table' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Row 1, column 1' }), { target: { value: 'Apple | red' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Insert row below' }))
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Row 2, column 1' }), { target: { value: 'Fig' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Center column' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Update table' }))
+    const editor = document.querySelector('textarea.editor-textarea')
+    await waitFor(() => expect(editor.value).toContain('|     Name     | Qty |\n| :----------: | --- |\n| Apple \\| red | 5   |\n|     Fig      |     |'))
+    expect(editor.value.endsWith('\n\nAfter')).toBe(true)
+    // With the caret outside a table, the toolbar button inserts a new one.
+    editor.setSelectionRange(editor.value.length, editor.value.length)
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Formatting' })).getByRole('button', { name: 'Table (insert or edit)' }))
+    const insert = await screen.findByRole('dialog', { name: 'Insert table' })
+    fireEvent.keyDown(within(insert).getByRole('textbox', { name: 'Row 2, column 3' }), { key: 'Tab' })
+    expect(within(insert).getByText('3 rows × 3 columns')).toBeInTheDocument()
+    fireEvent.click(within(insert).getByRole('button', { name: 'Insert table' }))
+    await waitFor(() => expect(editor.value).toMatch(/After\n\n\| Column 1 \| Column 2 \| Column 3 \|/))
+  })
+
+  it('links documents with [[wiki links]]: opens them, creates missing ones, shows backlinks, updates on rename', async () => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn()
+    await writeWorkspace({ activeId: 'home', files: [
+      { id: 'home', name: 'Home.md', content: '# Home\n\nSee [[Plan#Goals|the goals]] and [[Ideas]].' },
+      { id: 'plan', name: 'notes/Plan.md', content: '# Plan\n\n## Goals\n\nShip it.' },
+    ] })
+    installApp()
+    const link = await screen.findByRole('link', { name: 'the goals' })
+    expect(link).toHaveClass('wiki-link')
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Ideas' })).toHaveClass('is-missing'))
+    fireEvent.click(link)
+    expect(await screen.findByRole('tab', { name: 'notes/Plan.md' })).toHaveAttribute('aria-selected', 'true')
+    // "Linked from" in the Contents sidebar (shown in Preview).
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+    const linkedFrom = await screen.findByRole('region', { name: 'Linked from' })
+    expect(linkedFrom).toHaveTextContent('Home')
+    expect(linkedFrom).toHaveTextContent('See the goals and Ideas.')
+    fireEvent.click(within(linkedFrom).getByRole('button', { name: /Home/ }))
+    fireEvent.click(await screen.findByRole('link', { name: 'Ideas' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Create “Ideas”?' })).getByRole('button', { name: 'Create document' }))
+    expect(await screen.findByRole('tab', { name: 'Ideas.md' })).toBeInTheDocument()
+    // Renaming Plan updates the link in Home.
+    fireEvent.doubleClick(within(screen.getByRole('tab', { name: 'notes/Plan.md' })).getByText('Plan.md'))
+    const rename = screen.getByRole('textbox', { name: /Rename Plan/ })
+    fireEvent.change(rename, { target: { value: 'Roadmap' } })
+    fireEvent.keyDown(rename, { key: 'Enter' })
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Update links?' })).getByRole('button', { name: 'Update 1 document' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Home.md' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea')).toHaveValue('# Home\n\nSee [[Roadmap#Goals|the goals]] and [[Ideas]].'))
+  })
+
+  it('moves, promotes and demotes sections from the Contents sidebar', async () => {
+    await writeWorkspace({ activeId: 'o', files: [{ id: 'o', name: 'Outline.md', content: '# Doc\n\n## One\n\nfirst\n\n### Sub\n\nsub\n\n## Two\n\nsecond' }] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+    const toc = document.querySelector('.toc-panel')
+    fireEvent.click(await within(toc).findByRole('button', { name: 'Section options for One' }))
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'Section “One”' })).getByRole('menuitem', { name: /Move down/ }))
+    const text = () => document.querySelector('.rm-prose').textContent
+    await waitFor(() => expect(text().indexOf('Two')).toBeLessThan(text().indexOf('One')))
+    expect(text().indexOf('One')).toBeLessThan(text().indexOf('sub'))
+    // Alt+→ demotes "Two" (now first) to an H3.
+    fireEvent.keyDown(within(toc).getByRole('button', { name: 'Two' }), { key: 'ArrowRight', altKey: true })
+    await waitFor(() => expect(document.querySelector('.rm-prose h3')).toHaveTextContent('Two'))
+    fireEvent.keyDown(within(toc).getByRole('button', { name: 'Two' }), { key: 'ArrowLeft', altKey: true })
+    await waitFor(() => expect([...document.querySelectorAll('.rm-prose h2')].map(h => h.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Two')])))
+    // H1 can't be promoted.
+    fireEvent.keyDown(within(toc).getByRole('button', { name: 'Doc' }), { key: 'ArrowLeft', altKey: true })
+    expect(await screen.findByText(/can’t go further/)).toBeInTheDocument()
   })
 
   it('uses the CodeMirror editor (opt-in) with folds that mirror the preview', async () => {
@@ -1818,7 +1912,7 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(document.querySelector('.doc-prose mark.md-mark-green')).toHaveTextContent('green'))
     expect(document.querySelector('.doc-prose mark.md-mark-yellow')).toHaveTextContent('yellow')
     const toolbar = screen.getByRole('toolbar', { name: 'Formatting' })
-    for (const name of ['Heading 3', 'Numbered list', 'Task list', 'Table', 'Code block', 'Image', 'Footnote', 'Callout']) {
+    for (const name of ['Heading 3', 'Numbered list', 'Task list', 'Table (insert or edit)', 'Code block', 'Image', 'Footnote', 'Callout']) {
       expect(within(toolbar).getByRole('button', { name })).toHaveAttribute('data-tip', name)
     }
     editor.setSelectionRange(10, 14)

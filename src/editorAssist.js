@@ -81,7 +81,7 @@ export function deletePair(value, selectionStart, selectionEnd) {
 }
 
 // ── Tables ─────────────────────────────────────────────────────
-const splitRow = line => {
+export const splitRow = line => {
   let row = line.trim()
   if (row.startsWith('|')) row = row.slice(1)
   if (row.endsWith('|') && !row.endsWith('\\|')) row = row.slice(0, -1)
@@ -95,7 +95,7 @@ const splitRow = line => {
   cells.push(current.trim())
   return cells
 }
-const isSeparator = line => /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/.test(line)
+export const isSeparator = line => /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/.test(line)
 const displayWidth = text => Array.from(text).reduce((width, char) => width + (/[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|\p{Extended_Pictographic}/u.test(char) ? 2 : 1), 0)
 const pad = (text, width, align) => {
   const gap = Math.max(0, width - displayWidth(text))

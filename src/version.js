@@ -4,9 +4,19 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '1.9'
+export const APP_VERSION = '2.0'
 
 export const RELEASES = [
+  {
+    version: '2.0',
+    date: '2026-11-27',
+    notes: [
+      'Paste from Word, Google Docs, Confluence or the web as clean Markdown; open Word and HTML files.',
+      'Wiki links: type [[ to link documents, with “Linked from” in the Contents bar.',
+      'Visual table editor: edit tables in a grid — add, move, align and sort rows and columns.',
+      'Reorganise documents from the Contents bar: drag sections, promote, demote or move them to another file.',
+    ],
+  },
   {
     version: '1.9',
     date: '2026-11-26',
@@ -37,14 +47,6 @@ export const RELEASES = [
     date: '2026-11-26',
     notes: [
       'Create and rename folders from ReadMe’s own dialog; new folders start empty.',
-    ],
-  },
-  {
-    version: '1.5',
-    date: '2026-11-26',
-    notes: [
-      'Presentation: slide contents panel, laser pointer and pen (fading or permanent ink).',
-      'New Settings → Presentation: slide breaks, auto-advance, default text size and theme, pen and laser.',
     ],
   },
 ]

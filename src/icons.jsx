@@ -49,6 +49,18 @@ import {
   Filter as ParkFilter,
   FoldUpOne as ParkFoldUpOne,
   ExpandLeft as ParkExpandLeft,
+  More as ParkMore,
+  IndentLeft as ParkIndentLeft,
+  IndentRight as ParkIndentRight,
+  Send as ParkSend,
+  AlignTextCenter as ParkAlignTextCenter,
+  AlignTextRight as ParkAlignTextRight,
+  ArrowDown as ParkArrowDown,
+  ArrowLeft as ParkArrowLeft,
+  Column as ParkColumn,
+  InsertTable as ParkInsertTable,
+  SortAmountUp as ParkSortAmountUp,
+  SortAmountDown as ParkSortAmountDown,
   Clear as ParkClear,
   TargetOne as ParkTargetOne,
   HourglassFull as ParkHourglassFull,
@@ -200,6 +212,18 @@ export const ChevronRight = make(ParkRight, 'ChevronRight')
 export const ChevronUp = make(ParkUp, 'ChevronUp')
 export const ChevronsDownUp = make(ParkFoldUpOne, 'ChevronsDownUp')
 export const PanelWiden = make(ParkExpandRight, 'PanelWiden')
+export const MoreHorizontal = make(ParkMore, 'MoreHorizontal')
+export const Outdent = make(ParkIndentLeft, 'Outdent')
+export const Indent = make(ParkIndentRight, 'Indent')
+export const SendTo = make(ParkSend, 'SendTo')
+export const AlignCenter = make(ParkAlignTextCenter, 'AlignCenter')
+export const AlignRight = make(ParkAlignTextRight, 'AlignRight')
+export const ArrowDown = make(ParkArrowDown, 'ArrowDown')
+export const ArrowLeft = make(ParkArrowLeft, 'ArrowLeft')
+export const Columns = make(ParkColumn, 'Columns')
+export const Rows = make(ParkInsertTable, 'Rows')
+export const SortAsc = make(ParkSortAmountUp, 'SortAsc')
+export const SortDesc = make(ParkSortAmountDown, 'SortDesc')
 export const PanelNarrow = make(ParkExpandLeft, 'PanelNarrow')
 export const Eraser = make(ParkClear, 'Eraser')
 export const LaserPointer = make(ParkTargetOne, 'LaserPointer')

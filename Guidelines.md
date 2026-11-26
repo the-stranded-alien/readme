@@ -371,6 +371,13 @@ Rules learned the hard way:
 - **Don't make the editor `<textarea>` a React controlled input.** React 19 rewrites a controlled textarea's `defaultValue` on every change, which splits the browser's undo history into single characters. Leave it uncontrolled and write `value` only when the text changed from outside (file switch, restore…). Programmatic edits use `execCommand('insertText')` so they stay undoable.
 - **Dialogs opened over dialogs** (confirm / prompt) use the `is-topmost` backdrop and `useDialogKeys(…, { topmost: true })`, so they're drawn above and Escape closes only them.
 
+### Editing helpers (version 2.0)
+
+- **Rich paste** (`src/htmlToMarkdown.js`, lazy-loaded): insert the plain text first, then replace it with the converted Markdown as a second `insertText` edit — one Undo gets the plain text back. Only convert HTML that carries formatting (`looksRich`), so code editors and plain web text paste unchanged. Clean source quirks before turndown (Google Docs' bold wrapper and styled spans, Word list paragraphs, Confluence / GitHub panels → callouts, ReadMe's own UI bits).
+- **Pure, tested models for structure edits**: `tableModel.js` (find / parse / write tables), `wikiLinks.js` (parse, resolve, backlinks, rename, export), `outlineEdit.js` (sections by Contents index, moves, promote / demote). UI code only calls them and applies the result as one minimal `insertText` edit, so everything stays undoable. Contents indexes follow `extractHeadings` exactly (headings inside code never move or count).
+- **Exports never see app-only syntax**: `[[wiki links]]` become relative links before PDF / Word / Confluence / slides; preview-only UI (table edit buttons, heading tools) is stripped from the HTML export.
+- **Declaration order matters in `App.jsx`**: a `useCallback` / `useMemo` whose dependency list names a value declared later crashes the app on load (temporal dead zone). Place new hooks below everything they use.
+
 ## 7. Layout, responsiveness, motion
 
 - The header is a three-column grid (`auto | minmax(0,1fr) | auto`) so items never overlap. At 1280, 1100 and 900px, check that header items don't overlap.

@@ -28,8 +28,19 @@ const GROUPS = [
     items: [
       ['Enter', 'Continue list / quote, end it on an empty item'],
       ['( [ { ` "', 'Auto-close pair, wrap the selection'],
-      [shortcut('V'), 'Paste images to embed them'],
-      [shortcut('Z'), 'Undo'],
+      [shortcut('V'), 'Paste: images are embedded, formatted text becomes Markdown'],
+      [shortcut('V', { shift: true }), 'Paste as plain text'],
+      [shortcut('Z'), 'Undo (right after a paste: keep the plain text)'],
+      ['[[', 'Link to another document (wiki link)'],
+      ['/', 'Insert a block'],
+    ],
+  },
+  {
+    title: 'Contents (outline)',
+    items: [
+      ['Alt+↑  Alt+↓', 'Move the focused heading’s section up / down'],
+      ['Alt+←  Alt+→', 'Promote / demote the heading and its sub-headings'],
+      ['Drag a heading', 'Move its section somewhere else'],
     ],
   },
   {

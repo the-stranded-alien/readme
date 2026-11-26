@@ -22,15 +22,15 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
   FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
 import { canSyncToFolder, existsInFolder, folderPermission, readFolder, removeFromFolder, syncPath, writeToFolder } from './folderSync'
-import { analyzeDocument, applyQualityFix } from './documentAnalysis'
-import { FILE_DRAG_TYPE, fileLinkTitle, makeDuplicateFileName, relativeFileLink, resolveFileLink, MAX_FOLDER_DEPTH, cleanFileStem, folderDepth, splitFileName } from './fileUtils'
+import { analyzeDocument, applyQualityFix, extractHeadings } from './documentAnalysis'
+import { FILE_DRAG_TYPE, fileLinkTitle, fuzzyScore, makeDuplicateFileName, relativeFileLink, resolveFileLink, MAX_FOLDER_DEPTH, cleanFileStem, folderDepth, splitFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
 import FileTabBar from './components/FileTabBar'
 import ImageLightbox from './components/ImageLightbox'
@@ -53,7 +53,12 @@ import { sectionSlides, slideForHeading, splitSlideNotes, splitSlides } from './
 import { PRESENTATION_THEME_KEY, loadPresentationSettings, savePresentationSettings, splitOptions } from './presentationSettings'
 import PresentationSettings from './components/PresentationSettings'
 import PromptDialog from './components/PromptDialog'
+import TableEditorDialog from './components/TableEditorDialog'
+import { emptyTable, findTables, parseTable, tableAt, tableToMarkdown } from './tableModel'
+import { detectWikiLink, findBacklinks, remarkWikiLinks, renameWikiLinks, resolveWikiTarget, wikiLinksToMarkdown } from './wikiLinks'
 import ConfirmDialog from './components/ConfirmDialog'
+import ChoiceDialog from './components/ChoiceDialog'
+import { extractSection, insertSection, moveSection, moveSectionStep, shiftSection } from './outlineEdit'
 import GlobalTooltip from './components/GlobalTooltip'
 import { ALL_THEME_CLASSES, THEME_IDS, availableThemes, nextTheme, themeById, themeClasses } from './themes'
 import TemplatesDialog from './components/TemplatesDialog'
@@ -615,13 +620,25 @@ function MarkdownRenderer({ content, dark }) {
     },
 
     hr() { return <hr /> },
+    // Tables get an "Edit table" button (shown on hover); the app opens the table editor.
+    table(props) {
+      const rest = { ...props }
+      delete rest.node
+      delete rest.children
+      return (
+        <div className="table-wrap">
+          <table {...rest}>{props.children}</table>
+          <button type="button" className="table-edit no-print" data-edit-table="" aria-label="Edit table" data-tooltip="Edit table"><Table size={13} /></button>
+        </div>
+      )
+    },
     // Headings with hover-anchor links and a collapse toggle for their section
     ...SECTION_COMPONENTS,
   }), [dark])
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
+      remarkPlugins={[remarkGfm, remarkBreaks, remarkMath, remarkWikiLinks]}
       rehypePlugins={[rehypeKatex, rehypeMarks, rehypeCallouts, rehypeStandaloneImages, rehypeHeadingSections]}
       urlTransform={markdownUrlTransform}
       components={components}
@@ -727,8 +744,77 @@ function FilterMenu({ anchorRef, position, value, onPick, onClose }) {
   )
 }
 
-function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onToggleBookmark, onlyBookmarked = false, onOnlyBookmarked, widthToggle, onPresentFrom, onPresentBookmarked }) {
+const SECTION_DRAG_TYPE = 'application/x-readme-section'
+const OUTLINE_ACTIONS = [
+  { label: 'Move up', keys: 'Alt+↑', icon: ArrowUp, action: { action: 'step', direction: -1 } },
+  { label: 'Move down', keys: 'Alt+↓', icon: ArrowDown, action: { action: 'step', direction: 1 } },
+  { label: 'Promote heading', keys: 'Alt+←', icon: Outdent, action: { action: 'shift', delta: -1 } },
+  { label: 'Demote heading', keys: 'Alt+→', icon: Indent, action: { action: 'shift', delta: 1 } },
+  { label: 'Move to another file…', icon: SendTo, action: { action: 'toFile' } },
+  { label: 'Copy section', icon: Copy, action: { action: 'copy' } },
+]
+// The ⋯ menu of a heading in the Contents sidebar.
+function OutlineMenu({ menu, onClose, onAction }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    ref.current?.querySelector('button')?.focus()
+    const onDown = event => { if (!ref.current?.contains(event.target) && !event.target.closest?.('.toc-more')) onClose() }
+    const onKey = event => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose() }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const buttons = [...ref.current.querySelectorAll('button')]
+        const index = buttons.indexOf(document.activeElement)
+        buttons[(index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus()
+      }
+    }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [onClose])
+  return createPortal(
+    <div ref={ref} className="outline-menu anim-drop-in" role="menu" aria-label={`Section “${menu.text}”`} style={{ top: menu.y, left: Math.max(8, menu.x - 240) }}>
+      {OUTLINE_ACTIONS.map(item => (
+        <button key={item.label} type="button" role="menuitem" onClick={() => onAction(item.action)}>
+          <item.icon size={13} aria-hidden="true" /><span>{item.label}</span>{item.keys && <kbd>{item.keys}</kbd>}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  )
+}
+
+// "Linked from": documents with a [[wiki link]] or Markdown link to this one.
+function Backlinks({ items, onOpen }) {
+  if (!items.length) return null
+  return (
+    <section className="toc-backlinks" aria-label="Linked from">
+      <div className="toc-backlinks-head">
+        <Link2 size={10} aria-hidden="true" />
+        <span>Linked from</span>
+        <span className="toc-backlinks-count">{items.length}</span>
+      </div>
+      <ul>
+        {items.map(({ file, snippet }) => (
+          <li key={file.id}>
+            <button type="button" onClick={() => onOpen(file.id)} data-tip={`Open ${file.name}`}>
+              <strong>{file.name.split('/').pop().replace(/\.(md|markdown|txt)$/i, '')}</strong>
+              {snippet && <span>{snippet}</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onToggleBookmark, onlyBookmarked = false, onOnlyBookmarked, widthToggle, onPresentFrom, onPresentBookmarked, backlinks = [], onOpenBacklink, onOutline }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
+  // Reorganising: drag a heading (drop line before / after a row) or use its ⋯ menu / Alt+arrows.
+  const canReorganise = Boolean(onOutline) && !onlyBookmarked
+  const [dragFrom, setDragFrom] = useState(null)
+  const [dropAt, setDropAt] = useState(null) // { index, place }
+  const [outlineMenu, setOutlineMenu] = useState(null) // { index, x, y }
 
   const parentKeys = useMemo(() => {
     const keys = []
@@ -790,6 +876,7 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
         </div>
       </div>
       <EmptyState compact icon={Hash} title="No headings yet" text="Add # headings to build the contents." />
+      <Backlinks items={backlinks} onOpen={onOpenBacklink} />
     </div>
   )
 
@@ -871,13 +958,36 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
                 />
               ))}
               <div
-                className={`toc-item anim-slide-left ${isActive ? 'active' : ''}${isBookmarked ? ' is-bookmarked' : ''}${isRead ? ' is-read' : ''}`}
+                className={`toc-item anim-slide-left ${isActive ? 'active' : ''}${isBookmarked ? ' is-bookmarked' : ''}${isRead ? ' is-read' : ''}${dropAt?.index === i ? ` is-drop-${dropAt.place}` : ''}${dragFrom === i ? ' is-dragging' : ''}`}
                 style={{
                   paddingLeft: `${depth * 14 + (depth > 0 ? 18 : 6)}px`,
                   animationDelay: `${Math.min(i * 25, 160)}ms`,
                 }}
                 // The whole row is clickable with a mouse; keyboard users use the heading button below.
                 onClick={() => onNavigate(h.id)}
+                draggable={canReorganise}
+                onDragStart={canReorganise ? event => {
+                  event.dataTransfer.setData(SECTION_DRAG_TYPE, String(i))
+                  event.dataTransfer.effectAllowed = 'move'
+                  setDragFrom(i)
+                } : undefined}
+                onDragEnd={() => { setDragFrom(null); setDropAt(null) }}
+                onDragOver={canReorganise ? event => {
+                  if (!Array.from(event.dataTransfer.types).includes(SECTION_DRAG_TYPE)) return
+                  event.preventDefault()
+                  event.dataTransfer.dropEffect = 'move'
+                  const box = event.currentTarget.getBoundingClientRect()
+                  const place = event.clientY < box.top + box.height / 2 ? 'before' : 'after'
+                  if (dropAt?.index !== i || dropAt.place !== place) setDropAt({ index: i, place })
+                } : undefined}
+                onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) setDropAt(current => (current?.index === i ? null : current)) }}
+                onDrop={canReorganise ? event => {
+                  const from = Number(event.dataTransfer.getData(SECTION_DRAG_TYPE))
+                  event.preventDefault()
+                  const place = dropAt?.place ?? 'before'
+                  setDragFrom(null); setDropAt(null)
+                  if (Number.isInteger(from) && from !== i) onOutline({ action: 'move', ordinal: from, target: i, place, text: visibleItems.find(item => item.i === from)?.h.text })
+                } : undefined}
               >
                 {hasChildren ? (
                   <button
@@ -907,7 +1017,15 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
                 )}
                 <button type="button" className="toc-link truncate"
                   aria-current={isActive ? 'location' : undefined}
+                  aria-keyshortcuts={canReorganise ? 'Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight' : undefined}
                   onClick={event => { event.stopPropagation(); onNavigate(h.id) }}
+                  onKeyDown={canReorganise ? event => {
+                    if (!event.altKey || event.metaKey || event.ctrlKey) return
+                    const move = { ArrowUp: { action: 'step', direction: -1 }, ArrowDown: { action: 'step', direction: 1 }, ArrowLeft: { action: 'shift', delta: -1 }, ArrowRight: { action: 'shift', delta: 1 } }[event.key]
+                    if (!move) return
+                    event.preventDefault()
+                    onOutline({ ...move, ordinal: i, text: h.text, keepFocus: true })
+                  } : undefined}
                   style={{
                     fontSize: h.level === 1 ? 13 : h.level === 2 ? 12 : 11.5,
                     fontWeight: h.level === 1 ? 600 : h.level === 2 ? 500 : 400,
@@ -916,6 +1034,23 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
                   }}>
                   {h.text}
                 </button>
+                {canReorganise && (
+                  <button
+                    type="button"
+                    className="toc-more"
+                    onClick={event => {
+                      event.stopPropagation()
+                      const box = event.currentTarget.getBoundingClientRect()
+                      setOutlineMenu(current => (current?.index === i ? null : { index: i, text: h.text, x: box.right, y: box.bottom + 4 }))
+                    }}
+                    aria-haspopup="menu"
+                    aria-expanded={outlineMenu?.index === i}
+                    aria-label={`Section options for ${h.text}`}
+                    data-tip="Move, promote, demote or copy this section"
+                  >
+                    <MoreHorizontal size={12} />
+                  </button>
+                )}
                 {onPresentFrom && (
                   <button
                     type="button"
@@ -944,6 +1079,8 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
           )
         })}
       </nav>
+      {outlineMenu && <OutlineMenu menu={outlineMenu} onClose={() => setOutlineMenu(null)} onAction={action => { setOutlineMenu(null); onOutline({ ...action, ordinal: outlineMenu.index, text: outlineMenu.text }) }} />}
+      <Backlinks items={backlinks} onOpen={onOpenBacklink} />
     </div>
   )
 }
@@ -1041,7 +1178,7 @@ const FMT_ACTIONS = [
   { label: 'Task list', Icon: ListChecks,  mode: 'block',  before: '- [ ] ' },
   null,
   { label: 'Code block', Icon: SquareCode, mode: 'wrap',   before: '\n```\n', after: '\n```\n' },
-  { label: 'Table',     Icon: Table,       mode: 'insert', text: '\n| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| Cell | Cell | Cell |\n' },
+  { label: 'Table (insert or edit)', Icon: Table, mode: 'table' },
   { label: 'Divider',   Icon: Minus,       mode: 'insert', text: '\n---\n' },
 ]
 
@@ -1074,7 +1211,7 @@ function HighlightPicker({ position, onPick, onClose }) {
   )
 }
 
-function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme, aiHidden, aiBusy = false }) {
+function FormattingToolbar({ textareaRef, content, onChange, onOpenTable, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme, aiHidden, aiBusy = false }) {
   const [tplOpen, setTplOpen] = useState(false)
   const tplRef = useRef(null)
   const closeTemplates = useCallback(() => setTplOpen(false), [])
@@ -1083,6 +1220,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
   const [tipHandlers, tooltip] = useToolbarTooltip()
 
   const apply = useCallback((action) => {
+    if (action.mode === 'table') { onOpenTable?.(); return }
     const ta = textareaRef.current
     if (!ta) return
     const start = ta.selectionStart
@@ -1123,7 +1261,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
       ta.focus()
       ta.setSelectionRange(result.cursor[0], result.cursor[1])
     })
-  }, [content, onChange, textareaRef])
+  }, [content, onChange, textareaRef, onOpenTable])
 
   return (
     <div className="fmt-toolbar no-print justify-between" {...tipHandlers}>
@@ -2289,6 +2427,9 @@ function isExternalFileDrag(event) {
 }
 
 // Pinned tabs always sit before the others; order inside each group is kept.
+// Files ReadMe can open; Word and HTML ones are converted to Markdown.
+const IMPORTABLE_FILE_RE = /\.(md|markdown|txt|docx|html?)$/i
+const CONVERTIBLE_FILE_RE = /\.(docx|html?)$/i
 // At most this many files can be pinned (they stay first in the tab bar).
 const MAX_PINNED = 5
 function orderPinnedFirst(list) {
@@ -2643,6 +2784,12 @@ export default function App() {
   const [closedFiles, setClosedFiles] = useState([])
   const canReopen = closedFiles.length > 0
   const closedFileList = useMemo(() => closedFiles.map(entry => entry.file), [closedFiles])
+  // Every document (open and closed), for wiki links and "Linked from".
+  const linkableFiles = useMemo(() => [...files, ...closedFiles.map(entry => entry.file)], [files, closedFiles])
+  // Exports get [[wiki links]] as ordinary relative links (Markdown, PDF, Word, Confluence, slides).
+  const exportContent = useMemo(() => wikiLinksToMarkdown(content, fileName ?? '', linkableFiles), [content, fileName, linkableFiles])
+  const exportBody = useMemo(() => wikiLinksToMarkdown(markdownBody, fileName ?? '', linkableFiles), [markdownBody, fileName, linkableFiles])
+  const backlinks = useMemo(() => (activeFile ? findBacklinks(activeFile, linkableFiles) : []), [activeFile, linkableFiles])
   const [writingStats, setWritingStats] = useState({})
   const [presenting, setPresenting] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -2674,6 +2821,7 @@ export default function App() {
   const [appDialog, setAppDialog] = useState(null)
   const askConfirm = useCallback(options => new Promise(resolve => setAppDialog({ kind: 'confirm', options, resolve })), [])
   const askText = useCallback(options => new Promise(resolve => setAppDialog({ kind: 'text', options, resolve })), [])
+  const askChoice = useCallback(options => new Promise(resolve => setAppDialog({ kind: 'choice', options, resolve })), [])
   const settleAppDialog = useCallback(value => setAppDialog(current => { current?.resolve(value); return null }), [])
   const [treeCollapsed, setTreeCollapsed] = useState(() => { try { return JSON.parse(localStorage.getItem('readme-file-tree-collapsed') || '[]') } catch { return [] } })
   useEffect(() => {
@@ -2685,6 +2833,7 @@ export default function App() {
   const [findOpen, setFindOpen] = useState(false)
   const [findKey, setFindKey] = useState(0)
   const [slash, setSlash] = useState(null) // { from, to, query, rect, highlight }
+  const [wiki, setWiki] = useState(null) // [[link being typed: { from, query, file, heading, rect, highlight }
   const [failedImages, setFailedImages] = useState({ key: '', srcs: [] })
   const [editorPrefs, setEditorPrefs] = useState(loadEditorPrefs)
   useEffect(() => {
@@ -3340,11 +3489,23 @@ export default function App() {
 
   // ── Slash commands ───────────────────────────────────────────
   const slashDismissedRef = useRef(null)
+  const wikiDismissedRef = useRef(null)
   const refreshSlash = useCallback(() => {
     // Read after the editor has applied the input (CodeMirror updates asynchronously).
     requestAnimationFrame(() => {
       const ta = textareaRef.current
-      if (!ta || ta.selectionStart !== ta.selectionEnd) { setSlash(null); return }
+      if (!ta || ta.selectionStart !== ta.selectionEnd) { setSlash(null); setWiki(null); return }
+      // Typing a [[wiki link]]: suggest documents (and headings after #).
+      const link = detectWikiLink(ta.value, ta.selectionStart)
+      if (link && wikiDismissedRef.current !== link.from) {
+        const rect = editorCaretRect(ta, link.from)
+        if (rect) {
+          setSlash(null)
+          setWiki(prev => ({ ...link, rect, highlight: prev && prev.from === link.from && prev.query === link.query ? prev.highlight : 0 }))
+          return
+        }
+      }
+      setWiki(null)
       const found = detectSlash(ta.value, ta.selectionStart)
       if (!found || slashDismissedRef.current === found.from) { setSlash(null); return }
       const rect = editorCaretRect(ta, found.from)
@@ -3361,7 +3522,63 @@ export default function App() {
     setSlash(null)
   }, [slash])
   const slashCommands = useMemo(() => (slash ? filterSlashCommands(slash.query) : []), [slash])
+  const wikiSuggestions = useMemo(() => {
+    if (!wiki || !activeFile) return []
+    const base = name => name.split('/').pop().replace(/\.(md|markdown|txt)$/i, '')
+    const folder = name => name.split('/').slice(0, -1).join('/')
+    if (wiki.heading == null) {
+      const query = wiki.file.trim()
+      return linkableFiles
+        .filter(file => file.id !== activeFile.id)
+        .map(file => ({ file, score: query ? Math.max(fuzzyScore(query, base(file.name)), fuzzyScore(query, file.name) - 1) : 1 }))
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score || a.file.name.localeCompare(b.file.name))
+        .slice(0, 8)
+        .map(({ file }) => {
+          // The shortest name that still finds this file from here.
+          const short = resolveWikiTarget(base(file.name), activeFile.name, linkableFiles)?.id === file.id ? base(file.name) : file.name.replace(/\.(md|markdown|txt)$/i, '')
+          return { id: file.id, label: base(file.name), detail: folder(file.name), icon: 'FileText', insert: short }
+        })
+    }
+    const target = wiki.file.trim() ? resolveWikiTarget(wiki.file, activeFile.name, linkableFiles) : activeFile
+    if (!target) return []
+    const query = wiki.heading.trim().toLowerCase()
+    return extractHeadings(String(target.content || ''))
+      .filter(heading => !query || heading.text.toLowerCase().includes(query))
+      .slice(0, 8)
+      .map((heading, index) => ({ id: `${heading.id}-${index}`, label: heading.text, detail: `H${heading.level}`, icon: 'Hash', insert: `${wiki.file.trim()}#${heading.text}` }))
+  }, [wiki, activeFile, linkableFiles])
+  const insertWikiLink = useCallback(item => {
+    const ta = textareaRef.current
+    if (!ta || !wiki) return
+    const caret = ta.selectionStart
+    // Replace "[[query" (and a "]]" already after the caret) with the complete link.
+    const closing = ta.value.slice(caret, caret + 2) === ']]' ? 2 : 0
+    const text = `[[${item.insert}]]`
+    applyTextareaEdit(ta, { from: wiki.from, to: caret + closing, text, cursor: wiki.from + text.length })
+    setWiki(null)
+  }, [wiki])
   const handleEditorPaneKeyDown = useCallback(event => {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'v') plainPasteRef.current = true
+    if (wiki) {
+      const count = wikiSuggestions.length
+      if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && count) {
+        event.preventDefault(); event.stopPropagation()
+        setWiki(current => current && { ...current, highlight: (current.highlight + (event.key === 'ArrowDown' ? 1 : -1) + count) % count })
+        return
+      }
+      if ((event.key === 'Enter' || event.key === 'Tab') && count) {
+        event.preventDefault(); event.stopPropagation()
+        insertWikiLink(wikiSuggestions[Math.min(wiki.highlight, count - 1)])
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation()
+        wikiDismissedRef.current = wiki.from
+        setWiki(null)
+        return
+      }
+    }
     if (!slash) {
       if (event.key === '/') slashDismissedRef.current = null
       return
@@ -3382,7 +3599,7 @@ export default function App() {
       slashDismissedRef.current = slash.from
       setSlash(null)
     }
-  }, [slash, slashCommands, insertSlashCommand])
+  }, [slash, slashCommands, insertSlashCommand, wiki, wikiSuggestions, insertWikiLink])
 
   const handleFormatTables = useCallback(() => {
     const ta = textareaRef.current
@@ -3391,6 +3608,51 @@ export default function App() {
     if (ta) queueMicrotask(() => applyTextareaEdit(ta, { from: 0, to: content.length, text: formatted, cursor: Math.min(ta.selectionStart, formatted.length) }))
     else updateActiveContent(formatted)
   }, [content, updateActiveContent])
+
+  // ── Visual table editor ──
+  // Opens on the table at the caret (or the `index`-th table, from the preview's Edit button);
+  // with no table there it inserts a new one. Saving replaces the table as one undoable edit.
+  const [tableEdit, setTableEdit] = useState(null) // { mode, from, to, table }
+  const openTableEditor = useCallback(({ index } = {}) => {
+    if (!activeFile) return
+    const source = content
+    const ta = textareaRef.current
+    const caret = ta?.selectionStart ?? source.length
+    const target = index != null ? findTables(source)[index] : tableAt(source, caret)
+    if (target) setTableEdit({ mode: 'edit', from: target.from, to: target.to, table: parseTable(source.slice(target.from, target.to)) })
+    else setTableEdit({ mode: 'insert', from: caret, to: ta?.selectionEnd ?? caret, table: emptyTable() })
+  }, [activeFile, content])
+  const saveTable = useCallback(table => {
+    if (!tableEdit) return
+    const { mode, from, to } = tableEdit
+    let text = tableToMarkdown(table)
+    if (mode === 'insert') {
+      // A new table needs blank lines around it.
+      const before = content.slice(0, from), after = content.slice(to)
+      text = `${!before ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'}${text}${after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n'}`
+    }
+    setTableEdit(null)
+    const ta = textareaRef.current
+    if (ta && view !== 'preview') applyTextareaEdit(ta, { from, to, text, cursor: from + text.length })
+    else updateActiveContent(content.slice(0, from) + text + content.slice(to))
+    setToast({ message: mode === 'insert' ? 'Table inserted.' : 'Table updated.', tone: 'success' })
+  }, [tableEdit, content, view, updateActiveContent])
+
+  useEffect(() => {
+    const root = previewScrollRef.current
+    if (!root) return undefined
+    const onClick = event => {
+      const button = event.target.closest?.('[data-edit-table]')
+      if (!button || !root.contains(button)) return
+      event.preventDefault()
+      // Tables inside quotes aren't editable here (the source scan doesn't count them).
+      const tables = [...root.querySelectorAll('.table-wrap')].filter(wrap => !wrap.closest('blockquote'))
+      const index = tables.indexOf(button.closest('.table-wrap'))
+      if (index >= 0) openTableEditor({ index })
+    }
+    root.addEventListener('click', onClick)
+    return () => root.removeEventListener('click', onClick)
+  }, [openTableEditor])
 
   // Smart Enter (list / quote continuation), bracket auto-pairing and pair deletion.
   const handleEditorKeyDown = useCallback(event => {
@@ -3424,11 +3686,40 @@ export default function App() {
     const tail = textarea.value.endsWith('\n') ? '\n' : '\n\n'
     applyTextareaEdit(textarea, { from: end, to: end, text: `${tail}${definitions}\n`, cursor: caret })
   }, [])
+  // Paste: images are embedded; rich text (Word, Google Docs, Confluence, web pages) and
+  // spreadsheet cells become Markdown. The plain text goes in first and the Markdown replaces
+  // it as a second edit, so one Cmd/Ctrl+Z gives the plain text back. Cmd/Ctrl+Shift+V = plain.
+  const plainPasteRef = useRef(false)
   const handleEditorPaste = useCallback(event => {
     const images = Array.from(event.clipboardData?.files || []).filter(file => file.type.startsWith('image/'))
-    if (!images.length) return
+    if (images.length) {
+      event.preventDefault()
+      insertImages(images, event.currentTarget)
+      return
+    }
+    const plainOnly = plainPasteRef.current
+    plainPasteRef.current = false
+    if (plainOnly) return
+    const html = event.clipboardData?.getData('text/html') || ''
+    const plain = event.clipboardData?.getData('text/plain') || ''
+    const tabular = !html && /\t/.test(plain) && plain.includes('\n')
+    if (!html && !tabular) return
+    const ta = event.currentTarget
     event.preventDefault()
-    insertImages(images, event.currentTarget)
+    const from = ta.selectionStart
+    applyTextareaEdit(ta, { from, to: ta.selectionEnd, text: plain, cursor: from + plain.length })
+    import('./htmlToMarkdown').then(({ looksRich, htmlToMarkdown, parseDelimited, rowsToMarkdownTable }) => {
+      let markdown = ''
+      if (html && looksRich(html)) markdown = htmlToMarkdown(html)
+      else {
+        const rows = parseDelimited(plain)
+        if (rows) markdown = rowsToMarkdownTable(rows)
+      }
+      // Only replace if the pasted plain text is still where we put it.
+      if (!markdown || markdown === plain || ta.value.slice(from, from + plain.length) !== plain) return
+      applyTextareaEdit(ta, { from, to: from + plain.length, text: markdown, cursor: from + markdown.length })
+      setToast({ message: `Pasted as Markdown. Undo (${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'}Z) to keep the plain text instead.`, tone: 'success', duration: 5000 })
+    }).catch(error => console.warn('Could not convert the pasted text', error))
   }, [insertImages])
   const handleEditorDrop = useCallback(event => {
     // A file dragged from the Files panel: insert a relative link to it where it was dropped.
@@ -3550,6 +3841,38 @@ export default function App() {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
       const link = event.target.closest?.('a[href]')
       if (!link || !previewScrollRef.current?.contains(link) || !activeFile) return
+      // [[Wiki links]]: open the document (and heading), or offer to create a missing one.
+      if (link.hasAttribute('data-wiki')) {
+        event.preventDefault()
+        const wikiTarget = link.getAttribute('data-wiki')
+        const heading = link.getAttribute('data-wiki-heading')
+        const anchor = heading ? headingSlug(heading) : null
+        if (!wikiTarget) {
+          if (anchor) previewScrollRef.current?.querySelector(`[id="${CSS.escape(anchor)}"]`)?.scrollIntoView({ block: 'start', behavior: scrollBehavior() })
+          return
+        }
+        const found = resolveWikiTarget(wikiTarget, activeFile.name, linkableFiles)
+        if (found) {
+          if (found.id === activeFile.id) {
+            if (anchor) previewScrollRef.current?.querySelector(`[id="${CSS.escape(anchor)}"]`)?.scrollIntoView({ block: 'start', behavior: scrollBehavior() })
+            return
+          }
+          pendingLinkAnchorRef.current = anchor
+          if (files.some(file => file.id === found.id)) handleSelectFile(found.id)
+          else handleReopenFile(found.id)
+          return
+        }
+        const folder = activeFile.name.split('/').slice(0, -1).join('/')
+        const name = `${wikiTarget.includes('/') ? wikiTarget.replace(/^\/+/, '') : `${folder ? `${folder}/` : ''}${wikiTarget}`}`.replace(/\.(md|markdown|txt)$/i, '')
+        askConfirm({ title: `Create “${wikiTarget}”?`, message: `There’s no document called “${wikiTarget}” yet. Create ${name}.md and open it?`, confirmLabel: 'Create document', icon: FilePlus }).then(ok => {
+          if (!ok) return
+          const id = createFileId()
+          markWorkspaceEdit()
+          setFiles(prev => [...prev, { id, name: `${name}.md`, content: `# ${name.split('/').pop()}\n\n` }])
+          setActiveFileId(id)
+        })
+        return
+      }
       const target = resolveFileLink(activeFile.name, link.getAttribute('href'))
       if (!target) return
       const found = files.find(file => file.name === target.name) ?? closedFiles.find(entry => entry.file.name === target.name)?.file
@@ -3561,7 +3884,18 @@ export default function App() {
     }
     document.addEventListener('click', onClick)
     return () => document.removeEventListener('click', onClick)
-  }, [activeFile, files, closedFiles, handleSelectFile, handleReopenFile])
+  }, [activeFile, files, closedFiles, linkableFiles, handleSelectFile, handleReopenFile, askConfirm, markWorkspaceEdit])
+  // Wiki links to documents that don't exist yet look different (and say so on hover).
+  useEffect(() => {
+    const root = previewScrollRef.current
+    if (!root || !activeFile) return
+    root.querySelectorAll('a[data-wiki]').forEach(link => {
+      const wikiTarget = link.getAttribute('data-wiki')
+      const missing = Boolean(wikiTarget) && !resolveWikiTarget(wikiTarget, activeFile.name, linkableFiles)
+      link.classList.toggle('is-missing', missing)
+      link.setAttribute('data-tip', missing ? `No document called “${wikiTarget}” yet — click to create it` : `Open ${wikiTarget || 'heading'}${link.getAttribute('data-wiki-heading') ? ` › ${link.getAttribute('data-wiki-heading')}` : ''}`)
+    })
+  })
   useEffect(() => {
     const anchorId = pendingLinkAnchorRef.current
     if (!anchorId) return undefined
@@ -3607,6 +3941,80 @@ export default function App() {
       return null
     }
   }, [])
+
+  // ── Reorganising the outline (Contents sidebar) ──
+  // Replaces the document with `next` as one minimal, undoable edit in the editor.
+  const replaceDocument = useCallback(next => {
+    const ta = textareaRef.current
+    if (!ta || view === 'preview') { updateActiveContent(next); return }
+    const current = ta.value
+    let start = 0
+    while (start < current.length && start < next.length && current[start] === next[start]) start += 1
+    let end = 0
+    while (end < current.length - start && end < next.length - start && current[current.length - 1 - end] === next[next.length - 1 - end]) end += 1
+    applyTextareaEdit(ta, { from: start, to: current.length - end, text: next.slice(start, next.length - end), cursor: start })
+  }, [view, updateActiveContent])
+  const handleOutline = useCallback(async ({ action, ordinal, target, place, direction, delta, text, keepFocus }) => {
+    if (!activeFile) return
+    let next = null
+    if (action === 'move') next = moveSection(content, ordinal, target, place)
+    else if (action === 'step') next = moveSectionStep(content, ordinal, direction)
+    else if (action === 'shift') next = shiftSection(content, ordinal, delta)
+    else if (action === 'copy') {
+      const section = extractSection(content, ordinal)
+      if (!section) return
+      try { await navigator.clipboard.writeText(section.text); setToast({ message: `Copied “${text}”.`, tone: 'success' }) } catch { setToast({ message: 'Could not access the clipboard.', tone: 'warning' }) }
+      return
+    } else if (action === 'toFile') {
+      const others = linkableFiles.filter(file => file.id !== activeFile.id)
+      if (!others.length) { setToast({ message: 'Open or create another file first.', tone: 'warning' }); return }
+      const choice = await askChoice({
+        title: 'Move section to another file', icon: SendTo, confirmLabel: 'Move section',
+        message: `“${text}” and everything under it moves out of this file. You can undo it right after.`,
+        fields: [
+          { id: 'file', label: 'File', options: others.map(file => ({ value: file.id, label: file.name })) },
+          { id: 'where', label: 'Position', options: [{ value: 'end', label: 'At the end' }, { value: 'start', label: 'At the start (after the title)' }] },
+        ],
+      })
+      const section = choice && extractSection(content, ordinal)
+      const destination = choice && others.find(file => file.id === choice.file)
+      if (!section || !destination) return
+      await takeSnapshot(activeFile.id, content, 'Before moving a section')
+      const previousTarget = destination.content
+      const setTargetContent = value => {
+        markWorkspaceEdit()
+        setFiles(prev => prev.map(f => (f.id === destination.id ? { ...f, content: value } : f)))
+        setClosedFiles(prev => prev.map(entry => (entry.file.id === destination.id ? { ...entry, file: { ...entry.file, content: value } } : entry)))
+      }
+      const original = content
+      setTargetContent(insertSection(previousTarget, section.text, choice.where))
+      replaceDocument(section.rest)
+      setToast({
+        message: `Moved “${text}” to ${destination.name}.`, tone: 'success', duration: 8000,
+        action: { label: 'Undo', run: () => { setTargetContent(previousTarget); replaceDocument(original) } },
+      })
+      return
+    }
+    if (!next) {
+      setToast({ message: action === 'shift' ? 'Headings go from level 1 to 6 — this one can’t go further.' : 'That section can’t move there.', tone: 'warning' })
+      return
+    }
+    replaceDocument(next)
+    // Keyboard moves: keep focus on the moved heading. The Contents list is rebuilt a moment later
+    // (the document is analysed in the background), so keep focusing it until the list settles.
+    if (keepFocus) {
+      const until = Date.now() + 1200
+      const refocus = () => {
+        const active = document.activeElement
+        if (!(active?.classList.contains('toc-link') && active.isConnected && active.textContent === text)) {
+          [...document.querySelectorAll('.toc-panel .toc-link')].find(link => link.textContent === text)?.focus()
+        }
+        if (Date.now() < until) setTimeout(refocus, 60)
+      }
+      requestAnimationFrame(refocus)
+    }
+  }, [activeFile, content, linkableFiles, askChoice, takeSnapshot, markWorkspaceEdit, replaceDocument])
+
 
   // Clear editor: undoable (⌘Z), kept in version history, and the toast offers Undo.
   const handleClearEditor = useCallback(() => {
@@ -4265,31 +4673,59 @@ export default function App() {
     setMobileTab('preview')
   }, [view])
 
-  const handleRenameFile = useCallback((id, rawName) => {
+  const handleRenameFile = useCallback(async (id, rawName) => {
     const trimmed = rawName.trim()
-    if (!trimmed) return
+    const renamed = files.find(f => f.id === id)
+    if (!trimmed || !renamed || renamed.name === trimmed) return
+    // [[Wiki links]] to the old name in other documents: offer to update them.
+    const changes = renameWikiLinks(linkableFiles, renamed.name, trimmed)
     markWorkspaceEdit()
     setFiles(prev => prev.map(f => (f.id === id ? { ...f, name: trimmed } : f)))
-  }, [markWorkspaceEdit])
+    if (!changes.length) return
+    const ok = await askConfirm({
+      title: 'Update links?', confirmLabel: `Update ${changes.length} document${changes.length === 1 ? '' : 's'}`, cancelLabel: 'Leave them', icon: Link2,
+      message: `${changes.length} other document${changes.length === 1 ? ' links' : 's link'} to “${renamed.name}” with [[wiki links]]. Update ${changes.length === 1 ? 'it' : 'them'} to the new name?`,
+      details: changes.slice(0, 5).map(change => change.file.name).concat(changes.length > 5 ? [`and ${changes.length - 5} more`] : []),
+    })
+    if (!ok) return
+    const before = new Map(changes.map(change => [change.file.id, change.file.content]))
+    const after = new Map(changes.map(change => [change.file.id, change.content]))
+    const apply = map => {
+      markWorkspaceEdit()
+      setFiles(prev => prev.map(f => (map.has(f.id) ? { ...f, content: map.get(f.id) } : f)))
+      setClosedFiles(prev => prev.map(entry => (map.has(entry.file.id) ? { ...entry, file: { ...entry.file, content: map.get(entry.file.id) } } : entry)))
+    }
+    apply(after)
+    setToast({ message: `Updated links in ${changes.length} document${changes.length === 1 ? '' : 's'}.`, tone: 'success', duration: 8000, action: { label: 'Undo', run: () => apply(before) } })
+  }, [files, linkableFiles, markWorkspaceEdit, askConfirm])
 
   const handleFiles = useCallback(async (fileList) => {
     const incoming = Array.from(fileList || [])
     if (!incoming.length) return
-    const valid = incoming.filter(f => /\.(md|markdown|txt)$/i.test(f.name))
+    const valid = incoming.filter(f => IMPORTABLE_FILE_RE.test(f.name))
     const invalidCount = incoming.length - valid.length
     if (!valid.length) {
-      setToast({ message: 'Please upload .md, .markdown or .txt files.', tone: 'warning' })
+      setToast({ message: 'Please upload Markdown (.md), text, Word (.docx) or HTML files.', tone: 'warning' })
       return
     }
     try {
+      let converted = 0
       const loaded = await Promise.all(
         valid.map(async f => {
           const id = createFileId()
+          // Word and HTML files become new Markdown files (converted on this device).
+          if (CONVERTIBLE_FILE_RE.test(f.name)) {
+            const { docxToMarkdown, htmlToMarkdown } = await import('./htmlToMarkdown')
+            const markdown = /\.docx$/i.test(f.name) ? await docxToMarkdown(await f.arrayBuffer()) : htmlToMarkdown(await readFileAsText(f))
+            converted += 1
+            return { id, name: (f.readmePath || f.name).replace(/\.(docx|html?)$/i, '.md'), content: markdown }
+          }
           if (f.readmeHandle) diskHandlesRef.current.set(id, f.readmeHandle)
           const text = await readFileAsText(f)
           return { id, name: f.readmePath || f.name, content: text, ...(f.readmeHandle ? { diskHandle: f.readmeHandle, diskSavedContent: text } : {}) }
         })
       )
+      if (converted) setToast({ message: `Converted ${converted} file${converted === 1 ? '' : 's'} from Word / HTML to Markdown.`, tone: 'success' })
       markWorkspaceEdit()
       setFiles(prev => [...prev, ...loaded])
       setActiveFileId(loaded[0].id)
@@ -4297,7 +4733,7 @@ export default function App() {
       setShowScrollTop(false)
       setMobileTab('preview')
       if (invalidCount > 0) {
-        setToast({ message: `${invalidCount} unsupported file${invalidCount === 1 ? '' : 's'} skipped. Only .md, .markdown and .txt files are supported.`, tone: 'warning', duration: 6000 })
+        setToast({ message: `${invalidCount} unsupported file${invalidCount === 1 ? '' : 's'} skipped. ReadMe opens Markdown, text, Word (.docx) and HTML files.`, tone: 'warning', duration: 6000 })
       }
     } catch (err) {
       console.error('Failed to read uploaded file(s)', err)
@@ -4317,9 +4753,10 @@ export default function App() {
     const walk = async (handle, prefix = '') => {
       if (!handle) return
       if (handle.kind === 'file') {
-        if (/\.(md|markdown|txt)$/i.test(handle.name)) {
+        if (IMPORTABLE_FILE_RE.test(handle.name)) {
           const file = await handle.getFile()
-          collected.push(Object.assign(file, { readmeHandle: handle, readmePath: `${prefix}${handle.name}` }))
+          // Converted files don't keep a link to the original (they're new Markdown files).
+          collected.push(Object.assign(file, CONVERTIBLE_FILE_RE.test(handle.name) ? { readmePath: `${prefix}${handle.name}` } : { readmeHandle: handle, readmePath: `${prefix}${handle.name}` }))
         }
       } else if (handle.kind === 'directory') {
         for await (const child of handle.values()) await walk(child, `${prefix}${handle.name}/`)
@@ -4342,7 +4779,7 @@ export default function App() {
   const handleOpenDiskFiles = useCallback(async () => {
     if (!window.showOpenFilePicker) { fileInputRef.current?.click(); return }
     try {
-      const handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt'] } }] })
+      const handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt'] } }, { description: 'Word and HTML (converted to Markdown)', accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'], 'text/html': ['.html', '.htm'] } }] })
       const loaded = await Promise.all(handles.map(async handle => {
         const file = await handle.getFile()
         const id = createFileId()
@@ -4722,8 +5159,8 @@ export default function App() {
 
   const handleImportUrl = useCallback(async () => {
     const url = await askText({
-      title: 'Import from a URL', icon: Globe, label: 'Markdown file URL', placeholder: 'https://example.com/README.md', confirmLabel: 'Import',
-      description: 'ReadMe downloads the file in your browser.', hint: 'The server must allow cross-origin (CORS) access.',
+      title: 'Import from a URL', icon: Globe, label: 'Markdown file or web page URL', placeholder: 'https://example.com/README.md', confirmLabel: 'Import',
+      description: 'ReadMe downloads it in your browser. Web pages are converted to Markdown.', hint: 'The server must allow cross-origin (CORS) access.',
       validate: value => { try { return ['http:', 'https:'].includes(new URL(value.trim()).protocol) ? null : 'Use an http or https URL.' } catch { return value.trim() ? 'Enter a full URL, starting with https://' : 'Paste a URL.' } },
     })
     if (!url) return
@@ -4732,8 +5169,14 @@ export default function App() {
       if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Use an http or https URL')
       const response = await fetch(parsed.href)
       if (!response.ok) throw new Error(`Request failed (${response.status})`)
-      const markdown = await response.text()
-      const name = decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() || 'remote-document.md')
+      let markdown = await response.text()
+      let name = decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() || 'remote-document.md')
+      // A web page (not a Markdown file): keep its main content, converted to Markdown.
+      if (/text\/html/i.test(response.headers?.get?.('content-type') || '') || /^\s*<(!doctype html|html)/i.test(markdown)) {
+        const { webPageToMarkdown } = await import('./htmlToMarkdown')
+        markdown = webPageToMarkdown(markdown, parsed.href)
+        name = name.replace(/\.html?$/i, '') || parsed.hostname
+      }
       const id = createFileId()
       markWorkspaceEdit()
       setFiles(prev => [...prev, { id, name: /\.(md|markdown|txt)$/i.test(name) ? name : `${name}.md`, content: markdown }])
@@ -4866,12 +5309,12 @@ export default function App() {
     const baseName = (fileName || 'document').replace(/\.[^.]+$/, '') || 'document'
     try {
       const { exportMarkdownDocx } = await import('./docxExport')
-      await exportMarkdownDocx(markdownBody, { title: headings[0]?.text || baseName, fileName: `${baseName}.docx`, meta: frontmatterMeta })
+      await exportMarkdownDocx(exportBody, { title: headings[0]?.text || baseName, fileName: `${baseName}.docx`, meta: frontmatterMeta })
     } catch (error) {
       console.error('Could not generate the Word document', error)
       setToast({ message: 'Could not create the Word document. Please try again.', tone: 'warning' })
     }
-  }, [activeFile, markdownBody, fileName, headings, frontmatterMeta])
+  }, [activeFile, markdownBody, exportBody, fileName, headings, frontmatterMeta])
   const openPdfDialog = useCallback(() => { if (activeFile && markdownBody.trim()) setPdfDialogOpen(true) }, [activeFile, markdownBody])
   const handleExportPdf = useCallback(async (options) => {
     if (!activeFile || !markdownBody.trim() || pdfExporting) return
@@ -4879,7 +5322,7 @@ export default function App() {
     setPdfExporting(true)
     try {
       const { exportMarkdownPdf } = await import('./pdfExport')
-      await exportMarkdownPdf(markdownBody, {
+      await exportMarkdownPdf(exportBody, {
         title: headings[0]?.text || baseName,
         fileName: `${baseName}.pdf`,
         meta: frontmatterMeta,
@@ -4892,7 +5335,7 @@ export default function App() {
     } finally {
       setPdfExporting(false)
     }
-  }, [activeFile, markdownBody, fileName, headings, frontmatterMeta, pdfExporting])
+  }, [activeFile, markdownBody, exportBody, fileName, headings, frontmatterMeta, pdfExporting])
 
   // Presentation as a landscape PDF or a PowerPoint file. `deck` ([{ body, notes }]) is the deck
   // being presented (e.g. bookmarked sections); without it, the whole file split like Present.
@@ -4900,7 +5343,7 @@ export default function App() {
   const handleExportSlides = useCallback(async (format, deck) => {
     if (!activeFile || !markdownBody.trim() || slidesExporting) return
     const baseName = (fileName || 'presentation').replace(/\.[^.]+$/, '') || 'presentation'
-    const slides = deck ?? splitSlides(markdownBody, splitOptions(presentationSettings)).map(splitSlideNotes)
+    const slides = deck ?? splitSlides(exportBody, splitOptions(presentationSettings)).map(splitSlideNotes)
     // The slide frame uses the current theme's accent, as in presentation mode.
     const probe = document.createElement('canvas').getContext('2d')
     probe.fillStyle = '#6d28d9'
@@ -4922,7 +5365,7 @@ export default function App() {
     } finally {
       setSlidesExporting(null)
     }
-  }, [activeFile, markdownBody, fileName, headings, presentationSettings, slidesExporting])
+  }, [activeFile, markdownBody, exportBody, fileName, headings, presentationSettings, slidesExporting])
 
   const handleCopyAll = useCallback(async () => {
     try {
@@ -4950,10 +5393,10 @@ export default function App() {
   const handleCopyConfluence = useCallback(async () => {
     try {
       const { toConfluenceStorage, toConfluenceHtml } = await import('./confluenceExport')
-      const storage = toConfluenceStorage(content)
+      const storage = toConfluenceStorage(exportContent)
       if (navigator.clipboard?.write && window.ClipboardItem) {
         await navigator.clipboard.write([new ClipboardItem({
-          'text/html': new Blob([toConfluenceHtml(content)], { type: 'text/html' }),
+          'text/html': new Blob([toConfluenceHtml(exportContent)], { type: 'text/html' }),
           'text/plain': new Blob([storage], { type: 'text/plain' }),
         })])
       } else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(storage)
@@ -4965,17 +5408,17 @@ export default function App() {
       console.error('Copy failed', error)
       setToast({ message: 'Could not access the clipboard. Check browser clipboard permissions.', tone: 'warning' })
     }
-  }, [content])
+  }, [exportContent])
   const handleExportConfluence = useCallback(async () => {
     const { toConfluenceStorage } = await import('./confluenceExport')
     const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
     const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(new Blob([toConfluenceStorage(content)], { type: 'application/xml' })),
+      href: URL.createObjectURL(new Blob([toConfluenceStorage(exportContent)], { type: 'application/xml' })),
       download: `${docTitle}.confluence.xml`,
     })
     a.click()
     URL.revokeObjectURL(a.href)
-  }, [content, fileName, headings])
+  }, [exportContent, fileName, headings])
 
   const handleCreateFromTemplate = useCallback((tpl) => {
     markWorkspaceEdit()
@@ -5006,7 +5449,7 @@ export default function App() {
     if (!article) return
     const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
     const clone = article.cloneNode(true)
-    clone.querySelectorAll('.heading-anchor, .section-toggle, .heading-tools, .section-summary, .code-actions, .book-folio-footer, .focus-section-bar, .summary-card').forEach(el => el.remove())
+    clone.querySelectorAll('.heading-anchor, .section-toggle, .heading-tools, .section-summary, .code-actions, .book-folio-footer, .focus-section-bar, .summary-card, .table-edit').forEach(el => el.remove())
     // Collapsed / focus-hidden sections are part of the document: export everything.
     clone.querySelectorAll('[data-collapsed]').forEach(el => el.removeAttribute('data-collapsed'))
     const fontCss = await embeddedFontCss(activeFont.family)
@@ -5159,6 +5602,7 @@ ${fontCss}
     ...(activeFile ? [
       { id: 'dl-md', label: 'Download Markdown (.md)', hint: 'Export', icon: Download, run: handleDownload },
       { id: 'dl-html', label: 'Export Standalone HTML (.html)', hint: 'Export', icon: FileCode2, run: handleExportHtml },
+      { id: 'table-editor', label: 'Insert or edit table', hint: 'Edit', icon: Table, run: () => openTableEditor() },
       { id: 'dl-slides-pdf', label: 'Download presentation as PDF (landscape)', hint: 'Export', icon: Presentation, run: () => handleExportSlides('pdf') },
       { id: 'dl-slides-pptx', label: 'Download presentation as PowerPoint (.pptx)', hint: 'Export', icon: Presentation, run: () => handleExportSlides('pptx') },
       { id: 'dl-confluence', label: 'Export for Confluence (storage format XHTML)', hint: 'Export', icon: Code2, run: handleExportConfluence },
@@ -5173,7 +5617,7 @@ ${fontCss}
   ], [
     handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
-    handleExportHtml, handleExportConfluence, handleCopyConfluence, handleExportSlides, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
+    handleExportHtml, handleExportConfluence, handleCopyConfluence, handleExportSlides, openTableEditor, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
     openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes, activeFont.label, cycleDocFont, handleSaveInPlace, isFullscreen, keepAwake, toggleFullscreen, openPresentation,
   ])
@@ -5264,7 +5708,7 @@ ${fontCss}
           </div>
 
           <div className="flex items-center gap-1 justify-self-end shrink-0">
-            <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt" multiple className="hidden"
+            <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt,.docx,.html,.htm" multiple className="hidden"
               onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
             <NewFileButton onNew={handleNewFile} onTemplate={handleCreateFromTemplate} templates={allTemplates} onManageTemplates={() => setTemplatesOpen(true)} onWriteReadme={() => setWriteReadmeOpen(true)} />
             <UploadMenuButton onOpen={handleOpenDiskFiles} onImportUrl={handleImportUrl} />
@@ -5441,6 +5885,7 @@ ${fontCss}
               {/* Formatting toolbar */}
               <FormattingToolbar
                 textareaRef={textareaRef}
+                onOpenTable={() => openTableEditor()}
                 templates={allTemplates}
                 onManageTemplates={() => setTemplatesOpen(true)}
                 onFindReplace={() => { setFindOpen(true); setFindKey(k => k + 1) }}
@@ -5585,7 +6030,7 @@ ${fontCss}
                 onInput={refreshSlash}
                 onKeyUp={event => { if (!['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key) || !slash) refreshSlash() }}
                 onMouseUp={refreshSlash}
-                onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setSlash(null) }}
+                onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) { setSlash(null); setWiki(null) } }}
               >
               {/* Editor: CodeMirror (opt-in) or a plain textarea */}
               {editorPrefs.engine === 'code' ? (
@@ -5625,6 +6070,20 @@ ${fontCss}
               </div>
               )}
               </div>
+              {wiki && (
+                <SlashMenu
+                  commands={wikiSuggestions}
+                  highlight={Math.min(wiki.highlight, Math.max(0, wikiSuggestions.length - 1))}
+                  rect={wiki.rect}
+                  query={wiki.query}
+                  label="Link to a document"
+                  title={wiki.heading == null ? (wiki.file ? `Link to “${wiki.file}”` : 'Link to a document') : 'Link to a heading'}
+                  emptyText={wiki.heading == null ? 'No matching documents — finish typing to link to a new one' : 'No matching headings'}
+                  hint="↑↓ to choose · Enter to link · Esc to dismiss"
+                  onPick={insertWikiLink}
+                  onHover={index => setWiki(current => current && { ...current, highlight: index })}
+                />
+              )}
               {slash && (
                 <SlashMenu
                   commands={slashCommands}
@@ -6038,6 +6497,9 @@ ${fontCss}
                       <TocSidebar headings={headings} activeId={activeHeadingId} onNavigate={navigateToHeading}
                         bookmarks={activeBookmarkIds} onToggleBookmark={toggleSectionBookmark}
                         onlyBookmarked={showOnlyBookmarked} onOnlyBookmarked={setOnlyBookmarked}
+                        backlinks={backlinks}
+                        onOutline={markdownBody.trim() ? handleOutline : undefined}
+                        onOpenBacklink={id => (files.some(file => file.id === id) ? handleSelectFile(id) : handleReopenFile(id))}
                         onPresentFrom={markdownBody.trim() ? ordinal => openPresentation({ startAt: slideForHeading(markdownBody, ordinal, splitOptions(presentationSettings)) }) : undefined}
                         onPresentBookmarked={markdownBody.trim() ? () => {
                           const ordinals = headings.flatMap((heading, index) => (activeBookmarkIds.has(heading.id) ? [index] : []))
@@ -6342,8 +6804,15 @@ ${fontCss}
           onCancel={() => setFolderPrompt(null)}
         />
       )}
+      {tableEdit && (
+        <TableEditorDialog key={`${tableEdit.mode}-${tableEdit.from}`} initial={tableEdit.table} mode={tableEdit.mode}
+          onSave={saveTable} onCancel={() => setTableEdit(null)} />
+      )}
       {appDialog?.kind === 'confirm' && (
         <ConfirmDialog {...appDialog.options} onConfirm={() => settleAppDialog(true)} onCancel={() => settleAppDialog(false)} />
+      )}
+      {appDialog?.kind === 'choice' && (
+        <ChoiceDialog {...appDialog.options} onSubmit={values => settleAppDialog(values)} onCancel={() => settleAppDialog(null)} />
       )}
       {appDialog?.kind === 'text' && (
         <PromptDialog {...appDialog.options} onSubmit={value => settleAppDialog(value)} onCancel={() => settleAppDialog(null)} />
@@ -6389,7 +6858,7 @@ ${fontCss}
 
       {presenting && activeFile && (
         <PresentationMode
-          markdown={markdownBody}
+          markdown={exportBody}
           startAt={presenting.startAt ?? 0}
           slides={presenting.slides}
           label={presenting.label}

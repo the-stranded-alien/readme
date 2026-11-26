@@ -1,13 +1,15 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  CalendarDays, Clock, Heading1, Heading2, Heading3, Image, Info, Lightbulb, Link, List, ListChecks, ListOrdered, Minus,
+  CalendarDays, Clock, FileText, Hash, Heading1, Heading2, Heading3, Image, Info, Lightbulb, Link, List, ListChecks, ListOrdered, Minus,
   Quote, Sigma, SquareCode, Superscript, Table, TriangleAlert, Workflow,
 } from '../icons'
 
-const ICONS = { CalendarDays, Clock, Heading1, Heading2, Heading3, Image, Info, Lightbulb, Link, List, ListChecks, ListOrdered, Minus, Quote, Sigma, SquareCode, Superscript, Table, TriangleAlert, Workflow }
+const ICONS = { CalendarDays, Clock, FileText, Hash, Heading1, Heading2, Heading3, Image, Info, Lightbulb, Link, List, ListChecks, ListOrdered, Minus, Quote, Sigma, SquareCode, Superscript, Table, TriangleAlert, Workflow }
 
-export default function SlashMenu({ commands, highlight, rect, query, onPick, onHover }) {
+// Also used for [[wiki link]] suggestions: `title`, `emptyText`, `label` and `hint` override the
+// texts, and an item's optional `detail` shows muted after its label.
+export default function SlashMenu({ commands, highlight, rect, query, onPick, onHover, title, emptyText = 'No matching blocks', label = 'Insert block', hint = '↑↓ to choose · Enter to insert · Esc to dismiss' }) {
   const ref = useRef(null)
 
   // Place below the caret (or above when there's no room), inside the viewport.
@@ -25,10 +27,10 @@ export default function SlashMenu({ commands, highlight, rect, query, onPick, on
   }, [highlight])
 
   return createPortal(
-    <div ref={ref} className="slash-menu anim-drop-in" role="listbox" aria-label="Insert block" style={{ left: -9999, top: 0 }}
+    <div ref={ref} className="slash-menu anim-drop-in" role="listbox" aria-label={label} style={{ left: -9999, top: 0 }}
       onMouseDown={event => event.preventDefault()}>
-      <div className="slash-menu-heading">{query ? `Insert “${query}”` : 'Insert'}</div>
-      {commands.length === 0 && <div className="slash-menu-empty">No matching blocks</div>}
+      <div className="slash-menu-heading">{title ?? (query ? `Insert “${query}”` : 'Insert')}</div>
+      {commands.length === 0 && <div className="slash-menu-empty">{emptyText}</div>}
       {commands.map((command, index) => {
         const Icon = ICONS[command.icon] ?? Minus
         return (
@@ -37,10 +39,11 @@ export default function SlashMenu({ commands, highlight, rect, query, onPick, on
             onMouseEnter={() => onHover(index)} onClick={() => onPick(command)}>
             <span className="slash-menu-icon"><Icon size={14} /></span>
             <span>{command.label}</span>
+            {command.detail && <span className="slash-menu-detail">{command.detail}</span>}
           </div>
         )
       })}
-      <div className="slash-menu-hint">↑↓ to choose · Enter to insert · Esc to dismiss</div>
+      <div className="slash-menu-hint">{hint}</div>
     </div>,
     document.body,
   )

@@ -29,6 +29,7 @@
     "docx": "^9.6.1",
     "jszip": "^3.10.2",
     "katex": "^0.19.1",
+    "mammoth": "^1.13.0",
     "mathjax-full": "^3.2.2",
     "mermaid": "^12.3.0",
     "oneko": "^0.6.1",
@@ -44,6 +45,7 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
+    "turndown": "^7.2.5",
     "unified": "^11.0.5"
   },
   "devDependencies": {
