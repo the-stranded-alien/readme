@@ -275,11 +275,33 @@ function createConverter({ images, footnoteOrder, contentWidth, toc, rendered })
   return { blocks }
 }
 
+// createImageBitmap can't decode SVG, so SVG images are drawn through an <img>, at a higher
+// resolution so they stay sharp; the reported size is the image's own (for layout).
+async function svgImage(blob) {
+  const objectUrl = URL.createObjectURL(blob)
+  try {
+    const image = new Image()
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = objectUrl })
+    const width = image.naturalWidth || 300
+    const height = image.naturalHeight || 150
+    const scale = Math.max(2, Math.min(4, 1600 / width))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(width * scale)
+    canvas.height = Math.round(height * scale)
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
+    return { dataUrl: canvas.toDataURL('image/png'), width, height }
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 async function loadImage(url) {
   try {
     const response = await fetch(url, { mode: 'cors' })
     if (!response.ok) return null
-    const bitmap = await createImageBitmap(await response.blob())
+    const blob = await response.blob()
+    if (/svg/i.test(blob.type) || /^data:image\/svg/i.test(url)) return await svgImage(blob)
+    const bitmap = await createImageBitmap(blob)
     const canvas = document.createElement('canvas')
     canvas.width = bitmap.width
     canvas.height = bitmap.height
@@ -291,7 +313,7 @@ async function loadImage(url) {
   }
 }
 
-async function collectImages(tree) {
+export async function collectImages(tree) {
   const urls = new Set()
   const walk = node => {
     if (node.type === 'image' && node.url) urls.add(node.url)
@@ -572,4 +594,114 @@ function loadPdfMake() {
 export async function exportMarkdownPdf(markdown, { title, fileName, meta, options } = {}) {
   const [pdfMake, definition] = await Promise.all([loadPdfMake(), buildPdfDefinition(markdown, { title, meta, options })])
   await pdfMake.createPdf(definition).download(fileName || 'document.pdf')
+}
+
+// ── Presentation PDF: one landscape 16:9 page per slide, framed like presentation mode ──
+const DECK = { width: 960, height: 540, inset: 22, padX: 72, padY: 46, border: 6, radius: 22, scale: 1.7 }
+
+// Slide text is bigger than document text: scale every font size (and spacing) in a block.
+function scaleBlock(node, k) {
+  if (Array.isArray(node)) return node.map(item => scaleBlock(item, k))
+  if (!node || typeof node !== 'object') return node
+  const out = {}
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'fontSize' && typeof value === 'number') out[key] = value * k
+    else if (key === 'margin' && Array.isArray(value)) out[key] = value.map(n => (typeof n === 'number' ? n * k : n))
+    // Lines (rules under headings, quote bars) get longer with everything else.
+    else if (key === 'canvas' && Array.isArray(value)) out[key] = value.map(shape => ({ ...shape, ...['x1', 'x2', 'w'].reduce((acc, prop) => (typeof shape[prop] === 'number' ? { ...acc, [prop]: shape[prop] * k } : acc), {}) }))
+    else if (key === 'layout' || key === 'svg' || key === 'image' || key === 'widths' || key === 'heights') out[key] = value
+    else out[key] = typeof value === 'object' ? scaleBlock(value, k) : value
+  }
+  // Images and diagrams fit inside the slide, never taller than it.
+  if ((out.image || out.svg) && typeof out.width === 'number') {
+    // At smaller text sizes (long slides) pictures shrink too, so everything fits one page.
+    const maxHeight = (DECK.height - 2 * (DECK.inset + DECK.padY) - 70) * Math.min(1, k / DECK.scale)
+    out.fit = [out.width, maxHeight]
+    delete out.width
+  }
+  return out
+}
+
+// Parses each slide and loads its images / diagrams once (re-used when trying text sizes).
+async function prepareDeck(slides, settings) {
+  return Promise.all((slides.length ? slides : [' ']).map(async markdown => {
+    const tree = unified().use(remarkParse).use(remarkGfm).use(remarkMath).parse(markdown)
+    const [images, rendered] = await Promise.all([
+      typeof document !== 'undefined' ? collectImages(tree) : new Map(),
+      renderVectorBlocks(tree, settings.diagrams),
+    ])
+    return { tree, images, rendered }
+  }))
+}
+
+const DECK_CONTENT = { width: DECK.width - 2 * (DECK.inset + DECK.padX), height: DECK.height - 2 * (DECK.inset + DECK.padY) }
+
+// One slide's content at text scale `k` (1 = document size).
+function deckSlide({ tree, images, rendered }, k) {
+  const { blocks } = createConverter({ images, footnoteOrder: [], contentWidth: DECK_CONTENT.width / k, toc: false, rendered })
+  const stack = scaleBlock(blocks(tree.children), k)
+  return { stack: stack.length ? stack : [{ text: ' ' }], fontSize: BASE_SIZE * k }
+}
+
+function deckDefinition(slideBlocks, { title, accent, backdrop }) {
+  const content = slideBlocks.map(({ stack, fontSize }, index) => ({
+    // One cell the size of the slide, with its content centred vertically.
+    table: { widths: [DECK_CONTENT.width], heights: [DECK_CONTENT.height], body: [[{ stack, fontSize, verticalAlignment: 'middle' }]] },
+    layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
+    ...(index > 0 ? { pageBreak: 'before' } : {}),
+  }))
+  const frameW = DECK.width - 2 * DECK.inset, frameH = DECK.height - 2 * DECK.inset
+  return {
+    info: { title: cleanText(title), creator: 'ReadMe' },
+    pageSize: { width: DECK.width, height: DECK.height },
+    pageOrientation: 'landscape',
+    pageMargins: [DECK.inset + DECK.padX, DECK.inset + DECK.padY, DECK.inset + DECK.padX, DECK.inset + DECK.padY],
+    background: () => ({
+      canvas: [
+        { type: 'rect', x: 0, y: 0, w: DECK.width, h: DECK.height, color: backdrop },
+        // The slide card with a thick border in the theme's accent.
+        { type: 'rect', x: DECK.inset, y: DECK.inset, w: frameW, h: frameH, r: DECK.radius, color: '#ffffff', lineWidth: DECK.border, lineColor: accent },
+      ],
+    }),
+    defaultStyle: { font: 'Roboto', fontSize: BASE_SIZE * DECK.scale, lineHeight: 1.35, color: COLORS.text },
+    content,
+    footer: (currentPage, pageCount) => ({
+      // The footer sits in the bottom margin: put the slide number inside the card's corner.
+      text: `${currentPage} / ${pageCount}`, alignment: 'right', fontSize: 9, color: '#9aa0b8',
+      margin: [0, DECK.padY - 22, DECK.inset + 22, 0],
+    }),
+  }
+}
+
+/**
+ * pdfmake definition for a slide deck. `slides` are Markdown strings (speaker notes already
+ * removed); `accent` colours the slide frame like the presentation's theme. `scales` sets each
+ * slide's text size (defaults to the presentation size).
+ */
+export async function buildPresentationPdfDefinition(slides, { title = 'Presentation', accent = COLORS.accent, backdrop = '#ebecf6', options = {}, scales = [] } = {}) {
+  const prepared = await prepareDeck(slides, { ...DEFAULT_PDF_OPTIONS, ...options })
+  return deckDefinition(prepared.map((slide, index) => deckSlide(slide, scales[index] ?? DECK.scale)), { title, accent, backdrop })
+}
+
+// Text sizes tried, largest first, until a slide fits on one page.
+const DECK_SCALES = [DECK.scale, 1.45, 1.25, 1.05, 0.9, 0.75, 0.62, 0.5]
+const countPdfPages = async (pdfMake, definition) => {
+  const bytes = await pdfMake.createPdf(definition).getBuffer()
+  return (new TextDecoder('latin1').decode(bytes).match(/\/Type\s*\/Page(?!s)/g) || []).length
+}
+
+export async function exportPresentationPdf(slides, { title = 'Presentation', fileName, accent = COLORS.accent, backdrop = '#ebecf6', options } = {}) {
+  const pdfMake = await loadPdfMake()
+  const prepared = await prepareDeck(slides, { ...DEFAULT_PDF_OPTIONS, ...options })
+  // Every slide is one page: long slides get smaller text (like the presentation, which scrolls).
+  const blocks = []
+  for (const slide of prepared) {
+    let chosen = null
+    for (const k of DECK_SCALES) {
+      chosen = deckSlide(slide, k)
+      if (await countPdfPages(pdfMake, deckDefinition([chosen], { title, accent, backdrop })) <= 1) break
+    }
+    blocks.push(chosen)
+  }
+  await pdfMake.createPdf(deckDefinition(blocks, { title, accent, backdrop })).download(fileName || 'presentation.pdf')
 }

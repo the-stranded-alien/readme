@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, RotateCcw, Trash2, X } from '../icons'
+import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, Pin, PinOff, RotateCcw, Trash2, X } from '../icons'
 import { FILE_DRAG_TYPE, MAX_FOLDER_DEPTH, folderDepth, isModifiedFromDisk, labelColor } from '../fileUtils'
 
 
@@ -36,7 +36,7 @@ const sortFiles = entries => [...entries].sort((a, b) => (Boolean(a.closed) - Bo
 const countFiles = node => node.files.length + [...node.folders.values()].reduce((sum, child) => sum + countFiles(child), 0)
 
 export default function FileTree({
-  files, closedFiles = [], emptyFolders = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onDeleteFolder, onNewSubfolder, onRenameFile, onClose,
+  files, closedFiles = [], emptyFolders = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onDeleteFolder, onNewSubfolder, onRenameFile, onTogglePin, canPin = true, onClose,
 }) {
   const closedList = useMemo(() => closedFiles.map(entry => entry.file), [closedFiles])
   const tree = useMemo(() => buildFileTree(files, closedList, emptyFolders), [files, closedList, emptyFolders])
@@ -139,10 +139,18 @@ export default function FileTree({
             <span className="file-tree-chevron-spacer" aria-hidden="true" />
             <FileText size={13} aria-hidden="true" style={color ? { color } : undefined} />
             <span className="file-tree-name">{base}</span>
+            {file.pinned && <Pin size={11} className="file-tree-pin" aria-label="Pinned" />}
             {isModifiedFromDisk(file) && <span className="file-modified-dot" aria-label="Unsaved changes" />}
           </button>
-          {(onDelete || onRenameFile) && (
+          {(onDelete || onRenameFile || onTogglePin) && (
             <span className="file-tree-actions">
+              {onTogglePin && (
+                <button type="button" onClick={() => onTogglePin(file.id)} aria-pressed={Boolean(file.pinned)}
+                  data-tip={file.pinned ? 'Unpin' : canPin ? 'Pin to the front of the tab bar' : 'Up to 5 files can be pinned'}
+                  aria-label={file.pinned ? `Unpin ${file.name}` : `Pin ${file.name}`}>
+                  {file.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+                </button>
+              )}
               {onRenameFile && <button type="button" onClick={() => onRenameFile(file.id)} data-tip="Rename file" aria-label={`Rename ${file.name}`}><Pencil size={12} /></button>}
               {onDelete && <button type="button" onClick={() => onDelete(file.id)} data-tip="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>}
             </span>

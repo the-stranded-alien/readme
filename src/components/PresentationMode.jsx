@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Eraser, Hourglass, LaserPointer, ListTree, Maximize2, Minimize2, Palette, PanelLeftClose, Pause, Pencil, Pin, Play, StickyNote, X, ZoomIn, ZoomOut } from '../icons'
+import { ChevronLeft, ChevronRight, Download, Eraser, Loader2, Hourglass, LaserPointer, ListTree, Maximize2, Minimize2, Palette, PanelLeftClose, Pause, Pencil, Pin, Play, StickyNote, X, ZoomIn, ZoomOut } from '../icons'
 import { PRESENTATION_ZOOM, clampZoom, slideTitle, splitSlideNotes, splitSlides } from '../presentation'
 import { DEFAULT_PRESENTATION_SETTINGS, INK_COLORS, inkColor, splitOptions } from '../presentationSettings'
 import InkLayer from './InkLayer'
@@ -30,7 +30,7 @@ function openPresenterWindow() {
  * body is rendered with the app's own Markdown renderer (`renderMarkdown`).
  * Text after a `???` line is speaker notes, shown in the presenter view.
  */
-export default function PresentationMode({ markdown, slides: slideTexts, label, renderMarkdown, onClose, startAt = 0, themes = [], theme, onTheme, settings = DEFAULT_PRESENTATION_SETTINGS, onSettings }) {
+export default function PresentationMode({ markdown, slides: slideTexts, label, renderMarkdown, onClose, startAt = 0, themes = [], theme, onTheme, settings = DEFAULT_PRESENTATION_SETTINGS, onSettings, onExport, exporting }) {
   // `slides` (optional) presents just those slides, e.g. the bookmarked sections.
   const { splitLevel, splitRules } = settings
   const slides = useMemo(() => (slideTexts?.length ? slideTexts : splitSlides(markdown, splitOptions({ splitLevel, splitRules }))).map(splitSlideNotes),
@@ -47,6 +47,15 @@ export default function PresentationMode({ markdown, slides: slideTexts, label, 
   const [hasInk, setHasInk] = useState(false)
   // Pen options open when the pen comes on and fold away once you start drawing.
   const [penTrayOpen, setPenTrayOpen] = useState(true)
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef(null)
+  // The download menu closes on a click outside it.
+  useEffect(() => {
+    if (!exportOpen) return undefined
+    const onDown = event => { if (!exportRef.current?.contains(event.target)) setExportOpen(false) }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [exportOpen])
   // A colour picked in the toolbar becomes the default too.
   const choosePenColor = useCallback(id => {
     setPenColor(id)
@@ -190,6 +199,7 @@ export default function PresentationMode({ markdown, slides: slideTexts, label, 
     else if (key === 'b' || key === 'w') { event.preventDefault(); setBlank(current => (current === (key === 'b' ? 'black' : 'white') ? null : (key === 'b' ? 'black' : 'white'))) }
     else if (key === 'f') { event.preventDefault(); toggleFullscreen() }
     else if (key === 't') { event.preventDefault(); cycleTheme() }
+    else if (key === 'Escape' && exportOpen) { event.preventDefault(); setExportOpen(false) }
     else if (key === 'Escape' && blank) { event.preventDefault(); setBlank(null) }
     else if (key === 'Escape' && tool) { event.preventDefault(); setTool(null) }
     else if (key === 'Escape' && !document.fullscreenElement) { event.preventDefault(); onClose() }
@@ -350,6 +360,23 @@ export default function PresentationMode({ markdown, slides: slideTexts, label, 
           <button type="button" className="presentation-theme" onClick={cycleTheme} aria-label={`Theme: ${currentTheme?.label ?? theme}. Switch theme`} title="Switch theme (T)">
             <Palette size={15} /><span>{currentTheme?.label}</span>
           </button>
+        )}
+        {onExport && (
+          <span className="presentation-export" ref={exportRef}>
+            <button type="button" onClick={() => setExportOpen(open => !open)} aria-haspopup="menu" aria-expanded={exportOpen}
+              aria-label="Download slides" title="Download these slides as PDF or PowerPoint" disabled={Boolean(exporting)}>
+              {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            </button>
+            {exportOpen && (
+              <div className="presentation-export-menu" role="menu" aria-label="Download slides">
+                {[['pdf', 'PDF (landscape)', '.pdf'], ['pptx', 'PowerPoint', '.pptx']].map(([format, label, ext]) => (
+                  <button key={format} type="button" role="menuitem" onClick={() => { setExportOpen(false); onExport(format, slides) }}>
+                    <span>{label}</span><span className="presentation-export-ext">{ext}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </span>
         )}
         <button type="button" onClick={toggleFullscreen} aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title="Fullscreen (F)">
           {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}

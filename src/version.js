@@ -4,9 +4,17 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '1.8'
+export const APP_VERSION = '1.9'
 
 export const RELEASES = [
+  {
+    version: '1.9',
+    date: '2026-11-26',
+    notes: [
+      'Download a presentation as a landscape PDF or a PowerPoint file (with speaker notes).',
+      'Pin up to 5 files; the file pinned last comes first.',
+    ],
+  },
   {
     version: '1.8',
     date: '2026-11-26',
@@ -37,14 +45,6 @@ export const RELEASES = [
     notes: [
       'Presentation: slide contents panel, laser pointer and pen (fading or permanent ink).',
       'New Settings → Presentation: slide breaks, auto-advance, default text size and theme, pen and laser.',
-    ],
-  },
-  {
-    version: '1.3',
-    date: '2026-11-26',
-    notes: [
-      'Present from any heading, or present only your bookmarked sections.',
-      'Marble theme, and a default theme setting.',
     ],
   },
 ]

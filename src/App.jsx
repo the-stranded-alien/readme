@@ -49,7 +49,7 @@ import EmptyState from './components/EmptyState'
 import { useHoverTooltip as useToolbarTooltip } from './useHoverTooltip'
 import { MARK_COLORS, rehypeMarks } from './rehypeMarks'
 import { CONTENT_FILTERS, applyContentFilter, clearContentFilter, filterLabel } from './contentFilter'
-import { sectionSlides, slideForHeading } from './presentation'
+import { sectionSlides, slideForHeading, splitSlideNotes, splitSlides } from './presentation'
 import { PRESENTATION_THEME_KEY, loadPresentationSettings, savePresentationSettings, splitOptions } from './presentationSettings'
 import PresentationSettings from './components/PresentationSettings'
 import PromptDialog from './components/PromptDialog'
@@ -1589,6 +1589,7 @@ function DownloadMenuButton({
   onExportHtml,
   onExportDocx,
   onExportConfluence,
+  onExportSlides,
   onCopyShareLink,
   onExportZip,
   onBackup,
@@ -1712,6 +1713,40 @@ function DownloadMenuButton({
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
               style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
               .docx
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="download-menu-item"
+            disabled={!canExportPdf}
+            onClick={() => { setOpen(false); onExportSlides('pdf') }}
+            data-tooltip="Landscape, one slide per page, like presentation mode"
+          >
+            <span className="flex items-center gap-2">
+              <Presentation size={13} style={{ color: 'var(--accent)' }} />
+              <span>Presentation PDF</span>
+            </span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+              .pdf
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="download-menu-item"
+            disabled={!canExportPdf}
+            onClick={() => { setOpen(false); onExportSlides('pptx') }}
+            data-tooltip="PowerPoint slides with speaker notes"
+          >
+            <span className="flex items-center gap-2">
+              <Presentation size={13} style={{ color: 'var(--accent)' }} />
+              <span>Presentation PowerPoint</span>
+            </span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+              .pptx
             </span>
           </button>
           <button
@@ -2254,6 +2289,8 @@ function isExternalFileDrag(event) {
 }
 
 // Pinned tabs always sit before the others; order inside each group is kept.
+// At most this many files can be pinned (they stay first in the tab bar).
+const MAX_PINNED = 5
 function orderPinnedFirst(list) {
   return [...list.filter(file => file.pinned), ...list.filter(file => !file.pinned)]
 }
@@ -4097,20 +4134,27 @@ export default function App() {
     })
     markWorkspaceEdit()
   }, [markWorkspaceEdit])
+  // Up to MAX_PINNED files can be pinned. The file pinned last goes first; unpinning moves a
+  // file to the start of the unpinned ones.
   const handleTogglePin = useCallback(id => {
+    const target = files.find(f => f.id === id)
+    if (!target) return
+    if (!target.pinned && files.filter(f => f.pinned).length >= MAX_PINNED) {
+      setToast({ message: `You can pin up to ${MAX_PINNED} files. Unpin one to pin “${target.name}”.`, tone: 'warning', duration: 5000 })
+      return
+    }
     markWorkspaceEdit()
     setFiles(prev => {
-      const target = prev.find(f => f.id === id)
-      if (!target) return prev
-      const updated = { ...target, pinned: !target.pinned }
+      const current = prev.find(f => f.id === id)
+      if (!current) return prev
+      const updated = { ...current, pinned: !current.pinned }
       const rest = prev.filter(f => f.id !== id)
-      // Pinning moves the tab to the end of the pinned group; unpinning to the start of the others.
+      if (updated.pinned) return [updated, ...rest]
       const firstUnpinned = rest.findIndex(f => !f.pinned)
-      const insertAt = firstUnpinned === -1 ? rest.length : firstUnpinned
-      rest.splice(insertAt, 0, updated)
+      rest.splice(firstUnpinned === -1 ? rest.length : firstUnpinned, 0, updated)
       return rest
     })
-  }, [markWorkspaceEdit])
+  }, [files, markWorkspaceEdit])
   const handleSetFileColor = useCallback((id, color) => {
     markWorkspaceEdit()
     setFiles(prev => prev.map(f => (f.id === id ? { ...f, color: color || undefined } : f)))
@@ -4826,6 +4870,36 @@ export default function App() {
     }
   }, [activeFile, markdownBody, fileName, headings, frontmatterMeta, pdfExporting])
 
+  // Presentation as a landscape PDF or a PowerPoint file. `deck` ([{ body, notes }]) is the deck
+  // being presented (e.g. bookmarked sections); without it, the whole file split like Present.
+  const [slidesExporting, setSlidesExporting] = useState(null)
+  const handleExportSlides = useCallback(async (format, deck) => {
+    if (!activeFile || !markdownBody.trim() || slidesExporting) return
+    const baseName = (fileName || 'presentation').replace(/\.[^.]+$/, '') || 'presentation'
+    const slides = deck ?? splitSlides(markdownBody, splitOptions(presentationSettings)).map(splitSlideNotes)
+    // The slide frame uses the current theme's accent, as in presentation mode.
+    const probe = document.createElement('canvas').getContext('2d')
+    probe.fillStyle = '#6d28d9'
+    probe.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6d28d9'
+    const accent = probe.fillStyle
+    setSlidesExporting(format)
+    try {
+      if (format === 'pptx') {
+        const { exportPresentationPptx } = await import('./pptxExport')
+        await exportPresentationPptx(slides, { title: headings[0]?.text || baseName, fileName: `${baseName}.pptx`, accent })
+      } else {
+        const { exportPresentationPdf } = await import('./pdfExport')
+        await exportPresentationPdf(slides.map(slide => slide.body), { title: headings[0]?.text || baseName, fileName: `${baseName} (slides).pdf`, accent })
+      }
+      setToast({ message: format === 'pptx' ? 'Presentation saved as PowerPoint (.pptx).' : 'Presentation saved as a landscape PDF.', tone: 'success' })
+    } catch (error) {
+      console.error('Could not export the presentation', error)
+      setToast({ message: `Could not create the ${format === 'pptx' ? 'PowerPoint file' : 'PDF'}. Please try again.`, tone: 'warning' })
+    } finally {
+      setSlidesExporting(null)
+    }
+  }, [activeFile, markdownBody, fileName, headings, presentationSettings, slidesExporting])
+
   const handleCopyAll = useCallback(async () => {
     try {
       const article = previewScrollRef.current?.querySelector('.rm-prose')
@@ -5061,6 +5135,8 @@ ${fontCss}
     ...(activeFile ? [
       { id: 'dl-md', label: 'Download Markdown (.md)', hint: 'Export', icon: Download, run: handleDownload },
       { id: 'dl-html', label: 'Export Standalone HTML (.html)', hint: 'Export', icon: FileCode2, run: handleExportHtml },
+      { id: 'dl-slides-pdf', label: 'Download presentation as PDF (landscape)', hint: 'Export', icon: Presentation, run: () => handleExportSlides('pdf') },
+      { id: 'dl-slides-pptx', label: 'Download presentation as PowerPoint (.pptx)', hint: 'Export', icon: Presentation, run: () => handleExportSlides('pptx') },
       { id: 'dl-confluence', label: 'Export for Confluence (storage format XHTML)', hint: 'Export', icon: Code2, run: handleExportConfluence },
       { id: 'copy-confluence', label: 'Copy as XHTML (Confluence)', hint: 'Copy', icon: Copy, run: handleCopyConfluence },
     { id: 'dl-pdf', label: 'Download PDF…', hint: 'Export', icon: FileDown, run: openPdfDialog },
@@ -5073,7 +5149,7 @@ ${fontCss}
   ], [
     handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
-    handleExportHtml, handleExportConfluence, handleCopyConfluence, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
+    handleExportHtml, handleExportConfluence, handleCopyConfluence, handleExportSlides, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
     openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes, activeFont.label, cycleDocFont, handleSaveInPlace, isFullscreen, keepAwake, toggleFullscreen, openPresentation,
   ])
@@ -5177,6 +5253,7 @@ ${fontCss}
               onExportHtml={handleExportHtml}
               onExportDocx={handleExportDocx}
               onExportConfluence={handleExportConfluence}
+              onExportSlides={handleExportSlides}
               onCopyShareLink={handleCopyShareLink}
               onExportZip={handleExportZip}
               onBackup={handleBackup}
@@ -5307,6 +5384,8 @@ ${fontCss}
             onDeleteFolder={handleDeleteFolder}
             onNewSubfolder={createSubfolder}
             onRenameFile={renameFileFromTree}
+            onTogglePin={handleTogglePin}
+            canPin={files.filter(file => file.pinned).length < MAX_PINNED}
             onClose={() => setFileTreeOpen(false)}
           />
         )}
@@ -6298,6 +6377,8 @@ ${fontCss}
           settings={presentationSettings}
           onSettings={setPresentationSettings}
           onClose={closePresentation}
+          onExport={handleExportSlides}
+          exporting={slidesExporting}
         />
       )}
 

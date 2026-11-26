@@ -15,7 +15,7 @@ function offlinePrecacheManifest() {
     generateBundle(_options, bundle) {
       // Export-only libraries (PDF, math, Word) aren't precached: the service
       // worker caches them on first use, keeping the offline install small.
-      const EXPORT_ONLY = /node_modules\/(pdfmake|mathjax-full|docx)\/|\/src\/(pdfExport|docxExport|htmlExport)\.js$/
+      const EXPORT_ONLY = /node_modules\/(pdfmake|mathjax-full|docx|pptxgenjs)\/|\/src\/(pdfExport|docxExport|htmlExport|pptxExport)\.js$/
       const isExportOnly = item => item.type === 'chunk' && Object.keys(item.modules).length > 0
         && Object.keys(item.modules).every(id => EXPORT_ONLY.test(id.replace(/\\/g, '/')))
       const files = Object.entries(bundle)

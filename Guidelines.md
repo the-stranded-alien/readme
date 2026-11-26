@@ -363,6 +363,7 @@ Rules learned the hard way:
 ### Export formats
 
 - Confluence export uses **storage format** (XHTML + `ac:`/`ri:` macros: code macro, `ac:task-list`, info/tip/note/warning panels, `ac:image`), built from the Markdown AST (unified + remark), not by scraping the rendered page. The clipboard carries storage format as `text/plain` and clean HTML as `text/html`, so pasting into the Confluence editor *and* into its source editor both work. Tests check the output is well-formed XML.
+- Presentation exports follow presentation mode: one 16:9 landscape page per slide, framed in the theme accent, content centred. The PDF (pdfmake) tries smaller text sizes per slide until each fits one page; the PowerPoint (pptxgenjs, lazy-loaded and kept out of the offline precache) puts tables in real tables, diagrams/images as pictures and `???` notes as speaker notes. Check exports visually (render pages with `pdftoppm`, PowerPoint via LibreOffice `soffice --convert-to pdf`), not just in unit tests.
 
 ## 7. Layout, responsiveness, motion
 

@@ -1045,6 +1045,19 @@ describe('advanced browser features', () => {
     // The header mode switcher opens it too.
     fireEvent.click(screen.getByRole('button', { name: 'Present as slides' }))
     expect(await screen.findByRole('dialog', { name: /Presentation, slide 1 of 3/ })).toBeInTheDocument()
+    // The slide toolbar offers PDF and PowerPoint downloads; so does the Download menu.
+    const show = screen.getByRole('dialog', { name: /Presentation, slide 1 of 3/ })
+    fireEvent.click(within(show).getByRole('button', { name: 'Download slides' }))
+    const menu = within(show).getByRole('menu', { name: 'Download slides' })
+    expect(within(menu).getByRole('menuitem', { name: /PDF \(landscape\)/ })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: /PowerPoint/ })).toBeInTheDocument()
+    fireEvent.keyDown(show, { key: 'Escape' })
+    expect(within(show).queryByRole('menu', { name: 'Download slides' })).toBeNull()
+    fireEvent.keyDown(show, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Presentation/ })).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Download and export options' }))
+    expect(await screen.findByRole('menuitem', { name: /Presentation PDF/ })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Presentation PowerPoint/ })).toBeInTheDocument()
   })
 
   it('splits slides at the chosen heading level and at horizontal rules', async () => {
@@ -1154,6 +1167,39 @@ describe('advanced browser features', () => {
     }
     // The figure image is an inline data URL, so the guide works offline.
     expect(guide.content).toMatch(/!\[[^\]]+\]\(data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+ "The title shows on hover"\)/)
+  })
+
+  it('builds a landscape presentation PDF with one centred page per slide', async () => {
+    const { buildPresentationPdfDefinition } = await import('../pdfExport.js')
+    const def = await buildPresentationPdfDefinition(['# Deck\n\nIntro', '## Two\n\n- a\n- b', '## Three\n\n| A |\n| - |\n| 1 |'], { title: 'Deck', accent: '#123456', options: { diagrams: false } })
+    expect(def.pageSize).toEqual({ width: 960, height: 540 })
+    expect(def.content).toHaveLength(3)
+    expect(def.content[0].pageBreak).toBeUndefined()
+    expect(def.content[1].pageBreak).toBe('before')
+    // Each slide is one full-height cell with its content centred vertically, like presentation mode.
+    const cell = def.content[0].table.body[0][0]
+    expect(cell.verticalAlignment).toBe('middle')
+    expect(def.content[0].table.heights[0]).toBeGreaterThan(300)
+    // Slide text is larger than document text.
+    expect(def.defaultStyle.fontSize).toBeGreaterThan(14)
+    const frame = def.background().canvas[1]
+    expect(frame).toMatchObject({ lineColor: '#123456', r: expect.any(Number) })
+    expect(def.footer(2, 3).text).toBe('2 / 3')
+  })
+
+  it('lays out PowerPoint slides: title, text and visuals', async () => {
+    const { describeSlide } = await import('../pptxExport.js')
+    const slide = describeSlide('## Plan\n\nIntro **bold**\n\n- one\n- two\n\n1. first\n\n- [x] done\n\n> [!TIP] Hint\n> Be brief\n\n```js\nlet a = 1\n```\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n```mermaid\ngraph TD; A-->B\n```\n\n![Logo](https://example.com/a.png)')
+    expect(slide.title).toBe('Plan')
+    expect(slide.text).toContain('Intro |bold')
+    expect(slide.text).toContain('☑ |done')
+    expect(slide.text).toContain('Hint|Be brief')
+    expect(slide.text).toContain('let a = 1')
+    expect(slide.bullets).toBe(3)
+    expect(slide.visuals).toEqual(['table', 'mermaid', 'image'])
+    const { firstParagraphPropsOnly } = await import('../pptxExport.js')
+    expect(firstParagraphPropsOnly('<a:p><a:pPr marL="1"><a:buChar char="•"/></a:pPr><a:r><a:t>a</a:t></a:r><a:pPr indent="0"><a:buNone/></a:pPr><a:r><a:t>b</a:t></a:r></a:p>'))
+      .toBe('<a:p><a:pPr marL="1"><a:buChar char="•"/></a:pPr><a:r><a:t>a</a:t></a:r><a:r><a:t>b</a:t></a:r></a:p>')
   })
 
   it('converts Markdown to well-formed Confluence storage format', async () => {
@@ -1289,6 +1335,29 @@ describe('advanced browser features', () => {
     // The third level can't get another folder inside it.
     expect(within(tree).queryByRole('button', { name: 'New folder inside c' })).toBeNull()
     expect(within(tree).getByRole('button', { name: 'New folder inside b' })).toBeInTheDocument()
+  })
+
+  it('pins up to five files, the last pinned first', async () => {
+    await writeWorkspace({ activeId: 'f1', files: Array.from({ length: 7 }, (_, i) => ({ id: `f${i + 1}`, name: `f${i + 1}.md`, content: `# ${i + 1}` })) })
+    installApp()
+    await screen.findByRole('tab', { name: 'f1.md' })
+    fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
+    const tree = await screen.findByRole('tree', { name: 'Files' })
+    const order = () => screen.getAllByRole('tab').map(tab => tab.getAttribute('aria-label').replace(', pinned', '*'))
+    for (const n of [2, 5, 3]) fireEvent.click(within(tree).getByRole('button', { name: `Pin f${n}.md` }))
+    // Newest pin first.
+    expect(order().slice(0, 3)).toEqual(['f3.md*', 'f5.md*', 'f2.md*'])
+    fireEvent.click(within(tree).getByRole('button', { name: 'Pin f7.md' }))
+    fireEvent.click(within(tree).getByRole('button', { name: 'Pin f1.md' }))
+    expect(order().filter(name => name.endsWith('*'))).toHaveLength(5)
+    // A sixth pin is refused with a message.
+    fireEvent.click(within(tree).getByRole('button', { name: 'Pin f4.md' }))
+    expect(await screen.findByText(/You can pin up to 5 files/)).toBeInTheDocument()
+    expect(order().filter(name => name.endsWith('*'))).toHaveLength(5)
+    // Unpinning makes room.
+    fireEvent.click(within(tree).getByRole('button', { name: 'Unpin f5.md' }))
+    fireEvent.click(within(tree).getByRole('button', { name: 'Pin f4.md' }))
+    expect(order()[0]).toBe('f4.md*')
   })
 
   it('creates an empty folder from its own dialog, without a file', async () => {
