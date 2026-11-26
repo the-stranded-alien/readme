@@ -12,6 +12,7 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
   const [fullscreen, setFullscreen] = useState(false)
   const rootRef = useRef(null)
   const touchRef = useRef(null)
+  const stageRef = useRef(null)
   const safeIndex = Math.min(index, slides.length - 1)
 
   const cycleTheme = useCallback(() => {
@@ -44,10 +45,23 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
     }
   }, [])
 
+  // Every slide starts at its top.
+  useEffect(() => { stageRef.current?.scrollTo({ top: 0 }) }, [safeIndex])
+
   const onKeyDown = event => {
     if (event.metaKey || event.ctrlKey || event.altKey) return
     const key = event.key
-    if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n'].includes(key)) { event.preventDefault(); go(1) }
+    // Long slides scroll first: ↓ / PageDown / Space scroll until the end, then move on (↑ likewise).
+    const stage = stageRef.current
+    const canScrollDown = stage && stage.scrollTop + stage.clientHeight < stage.scrollHeight - 2
+    const canScrollUp = stage && stage.scrollTop > 2
+    if (['ArrowDown', 'PageDown', ' '].includes(key) && canScrollDown) {
+      event.preventDefault()
+      stage.scrollBy({ top: key === 'ArrowDown' ? 80 : stage.clientHeight * 0.85, behavior: 'smooth' })
+    } else if (['ArrowUp', 'PageUp', 'Backspace'].includes(key) && canScrollUp) {
+      event.preventDefault()
+      stage.scrollBy({ top: key === 'ArrowUp' ? -80 : -stage.clientHeight * 0.85, behavior: 'smooth' })
+    } else if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n'].includes(key)) { event.preventDefault(); go(1) }
     else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p'].includes(key)) { event.preventDefault(); go(-1) }
     else if (key === 'Home') { event.preventDefault(); setDirection('prev'); setIndex(0) }
     else if (key === 'End') { event.preventDefault(); setDirection('next'); setIndex(slides.length - 1) }
@@ -75,7 +89,7 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
       }}
     >
       <div className="presentation-progress" aria-hidden="true"><span style={{ width: `${((safeIndex + 1) / slides.length) * 100}%` }} /></div>
-      <div className="presentation-stage">
+      <div className="presentation-stage" ref={stageRef}>
         <article key={safeIndex} className={`presentation-slide rm-prose slide-in-${direction}`} aria-roledescription="slide" aria-label={slideTitle(slides[safeIndex])}>
           {renderMarkdown(slides[safeIndex])}
         </article>
