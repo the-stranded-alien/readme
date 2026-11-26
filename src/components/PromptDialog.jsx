@@ -13,7 +13,7 @@ export default function PromptDialog({
   const [value, setValue] = useState(initialValue)
   const [touched, setTouched] = useState(false)
   const inputRef = useRef(null)
-  useDialogKeys(onCancel, { focus: () => { inputRef.current?.focus(); inputRef.current?.select() } })
+  useDialogKeys(onCancel, { focus: () => { inputRef.current?.focus(); inputRef.current?.select() }, topmost: true })
   const error = validate?.(value) ?? null
   const submit = event => {
     event.preventDefault()
@@ -21,7 +21,7 @@ export default function PromptDialog({
     if (!error) onSubmit(value)
   }
   return (
-    <div className="pdf-dialog-backdrop anim-fade-in no-print" onMouseDown={event => { if (event.target === event.currentTarget) onCancel() }}>
+    <div className="pdf-dialog-backdrop is-topmost anim-fade-in no-print" onMouseDown={event => { if (event.target === event.currentTarget) onCancel() }}>
       <div className="pdf-dialog prompt-dialog anim-pop-in" role="dialog" aria-modal="true" aria-labelledby="prompt-dialog-title">
       <form onSubmit={submit} noValidate>
         <div className="pdf-dialog-header">

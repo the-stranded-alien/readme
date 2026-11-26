@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const catSoundFiles = readdirSync(fileURLToPath(new URL('./public/cat-sounds/', import.meta.url)))
@@ -31,8 +32,28 @@ function offlinePrecacheManifest() {
   }
 }
 
+// Each deploy gets its own id: the service worker's cache name changes with it, so browsers
+// notice the new version, re-cache the app and drop the old cache.
+const BUILD_ID = (process.env.GITHUB_SHA || '').slice(0, 12) || Date.now().toString(36)
+
+function deploySafety() {
+  return {
+    name: 'readme-deploy-safety',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      // Every built file, so the next deploy can keep this one's files for tabs still running it.
+      const assets = Object.keys(bundle).filter(fileName => fileName.startsWith('assets/'))
+      this.emitFile({ type: 'asset', fileName: 'asset-manifest.json', source: JSON.stringify({ build: BUILD_ID, assets }) })
+    },
+    writeBundle(options) {
+      const swPath = `${options.dir}/sw.js`
+      writeFileSync(swPath, readFileSync(swPath, 'utf8').replace(/__BUILD_ID__/g, BUILD_ID))
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), offlinePrecacheManifest()],
+  plugins: [react(), tailwindcss(), offlinePrecacheManifest(), deploySafety()],
   base: '/',
   build: {
     chunkSizeWarningLimit: 2000,

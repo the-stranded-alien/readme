@@ -9,10 +9,10 @@ import { useDialogKeys } from '../useDialogKeys'
 export default function ConfirmDialog({ title, message, details = [], confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false, icon: Icon, onConfirm, onCancel }) {
   const cancelRef = useRef(null)
   const confirmRef = useRef(null)
-  useDialogKeys(onCancel, { focus: () => (danger ? cancelRef : confirmRef).current?.focus() })
+  useDialogKeys(onCancel, { focus: () => (danger ? cancelRef : confirmRef).current?.focus(), topmost: true })
   const HeaderIcon = Icon ?? (danger ? TriangleAlert : null)
   return (
-    <div className="pdf-dialog-backdrop anim-fade-in no-print" onMouseDown={event => { if (event.target === event.currentTarget) onCancel() }}>
+    <div className="pdf-dialog-backdrop is-topmost anim-fade-in no-print" onMouseDown={event => { if (event.target === event.currentTarget) onCancel() }}>
       <div className={`pdf-dialog confirm-dialog anim-pop-in${danger ? ' is-danger' : ''}`} role="alertdialog" aria-modal="true"
         aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message">
         <div className="pdf-dialog-header">

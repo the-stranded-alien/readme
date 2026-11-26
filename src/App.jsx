@@ -3257,6 +3257,16 @@ export default function App() {
     })
   }, [activeFileId, markWorkspaceEdit])
 
+  // The editor textarea is not controlled by React: React 19 also rewrites a controlled
+  // textarea's defaultValue on every change, which splits the browser's undo history into
+  // single characters (Cmd/Ctrl+Z would undo one letter at a time). Instead the text is written
+  // only when it changes from outside the textarea (switching files, restoring a version…).
+  useLayoutEffect(() => {
+    const ta = textareaRef.current
+    // Only the simple editor's real <textarea> (the code editor manages its own text).
+    if (ta instanceof HTMLTextAreaElement && ta.value !== content) ta.value = content
+  })
+
   const handleSetWordGoal = useCallback(goal => {
     if (!activeFileId) return
     markWorkspaceEdit()
@@ -4788,6 +4798,20 @@ export default function App() {
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   // Share links + transient toast messages.
   const [toast, setToast] = useState(null)
+  // A newer ReadMe is out (or a file this older tab needs is gone): offer a reload. Shown after
+  // any error message from the action that failed, so it isn't replaced by it.
+  useEffect(() => {
+    const onUpdate = event => {
+      const stale = event.detail?.reason === 'stale-file'
+      setTimeout(() => setToast({
+        message: stale ? 'ReadMe has been updated. Reload to finish this action — your files are saved.' : 'A new version of ReadMe is ready.',
+        tone: stale ? 'warning' : 'info', duration: stale ? 60000 : 20000,
+        action: { label: 'Reload', run: () => window.location.reload() },
+      }), 0)
+    }
+    window.addEventListener('readme:update-available', onUpdate)
+    return () => window.removeEventListener('readme:update-available', onUpdate)
+  }, [])
   useEffect(() => {
     if (!toast) return undefined
     const timer = setTimeout(() => setToast(null), toast.duration ?? 3200)
@@ -5591,7 +5615,6 @@ ${fontCss}
                   onScroll={handleSyncEditorScroll}
                   className="editor-textarea"
                   data-file-id={activeFileId ?? ''}
-                  value={content}
                   onChange={e => updateActiveContent(e.target.value)}
                   onKeyDown={handleEditorKeyDown}
                   onPaste={handleEditorPaste}

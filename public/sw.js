@@ -1,4 +1,6 @@
-const CACHE_NAME = 'readme-shell-v4'
+// The build id in the cache name is filled in at build time (vite.config.js), so every deploy
+// is a new worker with its own cache; the old cache is removed when it activates.
+const CACHE_NAME = 'readme-shell-__BUILD_ID__'
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME)

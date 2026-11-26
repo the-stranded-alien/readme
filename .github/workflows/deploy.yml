@@ -32,6 +32,10 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Keep the live build's files so tabs opened before this deploy can still load them.
+      - name: Keep previous build's files
+        run: node scripts/keep-previous-assets.mjs
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

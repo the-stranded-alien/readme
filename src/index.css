@@ -3334,3 +3334,5 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .file-tree-pin { flex-shrink: 0; color: var(--accent); }
 /* Files panel header lines up with the editor and preview toolbars beside it (36px). */
 .file-tree-header { box-sizing: border-box; height: 36px; padding-top: 0; padding-bottom: 0; flex-shrink: 0; }
+/* Confirm / prompt dialogs open on top of any other dialog (e.g. Restore from Version history). */
+.pdf-dialog-backdrop.is-topmost { z-index: 130; }

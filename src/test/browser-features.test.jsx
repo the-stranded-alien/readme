@@ -834,6 +834,43 @@ describe('advanced browser features', () => {
     expect(history[0].reason).toBe('Saved to disk')
   })
 
+  it('never rewrites the editor textarea while typing (keeps the browser undo history whole)', async () => {
+    await writeWorkspace({ activeId: 'u', files: [{ id: 'u', name: 'Undo.md', content: '# Undo' }, { id: 'v', name: 'Other.md', content: '# Other' }] })
+    installApp()
+    const editor = await screen.findByDisplayValue('# Undo')
+    // React would otherwise copy the text into the textarea's defaultValue on every change,
+    // which splits Cmd/Ctrl+Z into single characters.
+    fireEvent.change(editor, { target: { value: '# Undo\n\ntyped' } })
+    await waitFor(() => expect(document.querySelector('.rm-prose')).toHaveTextContent('typed'))
+    expect(editor.defaultValue).toBe('')
+    expect(editor.value).toBe('# Undo\n\ntyped')
+    // Changes from outside the editor (switching files) still reach it.
+    fireEvent.click(screen.getByRole('tab', { name: 'Other.md' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea')).toHaveValue('# Other'))
+  })
+
+  it('restores a version from history through the confirmation on top', async () => {
+    await writeWorkspace({ activeId: 'r1', files: [{ id: 'r1', name: 'Restore.md', content: '# Now' }] })
+    await addSnapshot('r1', { content: '# Earlier version', reason: 'Manual snapshot' })
+    installApp()
+    await screen.findByDisplayValue('# Now')
+    fireEvent.click(screen.getByRole('button', { name: 'Version history' }))
+    const history = await screen.findByRole('dialog', { name: 'Version history' })
+    fireEvent.click(await within(history).findByRole('option', { name: /Manual snapshot/ }))
+    fireEvent.click(within(history).getByRole('button', { name: 'Restore this version' }))
+    const ask = await screen.findByRole('alertdialog', { name: 'Restore this version?' })
+    // The question is drawn above the history dialog.
+    expect(ask.parentElement).toHaveClass('is-topmost')
+    // Escape closes only the question; history stays open.
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(screen.getByRole('dialog', { name: 'Version history' })).toBeInTheDocument()
+    fireEvent.click(within(history).getByRole('button', { name: 'Restore this version' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Restore this version?' })).getByRole('button', { name: 'Restore' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea')).toHaveValue('# Earlier version'))
+    expect(screen.queryByRole('dialog', { name: 'Version history' })).toBeNull()
+  })
+
   it('uses the CodeMirror editor (opt-in) with folds that mirror the preview', async () => {
     localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code', version: 2 }))
     const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body'].join('\n')
