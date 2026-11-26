@@ -2841,6 +2841,8 @@ export default function App() {
   const [writingStats, setWritingStats] = useState({})
   const [presenting, setPresenting] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
+  // The last writing review, kept per document while its text is unchanged.
+  const aiReviewRef = useRef(null)
   const [aiSupported] = useState(() => hasAnyAi())
   const aiAvailable = aiSupported && !hideAi
   const [summarizerSupported] = useState(() => aiSupport().summarizer)
@@ -5688,7 +5690,10 @@ ${fontCss}
     ] : []),
     ...(activeFile ? [{ id: 'find-replace', label: 'Find & replace in editor', hint: shortcut('F', { alt: true }), icon: Replace, run: () => { setFindOpen(true); setFindKey(k => k + 1) } }] : []),
     ...(activeFile && canSummarize ? [{ id: 'summarize', label: 'Summarize this document', hint: 'On-device', icon: ScrollText, run: toggleSummary }] : []),
-    ...(activeFile && !hideAi ? [{ id: 'ai-tools', label: 'AI tools: summarize, translate, proofread…', hint: aiAvailable ? 'On-device' : 'Not supported here', icon: Sparkles, run: () => setAiOpen(true) }] : []),
+    ...(activeFile && !hideAi ? [
+      { id: 'ai-tools', label: 'AI tools: summarize, translate, proofread, review…', hint: aiAvailable ? 'On-device' : 'Not supported here', icon: Sparkles, run: () => setAiOpen(true) },
+      { id: 'ai-review', label: 'Review writing (AI)', hint: 'AI · On-device', icon: ScrollText, run: () => setAiOpen('review') },
+    ] : []),
     ...(activeFile ? [{ id: 'present', label: 'Present as slides', hint: 'Reader', icon: Presentation, run: () => openPresentation() }] : []),
     { id: 'file-tree', label: fileTreeOpen ? 'Hide file tree' : 'Show file tree', hint: 'Files', icon: FolderTree, run: () => setFileTreeOpen(open => !open) },
     { id: 'write-readme', label: 'Write a README from a description…', hint: aiWriter ? 'AI' : 'Generator', icon: BookOpenText, run: () => setWriteReadmeOpen(true) },
@@ -6951,12 +6956,20 @@ ${fontCss}
       )}
 
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
-      {helpOpen && <HelpDialog onShortcuts={() => { setHelpOpen(false); setShortcutsOpen(true) }} onClose={() => setHelpOpen(false)} />}
+      {helpOpen && <HelpDialog hideAi={hideAi} onShortcuts={() => { setHelpOpen(false); setShortcutsOpen(true) }} onClose={() => setHelpOpen(false)} />}
 
-      {aiOpen && activeFile && (
+      {aiOpen && activeFile && !hideAi && (
         <AiToolsDialog
           fileName={activeFile.name}
           markdown={content}
+          initialTab={typeof aiOpen === 'string' ? aiOpen : undefined}
+          savedReview={aiReviewRef.current?.fileId === activeFile.id && aiReviewRef.current.content === content ? aiReviewRef.current.review : null}
+          onReviewChange={review => { aiReviewRef.current = review ? { fileId: activeFile.id, content, review } : null }}
+          onReveal={(from, to) => {
+            const before = content.slice(0, from).split('\n')
+            setAiOpen(false)
+            goToEditorLine(before.length, before[before.length - 1].length, to - from)
+          }}
           renderMarkdown={markdown => <MarkdownRenderer content={markdown} dark={isDark} />}
           onClose={() => setAiOpen(false)}
           onCreateFile={(name, text) => addExternalFiles([{ name, content: text }])}
@@ -6967,12 +6980,12 @@ ${fontCss}
             if (ta) applyTextareaEdit(ta, { from: frontmatterEnd, to: frontmatterEnd, text: block, cursor: frontmatterEnd + block.length })
             else updateActiveContent(content.slice(0, frontmatterEnd) + block + content.slice(frontmatterEnd))
           }}
-          onApplyText={async text => {
-            await takeSnapshot(activeFile.id, content, 'Before proofreading fixes')
+          onApplyText={async (text, source) => {
+            await takeSnapshot(activeFile.id, content, source === 'review' ? 'Before writing review changes' : 'Before proofreading fixes')
             const ta = textareaRef.current
             if (ta) applyTextareaEdit(ta, { from: 0, to: content.length, text, cursor: 0 })
             else updateActiveContent(text)
-            setToast({ message: 'Corrections applied. The previous text is in version history.', tone: 'success' })
+            setToast({ message: `${source === 'review' ? 'Suggestions' : 'Corrections'} applied. Undo with ${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'}Z; the previous text is also in version history.`, tone: 'success' })
           }}
         />
       )}

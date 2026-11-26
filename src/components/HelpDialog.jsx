@@ -62,6 +62,7 @@ const HELP_SECTIONS = [
     items: [
       ['Summarize', 'Shows a summary card at the top of the page. Each section also has its own summarize button. Longer documents get longer summaries.'],
       ['Translate & proofread', 'Open AI tools to translate the document or check spelling and grammar.'],
+      ['Review writing', 'AI tools → Review writing (or “Review writing” in the command palette) reads your paragraphs with the on-device model and points out hard-to-follow or long sentences, passive voice, wordy phrases, repetition, tone and inconsistent terms. Tick the suggested rewrites you want and apply them in one undoable step, or use the target button to show a passage in the editor. Code and tables are skipped.'],
       ['Privacy', 'All AI runs on your device with the model built into recent desktop Chrome. Nothing is sent to a server. The first use downloads the model.'],
       ['Turn off', 'Settings → Features → Hide AI features removes all AI buttons.'],
     ],
@@ -98,7 +99,9 @@ const HELP_SECTIONS = [
   },
 ]
 
-export default function HelpDialog({ onShortcuts, onClose }) {
+export default function HelpDialog({ hideAi = false, onShortcuts, onClose }) {
+  // With AI features turned off, the AI section isn't shown either.
+  const sections = useMemo(() => HELP_SECTIONS.filter(group => !(hideAi && group.id === 'ai')), [hideAi])
   const [section, setSection] = useState(HELP_SECTIONS[0].id)
   const [query, setQuery] = useState('')
   const searchRef = useRef(null)
@@ -107,11 +110,11 @@ export default function HelpDialog({ onShortcuts, onClose }) {
   const results = useMemo(() => {
     const term = query.trim().toLowerCase()
     if (!term) return null
-    return HELP_SECTIONS.flatMap(group => group.items
+    return sections.flatMap(group => group.items
       .filter(([title, text]) => `${title} ${text}`.toLowerCase().includes(term))
       .map(item => ({ group: group.title, item })))
-  }, [query])
-  const current = HELP_SECTIONS.find(group => group.id === section)
+  }, [query, sections])
+  const current = sections.find(group => group.id === section) ?? sections[0]
 
   return (
     <div className="pdf-dialog-backdrop anim-fade-in no-print" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
@@ -129,7 +132,7 @@ export default function HelpDialog({ onShortcuts, onClose }) {
               <Search size={13} aria-hidden="true" />
               <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search help" aria-label="Search help" />
             </label>
-            {HELP_SECTIONS.map(group => (
+            {sections.map(group => (
               <button key={group.id} type="button" aria-current={!results && section === group.id ? 'page' : undefined}
                 className={!results && section === group.id ? 'is-active' : ''} onClick={() => { setQuery(''); setSection(group.id) }}>
                 {group.title}

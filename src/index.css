@@ -2243,7 +2243,7 @@ button[data-tooltip]:not(:focus-visible)::after {
 .reader-preview-toolbar.is-icons-only .reader-toolbar-label { display: none !important; }
 .fmt-btn-ai { color: var(--accent); }
 .fmt-btn-ai:hover { background: var(--accent-soft); }
-.ai-tabs .is-unsupported { opacity: .6; }
+.ai-tabs .is-unsupported { color: var(--text-3); font-style: italic; }
 .ai-unsupported { display: grid; gap: 4px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-editor); font-size: 12.5px; }
 .ai-unsupported strong { color: var(--text-1); }
 .ai-unsupported span { color: var(--text-3); line-height: 1.5; }
@@ -3523,3 +3523,15 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .app-install-text span { font-size: 12.5px; color: var(--text-2); }
 .app-install-status { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: #14532d; background: #dcfce7; }
 .dark .app-install-status { color: #86efac; background: color-mix(in srgb, #22c55e 16%, transparent); }
+
+/* AI tools → Review writing */
+.ai-review { gap: 10px; }
+.ai-review > li { display: grid; gap: 6px; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--border-light); }
+.ai-review label { border: 0; padding: 0; line-height: 1.55; }
+.ai-review-head { display: flex; align-items: flex-start; gap: 8px; }
+.ai-review-kind { flex: none; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-soft); white-space: nowrap; }
+.ai-review-issue { flex: 1; font-size: 12.5px; line-height: 1.55; color: var(--text-2); padding-top: 1px; }
+.ai-review-head .btn-icon { flex: none; margin: -3px -4px 0 0; }
+.ai-review-quote { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+.dark .ai-correction del { color: #ff8a80; }
+.dark .ai-correction ins { color: #7ee2a0; }

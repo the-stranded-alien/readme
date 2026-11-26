@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Copy, FilePlus, Languages, Loader2, Sparkles, SpellCheck, X } from '../icons'
+import { Check, Copy, Crosshair, FilePlus, Languages, Loader2, ScrollText, Sparkles, SpellCheck, X } from '../icons'
 import {
-  TRANSLATION_LANGUAGES, aiSupport, applyCorrections, detectLanguage, proofread, summarize, translateMarkdown,
+  REVIEW_KINDS, TRANSLATION_LANGUAGES, aiSupport, applyCorrections, detectLanguage, proofread, reviewWriting, summarize, translateMarkdown,
 } from '../onDeviceAi'
 
 const TABS = [
   { id: 'summarize', label: 'Summarize', icon: Sparkles, needs: 'summarizer' },
   { id: 'translate', label: 'Translate', icon: Languages, needs: 'translator' },
   { id: 'proofread', label: 'Proofread', icon: SpellCheck, needs: 'proofreader' },
+  { id: 'review', label: 'Review writing', icon: ScrollText, needs: 'languageModel' },
 ]
 const SUMMARY_TYPES = [['key-points', 'Key points'], ['tldr', 'TL;DR'], ['teaser', 'Teaser'], ['headline', 'Headline']]
 const LENGTHS = [['short', 'Short'], ['medium', 'Medium'], ['long', 'Long']]
@@ -30,11 +31,11 @@ function Segmented({ label, options, value, onChange, disabled }) {
  * Summarize / translate / proofread the current document with Chrome's
  * built-in, on-device models. Only the features the browser supports show up.
  */
-export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onInsertSummary, onCreateFile, onApplyText, onClose }) {
+export default function AiToolsDialog({ fileName, markdown, renderMarkdown, initialTab, savedReview, onReviewChange, onInsertSummary, onCreateFile, onApplyText, onReveal, onClose }) {
   const support = useMemo(() => aiSupport(), [])
   // Every tool is listed; ones this browser can't run explain why instead.
   const tabs = TABS
-  const [tab, setTab] = useState(() => (TABS.find(item => support[item.needs]) ?? TABS[0]).id)
+  const [tab, setTab] = useState(() => (TABS.some(item => item.id === initialTab) ? initialTab : (TABS.find(item => support[item.needs]) ?? TABS[0]).id))
   const supported = Boolean(support[TABS.find(item => item.id === tab)?.needs])
   const noAiAtAll = !TABS.some(item => support[item.needs])
   const [busy, setBusy] = useState(false)
@@ -49,6 +50,11 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
   const [sourceLanguage, setSourceLanguage] = useState(null)
   const [translation, setTranslation] = useState('')
   const [corrections, setCorrections] = useState(null)
+  // A review survives "Show in document" (which closes the dialog) while the text is unchanged.
+  const [review, setReview] = useState(() => savedReview ?? null)
+  const onReviewChangeRef = useRef(onReviewChange)
+  useEffect(() => { onReviewChangeRef.current = onReviewChange }, [onReviewChange])
+  useEffect(() => { onReviewChangeRef.current?.(review) }, [review])
   const [copied, setCopied] = useState(false)
   const abortRef = useRef(null)
   const closeRef = useRef(null)
@@ -111,6 +117,13 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
     setCorrections(result.map(item => ({ ...item, accepted: true })))
   })
 
+  const runReview = () => run(async signal => {
+    setReview(null)
+    const result = await reviewWriting(markdown, { onProgress, onStatus, onStep: (done, total) => { setPreparing(false); setStep({ done, total }) }, signal })
+    setReview(result.map(item => ({ ...item, accepted: Boolean(item.correction) })))
+  })
+  const reviewAccepted = review?.filter(item => item.accepted && item.correction) ?? []
+
   const copy = async text => {
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* clipboard blocked */ }
   }
@@ -144,11 +157,12 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
               <strong>
                 {noAiAtAll
                   ? 'In-browser AI isn’t supported in this browser.'
-                  : `On-device ${tab === 'summarize' ? 'summarizing' : tab === 'translate' ? 'translation' : 'proofreading'} isn’t supported in this browser.`}
+                  : `On-device ${tab === 'summarize' ? 'summarizing' : tab === 'translate' ? 'translation' : tab === 'review' ? 'writing review' : 'proofreading'} isn’t supported in this browser.`}
               </strong>
               <span>
                 These tools use the AI model built into recent desktop Google Chrome (version 138 or later, on a computer that meets its hardware requirements).
                 {tab === 'proofread' && ' Proofreading is still experimental: enable “Proofreader API” at chrome://flags.'}
+                {tab === 'review' && ' Writing review uses Chrome’s on-device language model: enable “Prompt API for Gemini Nano” at chrome://flags.'}
                 {' '}Writing a README still works everywhere with the built-in generator.
               </span>
             </div>
@@ -199,6 +213,31 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
                 )
           )}
 
+          {tab === 'review' && supported && (
+            review === null ? <p className="ai-hint">Reads your paragraphs and points out hard-to-follow or long sentences, passive voice, wordy phrases, repetition, tone and inconsistent terms, with suggested rewrites. Code and tables are skipped.</p>
+              : review.length === 0 ? <p className="ai-hint ai-ok"><Check size={14} /> The writing reads well. No suggestions.</p>
+                : (
+                  <ul className="ai-corrections ai-review" aria-label="Writing suggestions">
+                    {review.map(item => (
+                      <li key={item.id}>
+                        <div className="ai-review-head">
+                          <span className="ai-review-kind">{REVIEW_KINDS[item.kind]}</span>
+                          <span className="ai-review-issue">{item.issue}</span>
+                          {onReveal && (
+                            <button type="button" className="btn-icon" onClick={() => onReveal(item.from, item.to)} aria-label={`Show in document: ${item.original}`} data-tip="Show in document"><Crosshair size={13} /></button>
+                          )}
+                        </div>
+                        {item.correction ? (
+                          <label>
+                            <input type="checkbox" checked={item.accepted} onChange={event => setReview(list => list.map(entry => (entry.id === item.id ? { ...entry, accepted: event.target.checked } : entry)))} />
+                            <span className="ai-correction"><del>{item.original}</del> → <ins>{item.correction}</ins></span>
+                          </label>
+                        ) : <p className="ai-review-quote">“{item.original}”</p>}
+                      </li>
+                    ))}
+                  </ul>
+                )
+          )}
           {(progress !== null || step) && busy && (
             <div className="ai-progress" aria-live="polite">
               <Loader2 size={13} className="animate-spin" />
@@ -231,13 +270,18 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, onIn
               <Check size={12} /> Apply {corrections.filter(item => item.accepted).length} correction{corrections.filter(item => item.accepted).length === 1 ? '' : 's'}
             </button>
           )}
+          {tab === 'review' && reviewAccepted.length > 0 && !busy && (
+            <button type="button" className="reader-chip" onClick={() => { onApplyText(applyCorrections(markdown, reviewAccepted), 'review'); onClose() }}>
+              <Check size={12} /> Apply {reviewAccepted.length} suggestion{reviewAccepted.length === 1 ? '' : 's'}
+            </button>
+          )}
           <span style={{ flex: 1 }} />
           {busy
             ? <button type="button" className="reader-chip" onClick={() => abortRef.current?.abort()}>Stop</button>
             : !supported ? null : (
-              <button type="button" className="pdf-dialog-primary" onClick={tab === 'summarize' ? runSummary : tab === 'translate' ? runTranslation : runProofread}>
-                {tab === 'summarize' ? <Sparkles size={13} /> : tab === 'translate' ? <Languages size={13} /> : <SpellCheck size={13} />}
-                {tab === 'summarize' ? (summary ? 'Summarize again' : 'Summarize') : tab === 'translate' ? `Translate to ${languageName(targetLanguage)}` : 'Check document'}
+              <button type="button" className="pdf-dialog-primary" onClick={tab === 'summarize' ? runSummary : tab === 'translate' ? runTranslation : tab === 'review' ? runReview : runProofread}>
+                {tab === 'summarize' ? <Sparkles size={13} /> : tab === 'translate' ? <Languages size={13} /> : tab === 'review' ? <ScrollText size={13} /> : <SpellCheck size={13} />}
+                {tab === 'summarize' ? (summary ? 'Summarize again' : 'Summarize') : tab === 'translate' ? `Translate to ${languageName(targetLanguage)}` : tab === 'review' ? (review ? 'Review again' : 'Review writing') : 'Check document'}
               </button>
             )}
         </div>

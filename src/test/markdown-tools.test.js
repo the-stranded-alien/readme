@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import { publishSite } from '../sitePublisher.js'
+import { applyCorrections, locateQuote, reviewChunks, reviewWriting } from '../onDeviceAi.js'
 import { describe, expect, it } from 'vitest'
 import { htmlToMarkdown, looksRich, parseDelimited, rowsToMarkdownTable, webPageToMarkdown } from '../htmlToMarkdown.js'
 
@@ -293,3 +294,49 @@ describe('site publisher', () => {
     expect(await zip.file('index.html').async('string')).toContain('url=Home.html')
   })
 })
+
+describe('on-device writing review', () => {
+  const doc = '---\ntitle: x\n---\n# Notes\n\nThe report was written by the team in order to explain the plan.\n\n```js\nconst a = 1\n```\n\n- It is very very important.\n'
+  it('reviews prose only and maps exact quotes back to the document', async () => {
+    const prompts = []
+    globalThis.LanguageModel = {
+      availability: async () => 'available',
+      create: async () => ({
+        clone: async () => ({
+          prompt: async text => {
+            prompts.push(text)
+            return JSON.stringify({ findings: [
+              { quote: 'The report was written by the team', kind: 'passive', issue: 'Passive voice hides who acted.', suggestion: 'The team wrote the report' },
+              { quote: 'in order to', kind: 'wordy', issue: 'Wordy.', suggestion: 'to' },
+              { quote: 'very very', kind: 'repetition', issue: 'Repeated word.', suggestion: 'very' },
+              { quote: 'not in the text at all', kind: 'clarity', issue: 'Made up.', suggestion: 'x' },
+              { quote: 'written by', kind: 'clarity', issue: 'Overlaps the first finding.', suggestion: '' },
+            ] })
+          },
+          destroy() {},
+        }),
+        destroy() {},
+      }),
+    }
+    try {
+      const findings = await reviewWriting(doc)
+      expect(prompts.join('\n')).not.toContain('const a')
+      expect(prompts.join('\n')).not.toContain('title: x')
+      expect(findings.map(item => item.kind)).toEqual(['passive', 'wordy', 'repetition'])
+      for (const item of findings) expect(doc.slice(item.from, item.to)).toBe(item.original)
+      expect(applyCorrections(doc, findings)).toContain('The team wrote the report to explain the plan.')
+      expect(applyCorrections(doc, findings)).toContain('- It is very important.')
+    } finally {
+      delete globalThis.LanguageModel
+    }
+  })
+  it('chunks long documents and ignores short or missing quotes', () => {
+    const long = Array.from({ length: 30 }, (_, i) => `Paragraph ${i} ${'words '.repeat(20)}`).join('\n\n')
+    expect(reviewChunks(long, 500).length).toBeGreaterThan(5)
+    const blocks = reviewChunks('Hello there world.')[0]
+    expect(locateQuote('Hello there world.', blocks, 'there')).toEqual({ from: 6, to: 11 })
+    expect(locateQuote('Hello there world.', blocks, 'ab')).toBeNull()
+    expect(locateQuote('Hello there world.', blocks, 'nowhere')).toBeNull()
+  })
+})
+

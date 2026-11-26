@@ -10,6 +10,7 @@ export function aiSupport() {
     translator: 'Translator' in scope,
     detector: 'LanguageDetector' in scope,
     proofreader: 'Proofreader' in scope,
+    languageModel: 'LanguageModel' in scope,
   }
 }
 export const hasAnyAi = () => Object.values(aiSupport()).some(Boolean)
@@ -230,6 +231,118 @@ export function applyCorrections(markdown, corrections) {
   return [...corrections].sort((a, b) => b.from - a.from).reduce((text, item) => (
     text.slice(item.from, item.to) === item.original ? text.slice(0, item.from) + item.correction + text.slice(item.to) : text
   ), markdown)
+}
+
+// ── Writing review (on-device language model, no dictionaries or rule lists) ──
+export const REVIEW_KINDS = {
+  clarity: 'Clarity',
+  'long-sentence': 'Long sentence',
+  passive: 'Passive voice',
+  wordy: 'Wordy',
+  repetition: 'Repetition',
+  tone: 'Tone',
+  consistency: 'Consistency',
+}
+const REVIEW_SCHEMA = {
+  type: 'object',
+  properties: {
+    findings: {
+      type: 'array',
+      maxItems: 12,
+      items: {
+        type: 'object',
+        properties: {
+          quote: { type: 'string' },
+          kind: { type: 'string', enum: Object.keys(REVIEW_KINDS) },
+          issue: { type: 'string' },
+          suggestion: { type: 'string' },
+        },
+        required: ['quote', 'kind', 'issue', 'suggestion'],
+      },
+    },
+  },
+  required: ['findings'],
+}
+const REVIEW_GUIDE = 'You are a careful editor reviewing part of a Markdown document for readability and style. '
+  + 'Point out only real problems: sentences that are hard to follow or too long, unnecessary passive voice, wordy or filler phrases, '
+  + 'repeated words, a tone that does not fit, and inconsistent terms. Do not report spelling or grammar slips, and do not comment on Markdown syntax. '
+  + 'For each finding, "quote" must be copied exactly, character for character, from the text (a phrase or one sentence, never a whole paragraph); '
+  + '"issue" explains the problem in one short sentence; "suggestion" is the rewritten replacement for the quote (or an empty string if there is no simple rewrite). '
+  + 'If the writing is fine, return an empty list.'
+
+/** Prose paragraphs grouped into chunks of about `size` characters (each block keeps its offset). */
+export function reviewChunks(markdown, size = 1800) {
+  const chunks = []
+  let current = []
+  let length = 0
+  for (const block of proseBlocks(markdown)) {
+    if (length + block.text.length > size && current.length) { chunks.push(current); current = []; length = 0 }
+    current.push(block)
+    length += block.text.length
+  }
+  if (current.length) chunks.push(current)
+  return chunks
+}
+
+/** Where a quoted phrase is in the document (inside the chunk's blocks), or null if the model didn't quote exactly. */
+export function locateQuote(markdown, blocks, quote) {
+  const needle = String(quote || '').trim()
+  if (needle.length < 3) return null
+  for (const block of blocks) {
+    const at = block.text.indexOf(needle)
+    if (at >= 0) return { from: block.from + at, to: block.from + at + needle.length }
+  }
+  return null
+}
+
+/**
+ * Reviews the document's prose with the on-device language model.
+ * Returns findings: { id, from, to, original, correction, kind, issue } (correction may be '' = no rewrite).
+ */
+export async function reviewWriting(markdown, { onProgress, onStatus, onStep, signal } = {}) {
+  const chunks = reviewChunks(markdown)
+  if (!chunks.length) return []
+  const session = await createSession(scope.LanguageModel, {
+    initialPrompts: [{ role: 'system', content: REVIEW_GUIDE }],
+    expectedInputs: [{ type: 'text', languages: ['en'] }],
+    expectedOutputs: [{ type: 'text', languages: ['en'] }],
+  }, { onProgress, onStatus, signal })
+  try {
+    const findings = []
+    const seen = new Set()
+    for (let i = 0; i < chunks.length; i += 1) {
+      signal?.throwIfAborted?.()
+      const blocks = chunks[i]
+      // Each chunk is reviewed on its own (a fresh clone keeps the context small).
+      const turn = session.clone ? await session.clone({ signal }) : session
+      try {
+        const raw = await turn.prompt(`Review this text:\n\n${blocks.map(block => block.text).join('\n\n')}`, { responseConstraint: REVIEW_SCHEMA, signal })
+        let parsed = null
+        try { parsed = JSON.parse(raw) } catch { parsed = null }
+        for (const item of parsed?.findings ?? []) {
+          const place = locateQuote(markdown, blocks, item.quote)
+          if (!place || seen.has(`${place.from}-${place.to}`)) continue
+          const original = markdown.slice(place.from, place.to)
+          const correction = String(item.suggestion ?? '').trim()
+          seen.add(`${place.from}-${place.to}`)
+          findings.push({
+            id: `${place.from}-${place.to}`, ...place, original,
+            correction: correction && correction !== original ? correction : '',
+            kind: REVIEW_KINDS[item.kind] ? item.kind : 'clarity',
+            issue: String(item.issue ?? '').trim(),
+          })
+        }
+      } finally {
+        if (turn !== session) turn.destroy?.()
+      }
+      onStep?.(i + 1, chunks.length)
+    }
+    // Findings that overlap an earlier one would fight over the same text: keep the first.
+    findings.sort((a, b) => a.from - b.from)
+    return findings.filter((item, index) => !findings.slice(0, index).some(prev => item.from < prev.to && prev.from < item.to))
+  } finally {
+    session.destroy?.()
+  }
 }
 
 export const TRANSLATION_LANGUAGES = [

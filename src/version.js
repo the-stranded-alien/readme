@@ -4,9 +4,16 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '2.3'
+export const APP_VERSION = '2.4'
 
 export const RELEASES = [
+  {
+    version: '2.4',
+    date: '2026-11-27',
+    notes: [
+      'Review writing (AI): the on-device model points out hard-to-follow sentences, passive voice, wordy phrases, repetition and tone, with rewrites you can apply in one undoable step.',
+    ],
+  },
   {
     version: '2.3',
     date: '2026-11-27',
@@ -39,14 +46,6 @@ export const RELEASES = [
       'Wiki links: type [[ to link documents, with “Linked from” in the Contents bar.',
       'Visual table editor: edit tables in a grid — add, move, align and sort rows and columns.',
       'Reorganise documents from the Contents bar: drag sections, promote, demote or move them to another file.',
-    ],
-  },
-  {
-    version: '1.9',
-    date: '2026-11-26',
-    notes: [
-      'Download a presentation as a landscape PDF or a PowerPoint file (with speaker notes).',
-      'Pin up to 5 files; the file pinned last comes first.',
     ],
   },
 ]

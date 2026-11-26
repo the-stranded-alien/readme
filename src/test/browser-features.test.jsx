@@ -1709,6 +1709,56 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toBe('# Title\n\nThis is the text.\n\n```js\nconst teh = 1\n```'))
   })
 
+  it('reviews writing with the on-device language model, applies chosen rewrites, and hides when AI is off', async () => {
+    const reviewModel = {
+      availability: async () => 'available',
+      create: async () => ({
+        clone: async () => ({
+          prompt: async () => JSON.stringify({ findings: [
+            { quote: 'in order to', kind: 'wordy', issue: 'Wordy phrase.', suggestion: 'to' },
+            { quote: 'It is believed by many', kind: 'passive', issue: 'Passive voice.', suggestion: 'Many believe' },
+            { quote: 'synergy', kind: 'tone', issue: 'Jargon.', suggestion: '' },
+          ] }),
+          destroy() {},
+        }),
+        destroy() {},
+      }),
+    }
+    vi.stubGlobal('LanguageModel', reviewModel)
+    const text = '# Plan\n\nWe meet in order to plan. It is believed by many that synergy helps.\n'
+    await writeWorkspace({ activeId: 'rv', files: [{ id: 'rv', name: 'Plan.md', content: text }] })
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Open command palette' }))
+    fireEvent.change(screen.getByPlaceholderText('Jump to file, heading, template, or command…'), { target: { value: 'Review writing' } })
+    fireEvent.click(await screen.findByText('Review writing (AI)'))
+    const dialog = await screen.findByRole('dialog', { name: 'AI tools' })
+    expect(within(dialog).getByRole('tab', { name: 'Review writing' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Review writing' }))
+    const list = await within(dialog).findByRole('list', { name: 'Writing suggestions' })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3)
+    expect(list).toHaveTextContent('Passive voice')
+    expect(list).toHaveTextContent('“synergy”')
+    // Skip one rewrite, apply the other.
+    fireEvent.click(within(list).getByRole('checkbox', { name: /in order to/ }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Apply 1 suggestion' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toBe('# Plan\n\nWe meet in order to plan. Many believe that synergy helps.\n'))
+
+    vi.unstubAllGlobals()
+  })
+
+  it('hides writing review (and the AI help) when AI features are turned off', async () => {
+    vi.stubGlobal('LanguageModel', { availability: async () => 'available', create: async () => ({ destroy() {} }) })
+    localStorage.setItem('readme-app-settings', JSON.stringify({ hideAi: true }))
+    await writeWorkspace({ activeId: 'rv', files: [{ id: 'rv', name: 'Plan.md', content: '# Plan\n\nSome text here.' }] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Open command palette' }))
+    fireEvent.change(screen.getByPlaceholderText('Jump to file, heading, template, or command…'), { target: { value: 'Review writing' } })
+    await waitFor(() => expect(screen.queryByText('Review writing (AI)')).toBeNull())
+    expect(screen.queryByRole('button', { name: 'AI tools' })).toBeNull()
+    localStorage.removeItem('readme-app-settings')
+    vi.unstubAllGlobals()
+  })
+
   it('shows an on-device summary at the top of the page from the Summarize button', async () => {
     vi.stubGlobal('Summarizer', { availability: async () => 'available', create: async () => ({ summarize: async () => '- First point\n- Second point', destroy() {} }) })
     await writeWorkspace({ activeId: 'sm', files: [{ id: 'sm', name: 'Doc.md', content: '# Doc\n\nSome long text.' }] })
@@ -1796,7 +1846,7 @@ describe('advanced browser features', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'AI tools' }))
     const dialog = await screen.findByRole('dialog', { name: 'AI tools' })
     expect(dialog).toHaveTextContent('In-browser AI isn’t supported in this browser.')
-    expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
+    expect(within(dialog).getAllByRole('tab')).toHaveLength(4)
   })
 
   it('opens Write a README from the editor toolbar', async () => {

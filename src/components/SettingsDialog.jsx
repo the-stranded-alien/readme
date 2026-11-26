@@ -168,7 +168,7 @@ export default function SettingsDialog({
                 <h3>Features</h3>
                 <SettingsToggle
                   label="Hide AI features"
-                  description="Removes Summarize, AI tools and the on-device AI writer. Write a README still works with the built-in generator."
+                  description="Removes Summarize, AI tools (translate, proofread, writing review) and the on-device AI writer. Write a README still works with the built-in generator."
                   checked={settings.hideAi}
                   onChange={value => onChange('hideAi', value)}
                 />
