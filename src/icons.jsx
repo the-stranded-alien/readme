@@ -49,6 +49,9 @@ import {
   Filter as ParkFilter,
   FoldUpOne as ParkFoldUpOne,
   ExpandLeft as ParkExpandLeft,
+  Clear as ParkClear,
+  TargetOne as ParkTargetOne,
+  HourglassFull as ParkHourglassFull,
   ExpandRight as ParkExpandRight,
   FolderClose as ParkFolderClose,
   FolderConversion as ParkFolderConversion,
@@ -198,6 +201,9 @@ export const ChevronUp = make(ParkUp, 'ChevronUp')
 export const ChevronsDownUp = make(ParkFoldUpOne, 'ChevronsDownUp')
 export const PanelWiden = make(ParkExpandRight, 'PanelWiden')
 export const PanelNarrow = make(ParkExpandLeft, 'PanelNarrow')
+export const Eraser = make(ParkClear, 'Eraser')
+export const LaserPointer = make(ParkTargetOne, 'LaserPointer')
+export const Hourglass = make(ParkHourglassFull, 'Hourglass')
 export const ChevronsUpDown = make(ParkUpAndDown, 'ChevronsUpDown')
 export const CircleHelp = make(ParkHelp, 'CircleHelp')
 export const Clock = make(ParkTime, 'Clock')

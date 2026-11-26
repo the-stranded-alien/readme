@@ -47,7 +47,7 @@ const HELP_SECTIONS = [
       ['Section focus', 'Shows one section at a time; use Alt+← and Alt+→ to move between sections.'],
       ['Reading comfort', 'The Aa button changes the font size, line height, width, font weight and paper tone.'],
       ['Read aloud & spot', 'Listen to the document, and save your reading spot to resume later.'],
-      ['Highlights', 'Select text in the page to highlight it in one of several colours.'],
+      ['Highlights', 'Select text in the page to highlight it in one of several colours. The highlights list closes with its × button, Escape, or a click outside it.'],
     ],
   },
   {
@@ -65,6 +65,9 @@ const HELP_SECTIONS = [
       ['Download', 'Download as Markdown, PDF (with options), Word, HTML, or all files as a .zip.'],
       ['Share link', 'Copy share link puts the whole document in the link itself — no server involved.'],
       ['Present', 'Present shows one slide per heading. Use the arrow keys, F for fullscreen, T to switch theme and + / − to make the text bigger or smaller (kept for every slide). In the contents bar, hover a heading and click its slide icon to present from there, or use the slide icon at the top to present only your bookmarked sections.'],
+      ['Slide contents', 'While presenting, the list button at the left of the toolbar (or O) opens the slide list on the left so you can jump to any slide. Close it from the toolbar or the button at the top of the list.'],
+      ['Pen and laser', 'L turns on a laser dot that follows your pointer. D turns on the pen: fading ink trails away like a comet, oldest part first, permanent ink stays on its slide until you clear it (C). Switch the mode from the toolbar. B or W blanks the screen.'],
+      ['Presentation settings', 'Settings → Presentation sets which headings start a slide (or --- lines), auto-advance, the default text size and theme, the contents panel, progress bar, timer, and the pen and laser colours, thickness and fade time.'],
       ['Speaker notes', 'Write notes under a line with just ??? at the end of a slide. Press S (or the notes button) for the presenter view: notes, next slide and a timer in a second window.'],
     ],
   },

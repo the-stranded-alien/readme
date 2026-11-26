@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, Info, Palette, RefreshCw, Settings, Sparkles, X } from '../icons'
+import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, Info, Palette, Presentation, RefreshCw, Settings, Sparkles, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
 import { THEMES, themeClasses } from '../themes'
@@ -10,6 +10,7 @@ export const REPO_URL = 'https://github.com/the-stranded-alien/readme'
 const SECTIONS = [
   { id: 'workspace', label: 'Workspace', icon: FolderOpen },
   { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'presentation', label: 'Presentation', icon: Presentation },
   { id: 'features', label: 'Features', icon: Sparkles },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'about', label: 'About', icon: Info },
@@ -112,7 +113,7 @@ export function SettingsToggle({ label, description, checked, onChange, disabled
 export default function SettingsDialog({
   initialSection = 'workspace', settings, onChange, fileCount,
   onBackup, onRestore, onExportZip, density, onDensity, highContrast, onHighContrast,
-  appearanceExtra, workspaceExtra, onClose,
+  appearanceExtra, workspaceExtra, presentationExtra, onClose,
 }) {
   const [section, setSection] = useState(SECTIONS.some(item => item.id === initialSection) ? initialSection : 'workspace')
   const closeRef = useRef(null)
@@ -180,6 +181,13 @@ export default function SettingsDialog({
                 <h3>Storage</h3>
                 <p className="settings-muted">Your files, history and settings are stored in this browser.</p>
                 <StoragePanel />
+              </>
+            )}
+            {section === 'presentation' && (
+              <>
+                <h3>Presentation</h3>
+                <p className="settings-muted">Defaults for Present. The pen, laser, contents and text size can also be changed from the slide toolbar.</p>
+                {presentationExtra}
               </>
             )}
             {section === 'about' && (

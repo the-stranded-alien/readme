@@ -50,6 +50,12 @@ const GROUPS = [
       ['S', 'Presenter view (notes, next slide, timer)'],
       ['F', 'Fullscreen'],
       ['T', 'Switch theme'],
+      ['O', 'Show / hide the slide contents'],
+      ['L', 'Laser pointer'],
+      ['D', 'Pen (draw on the slide)'],
+      ['C', 'Clear drawings on this slide'],
+      ['B  W', 'Black / white screen'],
+      ['Esc', 'Put the pen or laser away, then exit'],
     ],
   },
   {

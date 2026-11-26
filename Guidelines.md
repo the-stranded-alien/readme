@@ -338,6 +338,16 @@ Rules learned the hard way:
 - **Speaker notes** go after a `???` line. **S** opens the presenter window: `window.open` from the click (so blockers allow it), with styles and `<html>` classes copied and kept in sync, and content rendered through `createPortal`. It shows the notes, the next slide, a timer, a clock and Previous/Next, and keys work in both windows. If the popup is blocked, show the notes inline instead.
 - Keys: F for fullscreen, T for theme, Esc to exit (and close the presenter window).
 
+### Presentation mode patterns
+
+- **Settings live in one normalised object** (`src/presentationSettings.js`: defaults, allowed values, `normalize…`), stored under a `readme-` key so backups include it. Settings → Presentation edits it; the slide toolbar changes things for the current session only.
+- **The presentation has its own theme.** It starts in the default presentation theme (or the last one used in a presentation) and the app's theme comes back on exit.
+- **Slide breaks are configurable** (heading level 1–6, optional `---` after a blank line). Every helper that maps headings to slides takes the same split options.
+- **Pen and laser are drawn on a canvas over the stage** that only takes the pointer while the pen is on. Strokes belong to a slide; fading ink is removed after its time, permanent ink stays until cleared. The toolbar sits above the canvas and stays usable.
+- **Keys keep working when focus falls out.** If the focused control is removed, a window-level listener still handles keys whose target is `body`.
+- **Escape unwinds one layer at a time:** blank screen → active tool → exit.
+- **Popovers close on an outside click, not on hover-out,** and always have a visible × and Escape.
+
 ## 7. Layout, responsiveness, motion
 
 - The header is a three-column grid (`auto | minmax(0,1fr) | auto`) so items never overlap. At 1280, 1100 and 900px, check that header items don't overlap.

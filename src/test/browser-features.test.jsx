@@ -1034,6 +1034,103 @@ describe('advanced browser features', () => {
     expect(await screen.findByRole('dialog', { name: /Presentation, slide 1 of 3/ })).toBeInTheDocument()
   })
 
+  it('splits slides at the chosen heading level and at horizontal rules', async () => {
+    const { splitSlides } = await import('../presentation.js')
+    const md = '# A\n\na\n\n## B\n\nb\n\n### C\n\nc\n\n---\n\nd\n\nSetext\n---'
+    expect(splitSlides(md, { level: 1 })).toHaveLength(1)
+    expect(splitSlides(md)).toHaveLength(2)
+    expect(splitSlides(md, { level: 6 })).toHaveLength(3)
+    // A --- after a blank line breaks; a setext underline (after text) doesn't.
+    expect(splitSlides(md, { level: 6, rules: true })).toEqual(['# A\n\na', '## B\n\nb', '### C\n\nc', 'd\n\nSetext\n---'])
+  })
+
+  it('presents with a contents panel, pen, laser, blank screen and settings', async () => {
+    localStorage.setItem('readme-presentation-settings', JSON.stringify({ splitLevel: 1, showTimer: true, autoAdvance: 10 }))
+    await writeWorkspace({ activeId: 'p', files: [{ id: 'p', name: 'Deck.md', content: '# Deck\n\nIntro\n\n## One\n\nFirst\n\n# Two\n\nSecond\n\n# Three\n\nThird' }] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Present document as slides' }))
+    // Only H1 starts a slide.
+    const deck = await screen.findByRole('dialog', { name: /Presentation, slide 1 of 3/ })
+    expect(within(deck).getByLabelText('Elapsed time')).toBeInTheDocument()
+    expect(within(deck).getByRole('button', { name: 'Pause auto-advance' })).toBeInTheDocument()
+
+    // Contents: collapsed by default; toolbar button opens it, its own button closes it.
+    expect(within(deck).queryByRole('complementary', { name: 'Slides' })).toBeNull()
+    fireEvent.click(within(deck).getByRole('button', { name: 'Show slide contents' }))
+    const contents = within(deck).getByRole('complementary', { name: 'Slides' })
+    fireEvent.click(within(contents).getByRole('button', { name: /Three/ }))
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /slide 3 of 3/ })).toHaveTextContent('Third'))
+    fireEvent.click(within(contents).getByRole('button', { name: 'Hide slide contents' }))
+    expect(within(deck).queryByRole('complementary', { name: 'Slides' })).toBeNull()
+    fireEvent.keyDown(deck, { key: 'o' })
+    expect(within(deck).getByRole('complementary', { name: 'Slides' })).toBeInTheDocument()
+
+    // Pen (fading by default) with a mode switch, and the laser.
+    fireEvent.click(within(deck).getByRole('button', { name: 'Pen' }))
+    expect(within(deck).getByRole('button', { name: 'Pen' })).toHaveAttribute('aria-pressed', 'true')
+    const modes = within(deck).getByRole('radiogroup', { name: 'Pen mode' })
+    expect(within(modes).getByRole('radio', { name: 'Fading' })).toBeChecked()
+    fireEvent.click(within(modes).getByRole('radio', { name: 'Permanent' }))
+    expect(within(modes).getByRole('radio', { name: 'Permanent' })).toBeChecked()
+    // Nothing drawn yet, so Clear is off. A toolbar colour becomes the default.
+    expect(within(deck).getByRole('button', { name: 'Clear drawings on this slide' })).toBeDisabled()
+    fireEvent.click(within(within(deck).getByRole('radiogroup', { name: 'Pen colour' })).getByRole('radio', { name: 'Blue' }))
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('readme-presentation-settings')).penColor).toBe('blue'))
+    // Drawing folds the options into one button; it opens them again.
+    fireEvent.pointerDown(deck.querySelector('.presentation-ink'), { clientX: 50, clientY: 50, button: 0, pointerId: 1 })
+    fireEvent.pointerUp(deck.querySelector('.presentation-ink'), { pointerId: 1 })
+    expect(within(deck).queryByRole('radiogroup', { name: 'Pen mode' })).toBeNull()
+    fireEvent.click(within(deck).getByRole('button', { name: /Pen options: Blue permanent ink/ }))
+    expect(within(deck).getByRole('radiogroup', { name: 'Pen mode' })).toBeInTheDocument()
+    fireEvent.keyDown(deck, { key: 'l' })
+    expect(within(deck).getByRole('button', { name: 'Laser pointer' })).toHaveAttribute('aria-pressed', 'true')
+    expect(deck).toHaveClass('has-tool-laser')
+    // Escape puts the tool away before it exits.
+    fireEvent.keyDown(deck, { key: 'Escape' })
+    expect(deck).not.toHaveClass('has-tool-laser')
+
+    // Blank screen.
+    fireEvent.keyDown(deck, { key: 'b' })
+    fireEvent.click(await screen.findByRole('button', { name: /Screen blanked/ }))
+    expect(screen.queryByRole('button', { name: /Screen blanked/ })).toBeNull()
+    fireEvent.keyDown(deck, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Presentation/ })).toBeNull())
+
+    // Settings → Presentation changes the defaults.
+    fireEvent.click(screen.getByRole('button', { name: 'Settings', exact: true }))
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Presentation' }))
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'New slide at' }), { target: { value: '2' } })
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Pen mode' }), { target: { value: 'permanent' } })
+    fireEvent.click(within(within(dialog).getByRole('radiogroup', { name: 'Laser colour' })).getByRole('radio', { name: 'Green' }))
+    const saved = JSON.parse(localStorage.getItem('readme-presentation-settings'))
+    expect(saved).toMatchObject({ splitLevel: 2, penMode: 'permanent', laserColor: 'green' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Present document as slides' }))
+    const again = await screen.findByRole('dialog', { name: /Presentation, slide 1 of 4/ })
+    fireEvent.click(within(again).getByRole('button', { name: 'Pen' }))
+    expect(within(within(again).getByRole('radiogroup', { name: 'Pen mode' })).getByRole('radio', { name: 'Permanent' })).toBeChecked()
+    expect(within(within(again).getByRole('radiogroup', { name: 'Pen colour' })).getByRole('radio', { name: 'Blue' })).toBeChecked()
+  })
+
+  it('closes the highlights popover with its button and with a click outside', async () => {
+    window.getSelection = vi.fn(() => ({ toString: () => '', removeAllRanges() {} }))
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+    const open = () => fireEvent.click(screen.getByRole('button', { name: 'Highlights and notes' }))
+    open()
+    expect(await screen.findByRole('dialog', { name: 'Highlights and notes' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close highlights and notes' }))
+    expect(screen.queryByRole('dialog', { name: 'Highlights and notes' })).toBeNull()
+    open()
+    const popover = await screen.findByRole('dialog', { name: 'Highlights and notes' })
+    fireEvent.pointerDown(popover) // clicks inside keep it open
+    fireEvent.mouseOver(document.body) // hovering out doesn't close it
+    expect(screen.getByRole('dialog', { name: 'Highlights and notes' })).toBeInTheDocument()
+    fireEvent.pointerDown(document.querySelector('.book-page'))
+    expect(screen.queryByRole('dialog', { name: 'Highlights and notes' })).toBeNull()
+  })
+
   it('shows folders in a file tree and moves files between them', async () => {
     window.prompt = vi.fn(() => 'archive')
     await writeWorkspace({ activeId: 'a', files: [

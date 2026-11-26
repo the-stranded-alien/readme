@@ -50,6 +50,8 @@ import { useHoverTooltip as useToolbarTooltip } from './useHoverTooltip'
 import { MARK_COLORS, rehypeMarks } from './rehypeMarks'
 import { CONTENT_FILTERS, applyContentFilter, clearContentFilter, filterLabel } from './contentFilter'
 import { sectionSlides, slideForHeading } from './presentation'
+import { PRESENTATION_THEME_KEY, loadPresentationSettings, savePresentationSettings, splitOptions } from './presentationSettings'
+import PresentationSettings from './components/PresentationSettings'
 import { ALL_THEME_CLASSES, THEME_IDS, availableThemes, nextTheme, themeById, themeClasses } from './themes'
 import TemplatesDialog from './components/TemplatesDialog'
 import SlashMenu from './components/SlashMenu'
@@ -2483,6 +2485,16 @@ export default function App() {
   const [annotationNote, setAnnotationNote] = useState('')
   const [annotationColor, setAnnotationColor] = useState(() => localStorage.getItem('readme-annotation-color') || 'yellow')
   useEffect(() => { try { localStorage.setItem('readme-annotation-color', annotationColor) } catch { /* optional */ } }, [annotationColor])
+  // The highlights popover closes with its × button, Escape, or a click (not a hover) anywhere outside it.
+  const annotationControlRef = useRef(null)
+  useEffect(() => {
+    if (!annotationOpen) return undefined
+    const onDown = event => { if (!annotationControlRef.current?.contains(event.target)) setAnnotationOpen(false) }
+    const onKey = event => { if (event.key === 'Escape') setAnnotationOpen(false) }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [annotationOpen])
   const [selectedQuote, setSelectedQuote] = useState('')
 
   const activeFile = useMemo(
@@ -2677,6 +2689,30 @@ export default function App() {
   }, [appSettings.extraThemes])
   const chooseTheme = useCallback(id => {
     withThemeTransition(() => { setTheme(id); setThemeKey(k => k + 1) })
+  }, [])
+
+  // ── Presentation: settings, and its own theme (the app theme comes back on exit) ──
+  const [presentationSettings, setPresentationSettings] = useState(loadPresentationSettings)
+  useEffect(() => { savePresentationSettings(presentationSettings) }, [presentationSettings])
+  const themeBeforePresentRef = useRef(null)
+  const openPresentation = useCallback((options = {}) => {
+    themeBeforePresentRef.current = theme
+    const allowed = availableThemes(appSettings.extraThemes).map(item => item.id)
+    let lastUsed = null
+    try { lastUsed = localStorage.getItem(PRESENTATION_THEME_KEY) } catch { /* storage is optional */ }
+    const wanted = presentationSettings.theme || lastUsed
+    if (wanted && wanted !== theme && allowed.includes(wanted)) chooseTheme(wanted)
+    setPresenting(options)
+  }, [theme, appSettings.extraThemes, presentationSettings.theme, chooseTheme])
+  const choosePresentationTheme = useCallback(id => {
+    try { localStorage.setItem(PRESENTATION_THEME_KEY, id) } catch { /* storage is optional */ }
+    chooseTheme(id)
+  }, [chooseTheme])
+  const closePresentation = useCallback(() => {
+    setPresenting(false)
+    const before = themeBeforePresentRef.current
+    themeBeforePresentRef.current = null
+    if (before) setTheme(current => (current === before ? current : before))
   }, [])
   const toggleHighContrast = useCallback(() => {
     withThemeTransition(() => setHighContrast(h => !h))
@@ -4842,7 +4878,7 @@ ${fontCss}
     ...(activeFile ? [{ id: 'find-replace', label: 'Find & replace in editor', hint: shortcut('F', { alt: true }), icon: Replace, run: () => { setFindOpen(true); setFindKey(k => k + 1) } }] : []),
     ...(activeFile && canSummarize ? [{ id: 'summarize', label: 'Summarize this document', hint: 'On-device', icon: ScrollText, run: toggleSummary }] : []),
     ...(activeFile && !hideAi ? [{ id: 'ai-tools', label: 'AI tools: summarize, translate, proofread…', hint: aiAvailable ? 'On-device' : 'Not supported here', icon: Sparkles, run: () => setAiOpen(true) }] : []),
-    ...(activeFile ? [{ id: 'present', label: 'Present as slides', hint: 'Reader', icon: Presentation, run: () => setPresenting(true) }] : []),
+    ...(activeFile ? [{ id: 'present', label: 'Present as slides', hint: 'Reader', icon: Presentation, run: () => openPresentation() }] : []),
     { id: 'file-tree', label: fileTreeOpen ? 'Hide file tree' : 'Show file tree', hint: 'Files', icon: FolderTree, run: () => setFileTreeOpen(open => !open) },
     { id: 'write-readme', label: 'Write a README from a description…', hint: aiWriter ? 'AI' : 'Generator', icon: BookOpenText, run: () => setWriteReadmeOpen(true) },
     { id: 'templates', label: 'Manage templates…', hint: 'Templates', icon: LayoutTemplate, run: () => setTemplatesOpen(true) },
@@ -4876,7 +4912,7 @@ ${fontCss}
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
-    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes, activeFont.label, cycleDocFont, handleSaveInPlace, isFullscreen, keepAwake, toggleFullscreen,
+    openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes, activeFont.label, cycleDocFont, handleSaveInPlace, isFullscreen, keepAwake, toggleFullscreen, openPresentation,
   ])
 
   const qualityIssues = useMemo(() => {
@@ -4961,7 +4997,7 @@ ${fontCss}
             </div>
           </div>
           <div className="justify-self-center">
-            <PillSwitcher view={view} onChange={setView} onPresent={() => setPresenting(true)} canPresent={Boolean(activeFile && markdownBody.trim())} />
+            <PillSwitcher view={view} onChange={setView} onPresent={() => openPresentation()} canPresent={Boolean(activeFile && markdownBody.trim())} />
           </div>
 
           <div className="flex items-center gap-1 justify-self-end shrink-0">
@@ -5422,7 +5458,7 @@ ${fontCss}
                   >
                     {!speechActive ? <Volume2 size={12} /> : speechPaused ? <Play size={12} /> : <Pause size={12} />}
                   </button>
-                  <div className="relative reader-settings-control">
+                  <div className="relative reader-settings-control" ref={annotationControlRef}>
                     <button
                       type="button"
                       onMouseDown={e => e.preventDefault()}
@@ -5443,7 +5479,11 @@ ${fontCss}
                       <Highlighter size={12} />
                     </button>
                     {annotationOpen && (
-                      <div className="reader-popover anim-drop-in no-print" style={{ right: 0, top: 'calc(100% + 8px)', width: 300 }}>
+                      <div className="reader-popover anim-drop-in no-print" role="dialog" aria-label={selectedQuote ? 'Save highlight or note' : 'Highlights and notes'} style={{ right: 0, top: 'calc(100% + 8px)', width: 300 }}>
+                        <button type="button" className="btn-icon !p-1 annotation-close" onClick={() => setAnnotationOpen(false)}
+                          aria-label="Close highlights and notes" data-tooltip="Close (Esc)">
+                          <X size={12} />
+                        </button>
                         {selectedQuote ? (
                           <div className="space-y-2">
                             <div className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Save highlight or note</div>
@@ -5532,7 +5572,7 @@ ${fontCss}
                   {markdownBody.trim() && (
                     <button
                       type="button"
-                      onClick={() => setPresenting(true)}
+                      onClick={() => openPresentation()}
                       data-tooltip="Present as slides (one per heading)"
                       aria-label="Present document as slides"
                       className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
@@ -5720,11 +5760,11 @@ ${fontCss}
                       <TocSidebar headings={headings} activeId={activeHeadingId} onNavigate={navigateToHeading}
                         bookmarks={activeBookmarkIds} onToggleBookmark={toggleSectionBookmark}
                         onlyBookmarked={showOnlyBookmarked} onOnlyBookmarked={setOnlyBookmarked}
-                        onPresentFrom={markdownBody.trim() ? ordinal => setPresenting({ startAt: slideForHeading(markdownBody, ordinal) }) : undefined}
+                        onPresentFrom={markdownBody.trim() ? ordinal => openPresentation({ startAt: slideForHeading(markdownBody, ordinal, splitOptions(presentationSettings)) }) : undefined}
                         onPresentBookmarked={markdownBody.trim() ? () => {
                           const ordinals = headings.flatMap((heading, index) => (activeBookmarkIds.has(heading.id) ? [index] : []))
-                          const slides = sectionSlides(markdownBody, ordinals)
-                          if (slides.length) setPresenting({ slides, label: 'Bookmarked' })
+                          const slides = sectionSlides(markdownBody, ordinals, splitOptions(presentationSettings))
+                          if (slides.length) openPresentation({ slides, label: 'Bookmarked' })
                         } : undefined}
                         widthToggle={tocMaxWidth() > TOC_MIN_WIDTH ? {
                           isMax: tocWidth >= tocMaxWidth(),
@@ -6044,8 +6084,10 @@ ${fontCss}
           renderMarkdown={markdown => <MarkdownRenderer content={markdown} dark={isDark} />}
           themes={availableThemes(appSettings.extraThemes)}
           theme={theme}
-          onTheme={chooseTheme}
-          onClose={() => setPresenting(false)}
+          onTheme={choosePresentationTheme}
+          settings={presentationSettings}
+          onSettings={setPresentationSettings}
+          onClose={closePresentation}
         />
       )}
 
@@ -6065,6 +6107,10 @@ ${fontCss}
           workspaceExtra={(
             <FolderSyncCard supported={canSyncToFolder()} state={syncFolder} onConnect={connectSyncFolder}
               onReconnect={reconnectSyncFolder} onSyncNow={() => syncFolder?.handle && runFolderSync(syncFolder.handle)} onDisconnect={disconnectSyncFolder} />
+          )}
+          presentationExtra={(
+            <PresentationSettings settings={presentationSettings} onChange={setPresentationSettings}
+              themes={availableThemes(appSettings.extraThemes)} />
           )}
           appearanceExtra={(
             <ThemePicker themes={availableThemes(appSettings.extraThemes)} value={theme} onChange={chooseTheme}

@@ -2265,9 +2265,23 @@ button[data-tooltip]:not(:focus-visible)::after {
 .settings-toggle { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-light); background: var(--bg-editor); cursor: pointer; }
 .settings-toggle.is-disabled { opacity: .55; cursor: not-allowed; }
 .settings-field { cursor: default; flex-wrap: wrap; }
-.settings-select { height: 32px; min-width: 150px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-preview); color: var(--text-1); font-size: 12.5px; font-weight: 500; cursor: pointer; }
+.settings-select {
+  height: 32px; min-width: 150px; padding: 0 32px 0 11px; border-radius: 9px; border: 1px solid var(--border); color: var(--text-1); font-size: 12.5px; font-weight: 500; cursor: pointer;
+  /* Our own chevron, inset from the border (the native arrow sits against it). */
+  appearance: none; -webkit-appearance: none;
+  background-color: var(--bg-preview);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%), linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 55%, calc(100% - 10px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
 .settings-select:hover { border-color: var(--accent-border); }
 .settings-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-subhead { margin: 14px 0 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.ink-colors { display: flex; gap: 6px; }
+.ink-color { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--bg-preview); box-shadow: 0 0 0 1px var(--border-strong); cursor: pointer; padding: 0; }
+.ink-color:hover, .ink-color:focus-visible { transform: scale(1.12); outline: none; box-shadow: 0 0 0 2px var(--accent); }
+.ink-color.is-active { box-shadow: 0 0 0 2px var(--text-1); }
 .settings-toggle-text { flex: 1; display: grid; gap: 3px; }
 .settings-toggle-text strong { font-size: 13px; color: var(--text-1); font-weight: 600; }
 .settings-toggle-text span { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
@@ -3196,3 +3210,54 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .presenter-foot { display: flex; align-items: center; gap: 14px; }
 .presenter-next { flex: 1; text-align: center; color: var(--text-2); }
 .presenter-notes.rm-prose { max-width: none; width: auto; margin: 0; align-self: stretch; box-sizing: border-box; }
+
+/* Highlights and notes popover: close button in the corner. */
+.annotation-close { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; justify-content: center; }
+
+/* ── Presentation: contents panel, pen and laser, blank screen ── */
+.presentation-body { flex: 1; min-height: 0; display: flex; position: relative; }
+.presentation-main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; }
+.presentation-controls { z-index: 5; }
+.presentation-controls button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.presentation-timer { padding: 0 8px; font-size: 12px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.presentation-contents { width: 260px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); background: var(--bg-toc); }
+.presentation-contents-head { display: flex; align-items: center; gap: 8px; padding: 12px 10px 10px 14px; border-bottom: 1px solid var(--border-light); color: var(--text-3); }
+.presentation-contents-head strong { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); }
+.presentation-contents-head > span { font-size: 11px; font-weight: 600; padding: 0 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.presentation-contents-head .btn-icon { margin-left: auto; width: 26px; height: 26px; justify-content: center; }
+.presentation-contents-list { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; }
+.presentation-contents-list button { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 7px 9px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2); font-size: 12.5px; text-align: left; cursor: pointer; }
+.presentation-contents-list button:hover { background: var(--accent-soft); color: var(--text-1); }
+.presentation-contents-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.presentation-contents-list button.is-current { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.presentation-contents-num { min-width: 18px; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.presentation-contents-list button.is-current .presentation-contents-num { color: var(--accent); }
+.presentation-contents-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) {
+  .presentation-contents { position: absolute; inset: 0 auto 0 0; z-index: 4; width: min(280px, 85vw); box-shadow: var(--shadow-xl); }
+}
+.presentation-ink { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+.presentation-ink.is-drawing { pointer-events: auto; cursor: crosshair; touch-action: none; }
+.presentation.has-tool-laser .presentation-main, .presentation.has-tool-laser .presentation-main * { cursor: none; }
+.presentation-laser {
+  position: fixed; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; z-index: 8; pointer-events: none; opacity: 0;
+  background: var(--laser); box-shadow: 0 0 0 3px color-mix(in srgb, var(--laser) 35%, transparent), 0 0 18px 6px color-mix(in srgb, var(--laser) 55%, transparent);
+}
+.presentation-blank { position: fixed; inset: 0; z-index: 9; border: 0; padding: 0; cursor: pointer; }
+.presentation-blank.is-black { background: #000; }
+.presentation-blank.is-white { background: #fff; }
+
+/* Pen tray: mode, colour and Clear, shown while the pen is on. */
+.presentation-controls { flex-wrap: wrap; justify-content: center; max-width: calc(100% - 24px); }
+.presentation-pen-tray { display: flex; align-items: center; gap: 8px; padding: 0 6px 0 4px; }
+.presentation-pen-modes { display: inline-flex; padding: 2px; gap: 2px; border-radius: 999px; background: var(--bg-editor); border: 1px solid var(--border-light); }
+.presentation-controls .presentation-pen-modes button { width: auto; height: 28px; gap: 5px; padding: 0 10px; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.presentation-controls .presentation-pen-modes button.is-on { background: var(--bg-preview); color: var(--accent); box-shadow: var(--shadow-sm); }
+.presentation-pen-colors { display: inline-flex; gap: 5px; }
+.presentation-controls .presentation-pen-color { width: 18px; height: 18px; padding: 0; border-radius: 50%; background: var(--ink) !important; border: 2px solid var(--bg-preview); box-shadow: 0 0 0 1px var(--border-strong); }
+.presentation-controls .presentation-pen-color:hover { transform: scale(1.15); }
+.presentation-controls .presentation-pen-color.is-on { box-shadow: 0 0 0 2px var(--text-1); }
+.presentation-controls .presentation-pen-clear { width: auto; height: 30px; gap: 5px; padding: 0 10px; font-size: 12px; font-weight: 600; }
+.presentation-controls .presentation-pen-color.presentation-pen-color:hover:not(:disabled) { background-color: var(--ink) !important; }
+.presentation-controls .presentation-pen-summary { width: auto; height: 30px; gap: 5px; padding: 0 8px 0 10px; color: var(--text-3); }
+.presentation-pen-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 1px var(--border-strong); }
