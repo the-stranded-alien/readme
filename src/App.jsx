@@ -26,7 +26,7 @@ import {
 } from './icons'
 import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
-import { addSnapshot, readHistory, readSyncFolder, readWorkspace, writeSyncFolder, writeWorkspace } from './workspaceDb'
+import { addSnapshot, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
 import { canSyncToFolder, folderPermission, readFolder, syncPath, writeToFolder } from './folderSync'
 import { analyzeDocument, applyQualityFix } from './documentAnalysis'
 import { makeDuplicateFileName } from './fileUtils'
@@ -1067,7 +1067,17 @@ function FormattingToolbar({ textareaRef, content, onChange, onCreateFromTemplat
       result = applyFormat(content, start, end, action.before, action.after || '')
     }
 
-    onChange(result.value)
+    // Apply only the changed span through the editing commands, so ⌘Z / Ctrl+Z can undo it
+    // (replacing the whole value would wipe the browser's undo history).
+    const next = result.value
+    let from = 0
+    while (from < content.length && from < next.length && content[from] === next[from]) from += 1
+    let tail = 0
+    while (tail < content.length - from && tail < next.length - from && content[content.length - 1 - tail] === next[next.length - 1 - tail]) tail += 1
+    if (next !== content) {
+      applyTextareaEdit(ta, { from, to: content.length - tail, text: next.slice(from, next.length - tail), cursor: result.cursor[0], cursorEnd: result.cursor[1] })
+      if (ta.value !== next) onChange(next)
+    }
     requestAnimationFrame(() => {
       ta.focus()
       ta.setSelectionRange(result.cursor[0], result.cursor[1])
@@ -2213,6 +2223,7 @@ function applyTextareaEdit(textarea, edit) {
 }
 
 // ── Editor preferences ─────────────────────────────────────────
+const MAX_CLOSED_FILES = 100
 const EDITOR_PREFS_KEY = 'readme-editor-prefs'
 // The simple (textarea) editor is the default; the code editor is opt-in.
 const EDITOR_PREFS_VERSION = 2
@@ -2517,8 +2528,9 @@ export default function App() {
   const syncTimerRef    = useRef(null)
   const syncRafRef      = useRef(null)
   const diskHandlesRef = useRef(new Map())
-  const closedFilesRef = useRef([])
-  const [canReopen, setCanReopen] = useState(false)
+  // Files closed from the tab bar stay listed in the Files panel (newest last) so they can be reopened.
+  const [closedFiles, setClosedFiles] = useState([])
+  const canReopen = closedFiles.length > 0
   const [writingStats, setWritingStats] = useState({})
   const [presenting, setPresenting] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -2634,6 +2646,9 @@ export default function App() {
     let cancelled = false
     readWorkspace().then(saved => {
       if (cancelled) return
+      if (Array.isArray(saved?.closed)) {
+        setClosedFiles(saved.closed.filter(entry => entry?.file?.id && typeof entry.file.content === 'string' && !saved.files?.some(file => file.id === entry.file.id)))
+      }
       if (saved?.files && Array.isArray(saved.files)) {
         setFiles(saved.files)
         saved.files.forEach(file => { if (file.diskHandle) diskHandlesRef.current.set(file.id, file.diskHandle) })
@@ -2652,10 +2667,10 @@ export default function App() {
       } catch {
         // Quota exceeded or storage disabled — keep everything working in memory
       }
-      if (workspaceReady) writeWorkspace({ files, activeId: activeFileId }).catch(() => {})
+      if (workspaceReady) writeWorkspace({ files, activeId: activeFileId, closed: closedFiles }).catch(() => {})
     }, 300)
     return () => clearTimeout(timer)
-  }, [files, activeFileId, workspaceReady])
+  }, [files, activeFileId, workspaceReady, closedFiles])
 
   useEffect(() => {
     if (!('BroadcastChannel' in window)) return
@@ -3300,8 +3315,7 @@ export default function App() {
       .filter(entry => closing.has(entry.file.id))
     if (!closedEntries.length) return
     markWorkspaceEdit()
-    closedFilesRef.current = [...closedFilesRef.current, ...closedEntries].slice(-25)
-    setCanReopen(true)
+    setClosedFiles(prev => [...prev.filter(entry => !closing.has(entry.file.id)), ...closedEntries].slice(-MAX_CLOSED_FILES))
     const next = files.filter(f => !closing.has(f.id))
     setFiles(next)
     if (closing.has(activeFileId)) {
@@ -3321,11 +3335,11 @@ export default function App() {
     const index = files.findIndex(f => f.id === id)
     closeFiles(files.slice(index + 1).filter(f => !f.pinned).map(f => f.id))
   }, [files, closeFiles])
-  const handleReopenClosed = useCallback(() => {
-    const entry = closedFilesRef.current.pop()
-    setCanReopen(closedFilesRef.current.length > 0)
+  const reopenClosedEntry = useCallback(entry => {
     if (!entry) return
+    setClosedFiles(prev => prev.filter(item => item.file.id !== entry.file.id))
     markWorkspaceEdit()
+    if (entry.file.diskHandle) diskHandlesRef.current.set(entry.file.id, entry.file.diskHandle)
     setFiles(prev => {
       if (prev.some(f => f.id === entry.file.id)) return prev
       const next = [...prev]
@@ -3335,6 +3349,12 @@ export default function App() {
     setActiveFileId(entry.file.id)
     setActiveHeadingId(null)
   }, [markWorkspaceEdit])
+  const handleReopenClosed = useCallback(() => reopenClosedEntry(closedFiles.at(-1)), [closedFiles, reopenClosedEntry])
+  const handleReopenFile = useCallback(id => reopenClosedEntry(closedFiles.find(entry => entry.file.id === id)), [closedFiles, reopenClosedEntry])
+  const handleForgetClosed = useCallback(ids => {
+    const forget = new Set(ids)
+    setClosedFiles(prev => prev.filter(entry => !forget.has(entry.file.id)))
+  }, [])
 
   // Global search (Cmd/Ctrl+Shift+F) and the keyboard shortcut sheet (?).
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
@@ -3936,7 +3956,9 @@ export default function App() {
     const next = raw?.trim().replace(/^\/+|\/+$/g, '').replace(/[\\:*?"<>|]+/g, '-')
     if (!next || next === path) return
     markWorkspaceEdit()
-    setFiles(prev => prev.map(file => (file.name.startsWith(`${path}/`) ? { ...file, name: `${next}/${file.name.slice(path.length + 1)}` } : file)))
+    const move = file => (file.name.startsWith(`${path}/`) ? { ...file, name: `${next}/${file.name.slice(path.length + 1)}` } : file)
+    setFiles(prev => prev.map(move))
+    setClosedFiles(prev => prev.map(entry => ({ ...entry, file: move(entry.file) })))
     setTreeCollapsed(list => list.map(item => (item === path || item.startsWith(`${path}/`) ? next + item.slice(path.length) : item)))
   }, [markWorkspaceEdit])
 
@@ -4082,17 +4104,27 @@ export default function App() {
   // ── Sync to a folder on this computer ───────────────────────
   const [syncFolder, setSyncFolder] = useState(null) // { handle, name, status, error, lastSync }
   const syncWrittenRef = useRef(new Map()) // path → content last written to / read from the folder
+  const syncPathsRef = useRef(new Map()) // file id → path it was last written to (so renames move the file)
+  const closedFilesRef = useRef(closedFiles)
+  useEffect(() => { closedFilesRef.current = closedFiles }, [closedFiles])
+  const resetSyncState = useCallback(() => {
+    syncWrittenRef.current = new Map()
+    syncPathsRef.current = new Map()
+    writeSyncState(null).catch(() => {})
+  }, [])
   const pullFromFolder = useCallback(async (handle, { first = false } = {}) => {
     const disk = await readFolder(handle)
     const written = syncWrittenRef.current
     const byPath = new Map(filesRef.current.map(file => [syncPath(file.name), file]))
+    // Files closed from the tab bar are still in the folder: they stay closed (listed in the Files panel).
+    const closedPaths = new Set(closedFilesRef.current.map(entry => syncPath(entry.file.name)))
     const imports = []
     const updates = new Map()
     for (const entry of disk) {
       const local = byPath.get(entry.path)
       if (!local) {
         // New in the folder (or present before syncing started): open it.
-        if (!written.has(entry.path)) imports.push({ name: entry.path, content: entry.content })
+        if (!written.has(entry.path) && !closedPaths.has(entry.path)) imports.push({ name: entry.path, content: entry.content })
         written.set(entry.path, entry.content)
         continue
       }
@@ -4116,7 +4148,8 @@ export default function App() {
   const runFolderSync = useCallback(async (handle, options) => {
     try {
       const pulled = await pullFromFolder(handle, options)
-      const pushed = await writeToFolder(handle, filesRef.current, syncWrittenRef.current)
+      const pushed = await writeToFolder(handle, filesRef.current, syncWrittenRef.current, syncPathsRef.current)
+      writeSyncState({ name: handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
       setSyncFolder(current => current && { ...current, status: 'connected', error: '', lastSync: Date.now() })
       return { ...pulled, pushed }
     } catch (error) {
@@ -4129,21 +4162,30 @@ export default function App() {
       return null
     }
   }, [pullFromFolder])
+  // Reconnect the saved folder once the workspace has loaded (so its files aren't mistaken for new ones).
+  const syncStartedRef = useRef(false)
   useEffect(() => {
+    if (!workspaceReady || syncStartedRef.current) return undefined
+    syncStartedRef.current = true
     let cancelled = false
     readSyncFolder().then(async handle => {
       if (cancelled || !handle) return
+      const saved = await readSyncState().catch(() => null)
+      if (saved?.name === handle.name && saved.written instanceof Map && saved.paths instanceof Map) {
+        syncWrittenRef.current = saved.written
+        syncPathsRef.current = saved.paths
+      }
       const permission = await folderPermission(handle).catch(() => 'denied')
       setSyncFolder({ handle, name: handle.name, status: permission === 'granted' ? 'connected' : 'needs-permission', error: '', lastSync: null })
       if (permission === 'granted') runFolderSync(handle, { first: true })
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [runFolderSync])
+  }, [workspaceReady, runFolderSync])
   const connectSyncFolder = useCallback(async () => {
     try {
       const handle = await window.showDirectoryPicker({ id: 'readme-sync', mode: 'readwrite' })
       if (await folderPermission(handle, true) !== 'granted') throw new Error('Permission to edit the folder was not given.')
-      syncWrittenRef.current = new Map()
+      resetSyncState()
       await writeSyncFolder(handle).catch(() => {})
       setSyncFolder({ handle, name: handle.name, status: 'connected', error: '', lastSync: null })
       const result = await runFolderSync(handle, { first: true })
@@ -4151,7 +4193,7 @@ export default function App() {
     } catch (error) {
       if (error?.name !== 'AbortError') setToast({ message: error?.message || 'Could not use that folder.', tone: 'warning', duration: 5000 })
     }
-  }, [runFolderSync])
+  }, [runFolderSync, resetSyncState])
   const reconnectSyncFolder = useCallback(async () => {
     if (!syncFolder?.handle) return
     if (await folderPermission(syncFolder.handle, true).catch(() => 'denied') === 'granted') {
@@ -4161,9 +4203,9 @@ export default function App() {
   }, [syncFolder, runFolderSync])
   const disconnectSyncFolder = useCallback(() => {
     writeSyncFolder(null).catch(() => {})
-    syncWrittenRef.current = new Map()
+    resetSyncState()
     setSyncFolder(null)
-  }, [])
+  }, [resetSyncState])
   // Write changes shortly after editing stops; pick up outside changes when the window regains focus.
   const syncHandle = syncFolder?.status === 'connected' ? syncFolder.handle : null
   useEffect(() => {
@@ -4185,7 +4227,7 @@ export default function App() {
       if (activeFileId) localStorage.setItem('readme-active-file', activeFileId)
     } catch { /* quota — IndexedDB below still has it */ }
     let browserSaved = true
-    try { await writeWorkspace({ files, activeId: activeFileId }) } catch { browserSaved = false }
+    try { await writeWorkspace({ files, activeId: activeFileId, closed: closedFiles }) } catch { browserSaved = false }
     let diskSaved = 0
     const diskFailed = []
     for (const file of files) {
@@ -4213,7 +4255,7 @@ export default function App() {
     } else {
       setToast({ message: `Saved ${count} file${count === 1 ? '' : 's'}${diskSaved ? ` (${diskSaved} written to disk)` : ''}.`, tone: 'success' })
     }
-  }, [files, activeFileId, takeSnapshot])
+  }, [files, activeFileId, closedFiles, takeSnapshot])
   useEffect(() => {
     const onKey = event => {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 's') {
@@ -4788,6 +4830,24 @@ ${fontCss}
 
       {/* ── Main ──────────────────────────────────────── */}
       <main className="flex-1 flex min-h-0">
+        {fileTreeOpen && (
+          <FileTree
+            files={files}
+            closedFiles={closedFiles}
+            activeFileId={activeFileId}
+            collapsed={treeCollapsed}
+            onToggleFolder={path => setTreeCollapsed(list => (list.includes(path) ? list.filter(item => item !== path) : [...list, path]))}
+            onSelect={handleSelectFile}
+            onReopen={handleReopenFile}
+            onForget={handleForgetClosed}
+            onMoveFile={moveFileToFolder}
+            onNewFile={createFileInFolder}
+            onNewFolder={createFolder}
+            onRenameFolder={renameFolder}
+            onCloseFolder={path => closeFiles(files.filter(file => file.name.startsWith(`${path}/`)).map(file => file.id))}
+            onClose={() => setFileTreeOpen(false)}
+          />
+        )}
         {!activeFile ? (
           <EmptyWorkspace
             templates={allTemplates}
@@ -4802,21 +4862,6 @@ ${fontCss}
           />
         ) : (
           <>
-            {fileTreeOpen && (
-              <FileTree
-                files={files}
-                activeFileId={activeFileId}
-                collapsed={treeCollapsed}
-                onToggleFolder={path => setTreeCollapsed(list => (list.includes(path) ? list.filter(item => item !== path) : [...list, path]))}
-                onSelect={handleSelectFile}
-                onMoveFile={moveFileToFolder}
-                onNewFile={createFileInFolder}
-                onNewFolder={createFolder}
-                onRenameFolder={renameFolder}
-                onCloseFolder={path => closeFiles(files.filter(file => file.name.startsWith(`${path}/`)).map(file => file.id))}
-                onClose={() => setFileTreeOpen(false)}
-              />
-            )}
             <div className="flex-1 flex min-w-0 min-h-0">
             {/* Editor pane */}
             <div

@@ -30,20 +30,39 @@ async function fileHandleFor(root, path, create) {
   return dir.getFileHandle(parts[parts.length - 1], { create })
 }
 
-/** Writes files whose content differs from what was last written. Returns the number written. */
-export async function writeToFolder(root, files, written) {
+/**
+ * Writes files whose content differs from what was last written. Returns the number written.
+ * `paths` (file id → path) lets a renamed file move in the folder instead of leaving a copy
+ * under its old name; the old copy is only removed when nobody changed it outside the app.
+ */
+export async function writeToFolder(root, files, written, paths = new Map()) {
   let count = 0
   for (const file of files) {
     const path = syncPath(file.name)
-    if (written.get(path) === file.content) continue
-    const handle = await fileHandleFor(root, path, true)
-    const writable = await handle.createWritable()
-    await writable.write(file.content)
-    await writable.close()
-    written.set(path, file.content)
-    count += 1
+    const oldPath = paths.get(file.id)
+    if (written.get(path) !== file.content) {
+      const handle = await fileHandleFor(root, path, true)
+      const writable = await handle.createWritable()
+      await writable.write(file.content)
+      await writable.close()
+      written.set(path, file.content)
+      count += 1
+    }
+    if (oldPath && oldPath !== path) await removeIfUnchanged(root, oldPath, written.get(oldPath)).catch(() => {})
+    if (oldPath && oldPath !== path) written.delete(oldPath)
+    paths.set(file.id, path)
   }
   return count
+}
+
+async function removeIfUnchanged(root, path, expected) {
+  if (expected === undefined) return
+  const parts = path.split('/')
+  let dir = root
+  for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part)
+  const name = parts[parts.length - 1]
+  const current = await (await (await dir.getFileHandle(name)).getFile()).text()
+  if (current === expected) await dir.removeEntry(name)
 }
 
 /** Reads every Markdown/text file in the folder (up to 4 levels deep). */

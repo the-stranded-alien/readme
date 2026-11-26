@@ -76,3 +76,7 @@ export async function writeAllHistory(history) {
 // The folder chosen for "Sync to a folder" (a FileSystemDirectoryHandle).
 export const readSyncFolder = () => get(STORE_NAME, 'sync-folder')
 export const writeSyncFolder = handle => put(STORE_NAME, 'sync-folder', handle ?? undefined)
+// What the app last wrote to / read from the sync folder ({ written: Map path→text, paths: Map id→path }),
+// kept across reloads so closed or renamed files aren't mistaken for new files in the folder.
+export const readSyncState = () => get(STORE_NAME, 'sync-state')
+export const writeSyncState = state => put(STORE_NAME, 'sync-state', state ?? undefined)

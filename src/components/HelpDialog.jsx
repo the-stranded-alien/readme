@@ -19,7 +19,7 @@ const HELP_SECTIONS = [
     id: 'files', title: 'Files & tabs',
     items: [
       ['Tabs', 'Drag tabs to reorder them. Right-click a tab to rename, duplicate, pin, colour, compare, download or close it.'],
-      ['File tree', 'The folder icon at the left of the tab bar shows your files as a tree, grouped by folder.'],
+      ['File tree', 'The folder icon at the left of the tab bar shows your files as a tree, grouped by folder. Files you close stay listed there (marked closed) — click one to reopen it.'],
       ['Compare', 'Right-click a tab → Compare to see the differences between two files side by side.'],
       ['History', 'The clock icon above the editor lists earlier versions of the file; restore any of them.'],
       ['Outside changes', 'If a file you opened from disk changes in another app, ReadMe offers to reload it, compare, or keep your version.'],

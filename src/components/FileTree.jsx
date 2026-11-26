@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, X } from '../icons'
+import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, RotateCcw, X } from '../icons'
 import { isModifiedFromDisk, labelColor } from '../fileUtils'
 
 const FILE_DRAG_TYPE = 'application/x-readme-file'
 
 /** Builds a folder tree from "folder/sub/file.md" style names. */
-function buildFileTree(files) {
+function buildFileTree(files, closedFiles = []) {
   const root = { name: '', path: '', folders: new Map(), files: [] }
-  for (const file of files) {
+  const entries = [...files.map(file => ({ file })), ...closedFiles.map(file => ({ file, closed: true }))]
+  for (const { file, closed } of entries) {
     const parts = file.name.split('/').filter(Boolean)
     const base = parts.pop() || file.name
     let node = root
@@ -16,19 +17,21 @@ function buildFileTree(files) {
       if (!node.folders.has(part)) node.folders.set(part, { name: part, path, folders: new Map(), files: [] })
       node = node.folders.get(part)
     }
-    node.files.push({ file, base })
+    node.files.push({ file, base, closed })
   }
   return root
 }
 
 const sortFolders = folders => [...folders.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-const sortFiles = entries => [...entries].sort((a, b) => a.base.localeCompare(b.base, undefined, { numeric: true }))
+// Open files first, then the ones closed from the tab bar (each group by name).
+const sortFiles = entries => [...entries].sort((a, b) => (Boolean(a.closed) - Boolean(b.closed)) || a.base.localeCompare(b.base, undefined, { numeric: true }))
 const countFiles = node => node.files.length + [...node.folders.values()].reduce((sum, child) => sum + countFiles(child), 0)
 
 export default function FileTree({
-  files, activeFileId, collapsed, onToggleFolder, onSelect, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onClose,
+  files, closedFiles = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onClose,
 }) {
-  const tree = useMemo(() => buildFileTree(files), [files])
+  const closedList = useMemo(() => closedFiles.map(entry => entry.file), [closedFiles])
+  const tree = useMemo(() => buildFileTree(files, closedList), [files, closedList])
   const [dropTarget, setDropTarget] = useState(null)
   const hasDrag = event => Array.from(event.dataTransfer?.types || []).includes(FILE_DRAG_TYPE)
 
@@ -82,7 +85,23 @@ export default function FileTree({
     )
   }
 
-  const renderFile = ({ file, base }, depth) => {
+  const renderFile = ({ file, base, closed }, depth) => {
+    if (closed) return (
+      <li key={`closed:${file.id}`} role="treeitem" aria-selected={false} aria-label={`${file.name} (closed)`}>
+        <div className="file-tree-row is-closed" style={{ '--depth': depth }}>
+          <button type="button" className="file-tree-main" onClick={() => onReopen(file.id)} title={`Reopen ${file.name}`}>
+            <span className="file-tree-chevron-spacer" aria-hidden="true" />
+            <FileText size={13} aria-hidden="true" />
+            <span className="file-tree-name">{base}</span>
+            <span className="file-tree-closed-tag">closed</span>
+          </button>
+          <span className="file-tree-actions">
+            <button type="button" onClick={() => onReopen(file.id)} title="Reopen" aria-label={`Reopen ${file.name}`}><RotateCcw size={12} /></button>
+            <button type="button" onClick={() => onForget([file.id])} title="Remove from list" aria-label={`Remove ${file.name} from the list`}><X size={12} /></button>
+          </span>
+        </div>
+      </li>
+    )
     const active = file.id === activeFileId
     const color = labelColor(file.color)
     return (
@@ -120,12 +139,17 @@ export default function FileTree({
           <button type="button" onClick={onClose} title="Hide files" aria-label="Hide file tree"><X size={13} /></button>
         </span>
       </div>
-      <ul className={`file-tree-list${dropTarget === '' ? ' is-drop-target' : ''}`} role="tree" aria-label="Open files" {...dropProps('')}>
+      <ul className={`file-tree-list${dropTarget === '' ? ' is-drop-target' : ''}`} role="tree" aria-label="Files" {...dropProps('')}>
         {sortFolders(tree.folders).map(child => renderFolder(child, 0))}
         {sortFiles(tree.files).map(entry => renderFile(entry, 0))}
-        {files.length === 0 && <li className="file-tree-empty">No files open</li>}
+        {files.length === 0 && closedList.length === 0 && <li className="file-tree-empty">No files yet</li>}
       </ul>
-      <p className="file-tree-hint">Drag files onto a folder to move them. Folders come from paths like <code>notes/plan.md</code>.</p>
+      {closedList.length > 0 && (
+        <button type="button" className="file-tree-clear-closed" onClick={() => onForget(closedList.map(file => file.id))}>
+          Clear {closedList.length} closed file{closedList.length === 1 ? '' : 's'} from the list
+        </button>
+      )}
+      <p className="file-tree-hint">Closed files stay here; click one to reopen it. Drag files onto a folder to move them. Folders come from paths like <code>notes/plan.md</code>.</p>
     </aside>
   )
 }

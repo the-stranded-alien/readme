@@ -3093,3 +3093,12 @@ html.high-contrast { --icon-hover-bg: color-mix(in srgb, var(--accent) 24%, tran
 /* Presentation: long slides grow and the stage scrolls (content never spills outside the frame). */
 .presentation-stage { align-items: flex-start !important; overscroll-behavior: contain; scroll-padding: 28px; }
 .presentation-slide.rm-prose { flex-shrink: 0; height: auto; min-height: 100%; justify-content: safe center; }
+
+/* Files panel: files closed from the tab bar stay listed, muted, and reopen on click. */
+.file-tree-row.is-closed .file-tree-name { color: var(--text-3); font-style: italic; }
+.file-tree-row.is-closed .i-icon { opacity: .7; }
+.file-tree-closed-tag { margin-left: auto; flex: none; font-size: 9.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--text-3); padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); }
+.file-tree-row.is-closed:hover .file-tree-closed-tag, .file-tree-row.is-closed:focus-within .file-tree-closed-tag { display: none; }
+.file-tree-clear-closed { margin: 4px 10px 8px; padding: 5px 8px; border-radius: 7px; font-size: 11px; color: var(--text-3); background: none; border: 1px dashed var(--border); cursor: pointer; text-align: center; }
+.file-tree-clear-closed:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+html.high-contrast .file-tree-row.is-closed .file-tree-name, html.high-contrast .file-tree-closed-tag { color: var(--text-2); }

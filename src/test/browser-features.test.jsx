@@ -927,7 +927,7 @@ describe('advanced browser features', () => {
     installApp()
     await screen.findByRole('tab', { name: 'notes/plan.md' })
     fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
-    const tree = await screen.findByRole('tree', { name: 'Open files' })
+    const tree = await screen.findByRole('tree', { name: 'Files' })
     expect(within(tree).getByRole('treeitem', { name: 'Folder notes' })).toHaveTextContent('2')
     const data = new Map()
     const dataTransfer = { setData: (k, v) => data.set(k, v), getData: k => data.get(k) || '', get types() { return [...data.keys()] }, effectAllowed: '', dropEffect: '' }
@@ -938,6 +938,33 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('aria-label'))).toContain('notes/todo.md'))
     fireEvent.click(within(tree).getByRole('button', { name: 'Rename folder notes' }))
     await waitFor(() => expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('aria-label'))).toEqual(expect.arrayContaining(['archive/plan.md', 'archive/ideas.md', 'archive/todo.md'])))
+  })
+
+  it('keeps closed files in the file tree so they can be reopened, across reloads', async () => {
+    await writeWorkspace({ activeId: 'a', files: [
+      { id: 'a', name: 'keep.md', content: '# Keep' },
+      { id: 'b', name: 'docs/closed.md', content: '# Closed body' },
+    ], closed: [{ index: 2, file: { id: 'z', name: 'old.md', content: '# Old file' } }] })
+    installApp()
+    await screen.findByRole('tab', { name: 'keep.md' })
+    fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
+    const tree = await screen.findByRole('tree', { name: 'Files' })
+    // Restored from the saved workspace.
+    expect(within(tree).getByRole('treeitem', { name: 'old.md (closed)' })).toBeInTheDocument()
+    // Closing a tab keeps the file listed (inside its folder).
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'docs/closed.md' }))
+    fireEvent.click((await screen.findAllByRole('menuitem', { name: /^Close/ }))[0])
+    await waitFor(() => expect(screen.queryByRole('tab', { name: 'docs/closed.md' })).not.toBeInTheDocument())
+    const folder = within(tree).getByRole('treeitem', { name: 'Folder docs' })
+    expect(within(folder).getByRole('treeitem', { name: 'docs/closed.md (closed)' })).toBeInTheDocument()
+    await waitFor(async () => expect((await readWorkspace()).closed.map(entry => entry.file.id)).toEqual(['z', 'b']))
+    // Clicking it reopens the file with its content.
+    fireEvent.click(within(folder).getByRole('button', { name: 'Reopen docs/closed.md' }))
+    expect(await screen.findByRole('tab', { name: 'docs/closed.md' })).toBeInTheDocument()
+    expect(within(tree).queryByRole('treeitem', { name: 'docs/closed.md (closed)' })).not.toBeInTheDocument()
+    // Removing it from the list forgets it.
+    fireEvent.click(within(tree).getByRole('button', { name: 'Remove old.md from the list' }))
+    expect(within(tree).queryByRole('treeitem', { name: 'old.md (closed)' })).not.toBeInTheDocument()
   })
 
   it('summarizes, translates and proofreads with on-device AI when the browser supports it', async () => {
