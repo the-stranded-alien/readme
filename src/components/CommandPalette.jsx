@@ -8,6 +8,8 @@ export default function CommandPalette({
   initialQuery = '',
   onQueryChange,
   files,
+  closedFiles = [],
+  onReopenFile,
   activeFileId,
   headings,
   templates,
@@ -37,6 +39,13 @@ export default function CommandPalette({
         icon: FileText,
         run: () => onSelectFile(file.id),
       })
+    }
+
+    // Closed files (still in the Files panel) only show up when searching.
+    if (q && onReopenFile) {
+      for (const file of closedFiles) {
+        list.push({ id: `closed-${file.id}`, group: 'Closed Files', label: file.name, hint: 'Reopen', icon: FileText, run: () => onReopenFile(file.id) })
+      }
     }
 
     for (let i = 0; i < headings.length; i += 1) {
@@ -79,7 +88,7 @@ export default function CommandPalette({
       item.group.toLowerCase().includes(q) ||
       item.hint.toLowerCase().includes(q)
     )
-  }, [query, files, activeFileId, headings, actions, templates, onSelectFile, onNavigateHeading, onCreateFromTemplate])
+  }, [query, files, closedFiles, onReopenFile, activeFileId, headings, actions, templates, onSelectFile, onNavigateHeading, onCreateFromTemplate])
 
   if (!open) return null
 

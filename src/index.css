@@ -3114,3 +3114,9 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .sync-status.is-error .sync-status-dot { background: #dc2626; }
 @keyframes sync-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .sync-status.is-syncing .sync-status-dot { animation: none; } }
+.tab-context-menu button.is-danger, [role="menu"] button[role="menuitem"].is-danger { color: #c62828; }
+.dark [role="menu"] button[role="menuitem"].is-danger { color: #ff8a80; }
+.file-tree-actions button[aria-label^="Delete"]:hover { color: #c62828; }
+/* Shortcut hints in the tab menu: readable on every theme. */
+.tab-context-menu kbd { color: var(--text-3); }
+.global-search-file .file-tree-closed-tag { margin-left: 0; }

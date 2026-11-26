@@ -28,7 +28,7 @@ import {
 import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
-import { canSyncToFolder, existsInFolder, folderPermission, readFolder, syncPath, writeToFolder } from './folderSync'
+import { canSyncToFolder, existsInFolder, folderPermission, readFolder, removeFromFolder, syncPath, writeToFolder } from './folderSync'
 import { analyzeDocument, applyQualityFix } from './documentAnalysis'
 import { makeDuplicateFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
@@ -2532,6 +2532,7 @@ export default function App() {
   // Files closed from the tab bar stay listed in the Files panel (newest last) so they can be reopened.
   const [closedFiles, setClosedFiles] = useState([])
   const canReopen = closedFiles.length > 0
+  const closedFileList = useMemo(() => closedFiles.map(entry => entry.file), [closedFiles])
   const [writingStats, setWritingStats] = useState({})
   const [presenting, setPresenting] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -2682,10 +2683,14 @@ export default function App() {
       const updatedAt = Number(data.updatedAt) || 0
       if (updatedAt <= lastLocalEditAtRef.current) return
       lastLocalEditAtRef.current = updatedAt
+      const remoteClosed = Array.isArray(data.closed) ? data.closed.filter(entry => entry?.file?.id) : null
       remoteUpdateRef.current = JSON.stringify({
         files: data.files.map(syncableFile),
         activeId: data.activeId ?? null,
+        closed: (remoteClosed ?? []).map(entry => ({ index: entry.index, file: syncableFile(entry.file) })),
       })
+      // Keep this tab's disk handles for closed files too.
+      if (remoteClosed) setClosedFiles(prev => remoteClosed.map(entry => { const mine = prev.find(item => item.file.id === entry.file.id); return mine?.file.diskHandle ? { ...entry, file: { ...entry.file, diskHandle: mine.file.diskHandle, diskSavedContent: mine.file.diskSavedContent } } : entry }))
       // Keep this tab's disk handles / saved baselines, which are not shared.
       setFiles(prev => {
         const local = new Map(prev.map(file => [file.id, file]))
@@ -2701,14 +2706,15 @@ export default function App() {
 
   useEffect(() => {
     const safeFiles = files.map(syncableFile)
-    const snapshot = JSON.stringify({ files: safeFiles, activeId: activeFileId })
+    const safeClosed = closedFiles.map(entry => ({ index: entry.index, file: syncableFile(entry.file) }))
+    const snapshot = JSON.stringify({ files: safeFiles, activeId: activeFileId, closed: safeClosed })
     if (remoteUpdateRef.current === snapshot) { remoteUpdateRef.current = null; return }
     remoteUpdateRef.current = null
     const timer = setTimeout(() => {
-      try { broadcastRef.current?.postMessage({ source: syncClientIdRef.current, files: safeFiles, activeId: activeFileId, updatedAt: lastLocalEditAtRef.current }) } catch { /* handles may not be cloneable in this browser */ }
+      try { broadcastRef.current?.postMessage({ source: syncClientIdRef.current, files: safeFiles, activeId: activeFileId, closed: safeClosed, updatedAt: lastLocalEditAtRef.current }) } catch { /* handles may not be cloneable in this browser */ }
     }, 180)
     return () => clearTimeout(timer)
-  }, [files, activeFileId])
+  }, [files, activeFileId, closedFiles])
 
   useEffect(() => {
     try { localStorage.setItem('readme-reader-prefs', JSON.stringify(readerPrefs)) } catch { /* ignore */ }
@@ -3307,8 +3313,8 @@ export default function App() {
     setShowScrollTop(false)
   }, [activeFileId, markWorkspaceEdit])
 
-  // Closes several tabs at once and remembers them so they can be reopened.
-  const closeFiles = useCallback((ids) => {
+  // Closes several tabs at once and remembers them so they can be reopened (unless deleting).
+  const closeFiles = useCallback((ids, { remember = true } = {}) => {
     const closing = new Set(ids)
     if (!closing.size) return
     const closedEntries = files
@@ -3316,7 +3322,7 @@ export default function App() {
       .filter(entry => closing.has(entry.file.id))
     if (!closedEntries.length) return
     markWorkspaceEdit()
-    setClosedFiles(prev => [...prev.filter(entry => !closing.has(entry.file.id)), ...closedEntries].slice(-MAX_CLOSED_FILES))
+    setClosedFiles(prev => [...prev.filter(entry => !closing.has(entry.file.id)), ...(remember ? closedEntries : [])].slice(-MAX_CLOSED_FILES))
     const next = files.filter(f => !closing.has(f.id))
     setFiles(next)
     if (closing.has(activeFileId)) {
@@ -3355,8 +3361,9 @@ export default function App() {
   const handleReopenFile = useCallback(id => reopenClosedEntry(closedFiles.find(entry => entry.file.id === id)), [closedFiles, reopenClosedEntry])
   const handleForgetClosed = useCallback(ids => {
     const forget = new Set(ids)
+    markWorkspaceEdit()
     setClosedFiles(prev => prev.filter(entry => !forget.has(entry.file.id)))
-  }, [])
+  }, [markWorkspaceEdit])
 
   // Global search (Cmd/Ctrl+Shift+F) and the keyboard shortcut sheet (?).
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
@@ -4268,6 +4275,48 @@ export default function App() {
     state.running = run
     try { return await run } finally { state.running = null }
   }, [pullFromFolder])
+  // Delete permanently: removes the file from ReadMe (open or closed) and from the sync folder
+  // (only when nobody changed it there). A file opened from disk stays on disk. The toast offers Undo.
+  const handleDeleteFile = useCallback(async id => {
+    const openIndex = files.findIndex(file => file.id === id)
+    const closedEntry = closedFiles.find(entry => entry.file.id === id)
+    const file = openIndex >= 0 ? files[openIndex] : closedEntry?.file
+    if (!file) return
+    const path = syncPath(file.name)
+    const syncedHere = Boolean(syncFolder?.handle && syncFolder.status === 'connected' && syncWrittenRef.current.has(path))
+    const where = [
+      syncedHere && `It is also deleted from the sync folder “${syncFolder.name}”.`,
+      (file.diskHandle || diskHandlesRef.current.has(id)) && 'The file on your computer is not touched.',
+    ].filter(Boolean).join(' ')
+    if (!window.confirm(`Delete “${file.name}” permanently?${where ? `\n\n${where}` : ''}`)) return
+    if (openIndex >= 0) closeFiles([id], { remember: false })
+    else setClosedFiles(prev => prev.filter(entry => entry.file.id !== id))
+    markWorkspaceEdit()
+    let folderKept = false
+    if (syncedHere) {
+      const removed = await removeFromFolder(syncFolder.handle, path, syncWrittenRef.current.get(path))
+      folderKept = !removed
+      syncWrittenRef.current.delete(path)
+      syncPathsRef.current.delete(id)
+      writeSyncState({ name: syncFolder.handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
+    }
+    setToast({
+      message: folderKept ? `Deleted “${file.name}”. The copy in the sync folder was changed elsewhere, so it was kept.` : `Deleted “${file.name}”.`,
+      tone: 'info', duration: 8000,
+      action: {
+        label: 'Undo',
+        run: () => {
+          markWorkspaceEdit()
+          if (openIndex >= 0) {
+            setFiles(prev => { if (prev.some(item => item.id === id)) return prev; const next = [...prev]; next.splice(Math.min(openIndex, next.length), 0, file); return orderPinnedFirst(next) })
+            setActiveFileId(id)
+          } else if (closedEntry) {
+            setClosedFiles(prev => (prev.some(entry => entry.file.id === id) ? prev : [...prev, closedEntry]))
+          }
+        },
+      },
+    })
+  }, [files, closedFiles, syncFolder, closeFiles, markWorkspaceEdit])
   // Reconnect the saved folder once the workspace has loaded (so its files aren't mistaken for new ones).
   const syncStartedRef = useRef(false)
   useEffect(() => {
@@ -4926,6 +4975,7 @@ ${fontCss}
         onRevealOutline={handleRevealOutline}
         onDownload={handleDownloadFile}
         onReopenClosed={handleReopenClosed}
+        onDelete={handleDeleteFile}
         fileTreeOpen={fileTreeOpen}
         onToggleFileTree={() => setFileTreeOpen(open => !open)}
         searchValue={cmdQuery}
@@ -4963,6 +5013,7 @@ ${fontCss}
             onSelect={handleSelectFile}
             onReopen={handleReopenFile}
             onForget={handleForgetClosed}
+            onDelete={handleDeleteFile}
             onMoveFile={moveFileToFolder}
             onNewFile={createFileInFolder}
             onNewFolder={createFolder}
@@ -5811,6 +5862,8 @@ ${fontCss}
           onQueryChange={setCmdQuery}
           onClose={() => { setCmdOpen(false); setCmdQuery('') }}
           files={files}
+          closedFiles={closedFileList}
+          onReopenFile={handleReopenFile}
           activeFileId={activeFileId}
           headings={headings}
           templates={allTemplates}
@@ -5980,11 +6033,13 @@ ${fontCss}
       {globalSearchOpen && (
         <GlobalSearch
           files={files}
+          closedFiles={closedFileList}
           activeFileId={activeFileId}
           onClose={() => setGlobalSearchOpen(false)}
           onOpen={(fileId, line, column, length, query) => {
             setGlobalSearchOpen(false)
-            if (fileId !== activeFileId) handleSelectFile(fileId)
+            if (closedFiles.some(entry => entry.file.id === fileId)) handleReopenFile(fileId)
+            else if (fileId !== activeFileId) handleSelectFile(fileId)
             goToEditorLine(line, column, length)
             setSearchQuery(query)
             setSearchOpen(true)

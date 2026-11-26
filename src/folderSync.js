@@ -68,6 +68,16 @@ export async function existsInFolder(root, path) {
   }
 }
 
+/** Deletes a file from the folder only if it still holds what the app last wrote (returns true when deleted). */
+export async function removeFromFolder(root, path, expected) {
+  try {
+    await removeIfUnchanged(root, path, expected)
+    return !(await existsInFolder(root, path))
+  } catch {
+    return false
+  }
+}
+
 async function removeIfUnchanged(root, path, expected) {
   if (expected === undefined) return
   const parts = path.split('/')

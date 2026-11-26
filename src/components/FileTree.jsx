@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, RotateCcw, X } from '../icons'
+import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, RotateCcw, Trash2, X } from '../icons'
 import { isModifiedFromDisk, labelColor } from '../fileUtils'
 
 const FILE_DRAG_TYPE = 'application/x-readme-file'
@@ -28,7 +28,7 @@ const sortFiles = entries => [...entries].sort((a, b) => (Boolean(a.closed) - Bo
 const countFiles = node => node.files.length + [...node.folders.values()].reduce((sum, child) => sum + countFiles(child), 0)
 
 export default function FileTree({
-  files, closedFiles = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onClose,
+  files, closedFiles = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onClose,
 }) {
   const closedList = useMemo(() => closedFiles.map(entry => entry.file), [closedFiles])
   const tree = useMemo(() => buildFileTree(files, closedList), [files, closedList])
@@ -97,6 +97,7 @@ export default function FileTree({
           </button>
           <span className="file-tree-actions">
             <button type="button" onClick={() => onReopen(file.id)} title="Reopen" aria-label={`Reopen ${file.name}`}><RotateCcw size={12} /></button>
+            {onDelete && <button type="button" onClick={() => onDelete(file.id)} title="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>}
             <button type="button" onClick={() => onForget([file.id])} title="Remove from list" aria-label={`Remove ${file.name} from the list`}><X size={12} /></button>
           </span>
         </div>
@@ -124,6 +125,11 @@ export default function FileTree({
             <span className="file-tree-name">{base}</span>
             {isModifiedFromDisk(file) && <span className="file-modified-dot" aria-label="Unsaved changes" />}
           </button>
+          {onDelete && (
+            <span className="file-tree-actions">
+              <button type="button" onClick={() => onDelete(file.id)} title="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>
+            </span>
+          )}
         </div>
       </li>
     )

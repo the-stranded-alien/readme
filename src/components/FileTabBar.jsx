@@ -5,7 +5,7 @@ import { useHoverTooltip } from '../useHoverTooltip'
 import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedFromDisk, labelColor } from '../fileUtils'
 import {
   Check, Command, CopyPlus, Download, FilePlus, FileText, FolderTree, GitCompare, HardDrive, ListTree,
-  Pencil, Pin, PinOff, RotateCcw, Search, X, XCircle,
+  Pencil, Pin, PinOff, RotateCcw, Search, Trash2, X, XCircle,
 } from '../icons'
 
 function splitPath(name) {
@@ -115,6 +115,12 @@ function TabContextMenu({ menu, file, files, canReopen, actions, onClose }) {
       <button type="button" role="menuitem" onClick={run(() => actions.onCloseOthers(file.id))} disabled={files.length < 2}><XCircle size={13} />Close others</button>
       <button type="button" role="menuitem" onClick={run(() => actions.onCloseToRight(file.id))} disabled={index === files.length - 1}><XCircle size={13} />Close to the right</button>
       <button type="button" role="menuitem" onClick={run(actions.onReopenClosed)} disabled={!canReopen}><RotateCcw size={13} />Reopen closed tab<kbd>{shortcut('T', { shift: true, alt: true, mod: false })}</kbd></button>
+      {actions.onDelete && (
+        <>
+          <div className="tab-context-separator" role="separator" />
+          <button type="button" role="menuitem" className="is-danger" onClick={run(() => actions.onDelete(file.id))}><Trash2 size={13} />Delete permanently…</button>
+        </>
+      )}
     </div>,
     document.body,
   )
@@ -208,7 +214,7 @@ function FileSwitcher({ files, activeFileId, recentIds, onSelect, onClose, ancho
 export default function FileTabBar({
   files, activeFileId, recentIds, canReopen,
   onSelect, onClose, onCreate, onRename, onDuplicate, onCompare, onReorder, onTogglePin, onSetColor,
-  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, fileTreeOpen, onToggleFileTree,
+  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, onDelete, fileTreeOpen, onToggleFileTree,
   searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette,
 }) {
   // Labels for the small duplicate / close icons, in the app's tooltip style (the strip scrolls, so CSS tooltips would be clipped).
@@ -503,7 +509,7 @@ export default function FileTabBar({
           onClose={closeMenu}
           actions={{
             onRename: startRename, onDuplicate, onTogglePin, onSetColor, onRevealOutline,
-            onCompare, onDownload, onClose, onCloseOthers, onCloseToRight, onReopenClosed,
+            onCompare, onDownload, onClose, onCloseOthers, onCloseToRight, onReopenClosed, onDelete,
           }}
         />
       )}

@@ -729,6 +729,34 @@ describe('advanced browser features', () => {
     expect(syncPath('../x/y')).toBe('x/y.md')
   })
 
+  it('finds closed files in search, reopens them, and deletes files with undo', async () => {
+    await writeWorkspace({ activeId: 'a', files: [
+      { id: 'a', name: 'main.md', content: '# Main' },
+      { id: 'd', name: 'doomed.md', content: '# Doomed' },
+    ], closed: [{ index: 1, file: { id: 'z', name: 'archive.md', content: '# Archive\n\nneedle in closed file' } }] })
+    installApp()
+    await screen.findByRole('tab', { name: 'main.md' })
+    // Search all files includes the closed file and opening the result reopens it.
+    fireEvent.keyDown(window, { key: 'f', metaKey: true, shiftKey: true })
+    const search = await screen.findByRole('combobox', { name: 'Search in all files' })
+    fireEvent.change(search, { target: { value: 'needle' } })
+    const dialog = screen.getByRole('dialog', { name: 'Search in all files' })
+    await within(dialog).findByText('archive.md')
+    expect(within(dialog).getByText('closed')).toBeInTheDocument()
+    fireEvent.keyDown(search, { key: 'Enter' })
+    expect(await screen.findByRole('tab', { name: 'archive.md' })).toBeInTheDocument()
+    // Delete permanently with confirmation, then Undo.
+    window.confirm = vi.fn(() => true)
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'doomed.md' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Delete permanently/ }))
+    await waitFor(() => expect(screen.queryByRole('tab', { name: 'doomed.md' })).not.toBeInTheDocument())
+    expect(window.confirm).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
+    expect(within(await screen.findByRole('tree', { name: 'Files' })).queryByText('doomed.md')).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+    expect(await screen.findByRole('tab', { name: 'doomed.md' })).toBeInTheDocument()
+  })
+
   it('keeps closed files in backups', async () => {
     const { createBackup, readBackup, applyBackup } = await import('../backup.js')
     const blob = await createBackup({ files: [{ id: 'o1', name: 'open.md', content: '# Open' }], activeId: 'o1', closed: [{ index: 1, file: { id: 'c1', name: 'docs/old.md', content: '# Old' } }] })

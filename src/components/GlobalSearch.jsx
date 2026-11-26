@@ -44,14 +44,16 @@ function Snippet({ text, column, length }) {
   )
 }
 
-export default function GlobalSearch({ files, activeFileId, initialQuery = '', onOpen, onClose }) {
+export default function GlobalSearch({ files, closedFiles = [], activeFileId, initialQuery = '', onOpen, onClose }) {
   const [query, setQuery] = useState(initialQuery)
   const [caseSensitive, setCaseSensitive] = useState(false)
   const [highlight, setHighlight] = useState(0)
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const deferredQuery = useDeferredValue(query)
-  const { groups, total, truncated } = useMemo(() => findMatches(files, deferredQuery, caseSensitive), [files, deferredQuery, caseSensitive])
+  // Open files first, then files closed from the tab bar (marked "closed"; opening a result reopens the file).
+  const searchable = useMemo(() => [...files, ...closedFiles.map(file => ({ ...file, closed: true }))], [files, closedFiles])
+  const { groups, total, truncated } = useMemo(() => findMatches(searchable, deferredQuery, caseSensitive), [searchable, deferredQuery, caseSensitive])
   const flat = useMemo(() => groups.flatMap(group => group.matches.map(match => ({ ...match, file: group.file }))), [groups])
   const groupOffsets = useMemo(() => groups.reduce((offsets, group, i) => [...offsets, i === 0 ? 0 : offsets[i - 1] + groups[i - 1].matches.length], []), [groups])
   const selected = Math.min(highlight, Math.max(0, flat.length - 1))
@@ -79,8 +81,8 @@ export default function GlobalSearch({ files, activeFileId, initialQuery = '', o
             value={query}
             onChange={event => { setQuery(event.target.value); setHighlight(0) }}
             onKeyDown={onKeyDown}
-            placeholder="Search in all open files…"
-            aria-label="Search in all open files"
+            placeholder="Search in all files…"
+            aria-label="Search in all files"
             role="combobox"
             aria-expanded="true"
             aria-controls="global-search-results"
@@ -98,13 +100,14 @@ export default function GlobalSearch({ files, activeFileId, initialQuery = '', o
         </div>
         <div className="global-search-results" id="global-search-results" ref={listRef} role="listbox" aria-label="Results">
           {deferredQuery.trim().length >= 2 && groups.length === 0 && (
-            <EmptyState icon={Search} title="No results" text="Nothing in your open files matches. Check the spelling or try a shorter word." />
+            <EmptyState icon={Search} title="No results" text="Nothing in your files matches. Check the spelling or try a shorter word." />
           )}
           {groups.map((group, groupIndex) => (
             <div key={group.file.id} className="global-search-group" role="group" aria-label={group.file.name}>
               <div className={`global-search-file${group.file.id === activeFileId ? ' is-active' : ''}`}>
                 <FileText size={13} aria-hidden="true" />
                 <span>{group.file.name}</span>
+                {group.file.closed && <span className="file-tree-closed-tag">closed</span>}
                 <span className="global-search-count">{group.matches.length}</span>
               </div>
               {group.matches.map((match, matchIndex) => {
