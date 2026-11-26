@@ -3449,3 +3449,51 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .dark .tasks-chip.is-today { color: #fcd34d; }
 @media (max-width: 640px) { .tasks-item { flex-wrap: wrap; } .tasks-meta { max-width: none; width: 100%; justify-content: flex-start; padding-left: 26px; } }
 .tasks-row .pdf-segmented button, .tasks-filters button { white-space: nowrap; }
+
+/* ── Graph of linked documents ── */
+.graph-panel { width: min(1180px, calc(100vw - 32px)); height: min(820px, calc(100vh - 32px)); display: flex; flex-direction: column; border-radius: 18px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-xl); overflow: hidden; }
+.graph-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 4px 20px 12px; border-bottom: 1px solid var(--border-light); }
+.graph-search { flex: 0 1 260px; min-width: 180px; }
+.graph-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); cursor: pointer; white-space: nowrap; }
+.graph-check input { accent-color: var(--accent); width: 15px; height: 15px; }
+.graph-small-select { min-width: 96px; }
+.graph-zoom { display: inline-flex; gap: 2px; margin-left: auto; }
+.graph-body { flex: 1; min-height: 0; display: flex; }
+.graph-canvas-wrap { position: relative; flex: 1; min-width: 0; overflow: hidden; background-color: var(--bg-editor); background-image: radial-gradient(circle, var(--border) 1px, transparent 1px); background-size: 22px 22px; }
+.graph-canvas-wrap canvas { display: block; cursor: grab; touch-action: none; }
+.graph-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; font-size: 13px; color: var(--text-3); pointer-events: none; }
+.graph-hover { position: absolute; left: 14px; top: 12px; display: grid; gap: 2px; padding: 8px 12px; border-radius: 10px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-md); font-size: 12px; color: var(--text-3); pointer-events: none; }
+.graph-hover strong { color: var(--text-1); font-size: 12.5px; }
+.graph-legend { position: absolute; left: 14px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px 12px; max-width: calc(100% - 28px); margin: 0; padding: 6px 10px; list-style: none; border-radius: 10px; background: color-mix(in srgb, var(--bg-preview) 88%, transparent); border: 1px solid var(--border-light); font-size: 11.5px; color: var(--text-2); }
+.graph-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.graph-legend span { width: 10px; height: 10px; border-radius: 50%; }
+.graph-list { width: 300px; flex-shrink: 0; overflow-y: auto; border-left: 1px solid var(--border-light); padding: 8px; }
+.graph-list ul { list-style: none; margin: 0; padding: 0; }
+.graph-list > ul > li { margin-bottom: 4px; }
+.graph-list ul ul { padding-left: 14px; }
+.graph-list button { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-1); font-size: 12.5px; text-align: left; cursor: pointer; }
+.graph-list ul ul button { color: var(--text-2); font-size: 12px; }
+.graph-list button span { color: var(--text-3); font-size: 11px; white-space: nowrap; }
+.graph-list button:hover, .graph-list button:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+.graph-list button[aria-current="page"] { font-weight: 650; color: var(--accent); }
+@media (max-width: 760px) { .graph-list { position: absolute; right: 0; top: 0; bottom: 0; background: var(--bg-preview); box-shadow: var(--shadow-xl); } .graph-body { position: relative; } }
+
+/* Tasks: roomier panel (no crowded or touching text). */
+.file-tabs-tasks { position: relative; }
+.tasks-panel { width: min(1000px, calc(100vw - 32px)); height: min(840px, calc(100vh - 32px)); }
+.tasks-panel .pdf-dialog-header { padding: 22px 26px 8px; }
+.tasks-panel .pdf-dialog-header p { line-height: 1.6; }
+.tasks-controls { gap: 12px; padding: 8px 26px 16px; }
+.tasks-filters { flex-wrap: wrap; }
+.tasks-filters button { flex: 1 1 auto; justify-content: center; gap: 8px; padding: 6px 12px; }
+.tasks-row { gap: 10px 12px; }
+.tasks-body { padding: 10px 20px 24px; }
+.tasks-group h3 { margin: 18px 8px 8px; }
+.tasks-group ul { gap: 4px; }
+.tasks-item { align-items: flex-start; gap: 12px; padding: 9px 12px 9px calc(12px + var(--depth, 0) * 20px); }
+.tasks-item input[type="checkbox"] { margin-top: 3px; }
+.tasks-text { padding: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.tasks-meta { gap: 6px; max-width: 50%; padding-top: 1px; }
+.tasks-chip { padding: 2px 9px; line-height: 1.5; }
+@media (max-width: 760px) { .tasks-item { flex-wrap: wrap; } .tasks-meta { max-width: none; width: 100%; justify-content: flex-start; padding-left: 28px; } }
+.tasks-row .pdf-segmented button { padding: 6px 12px; }

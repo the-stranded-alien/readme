@@ -230,3 +230,34 @@ describe('tasks across documents', async () => {
     expect(sorted.slice(0, 2)).toEqual(['Numbered', 'Write intro'])
   })
 })
+
+describe('link graph', async () => {
+  const graph = await import('../linkGraph.js')
+  const files = [
+    { id: 'a', name: 'Home.md', content: 'See [[Plan]], [[Plan]] again, [[Ghost]] and [notes](notes/Idea.md).\n\n`[[Not]]`' },
+    { id: 'b', name: 'Plan.md', content: 'Back to [[Home]].' },
+    { id: 'c', name: 'notes/Idea.md', content: 'No links.', closed: true },
+    { id: 'd', name: 'Orphan.md', content: 'Alone.' },
+  ]
+
+  it('builds nodes and edges from wiki and Markdown links, with missing targets', () => {
+    const g = graph.buildLinkGraph(files)
+    expect(g.nodes.map(node => node.id).sort()).toEqual(['a', 'b', 'c', 'd', 'missing:ghost'])
+    expect(g.edges.map(edge => `${edge.source}>${edge.target}:${edge.count}`).sort()).toEqual(['a>b:2', 'a>c:1', 'a>missing:ghost:1', 'b>a:1'])
+    expect(g.nodes.find(node => node.id === 'c')).toMatchObject({ folder: 'notes', closed: true, degree: 1 })
+    expect(g.nodes.find(node => node.id === 'd').degree).toBe(0)
+  })
+
+  it('keeps the neighbourhood for the local graph and lays nodes out deterministically', () => {
+    const g = graph.buildLinkGraph(files)
+    expect(graph.localGraph(g, 'b', 1).nodes.map(node => node.id).sort()).toEqual(['a', 'b'])
+    expect(graph.localGraph(g, 'b', 2).nodes.map(node => node.id).sort()).toEqual(['a', 'b', 'c', 'missing:ghost'])
+    const one = graph.forceLayout(g, { width: 400, height: 300 })
+    const two = graph.forceLayout(g, { width: 400, height: 300 })
+    expect([...one.values()]).toEqual([...two.values()])
+    for (const p of one.values()) { expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true) }
+    // Linked documents end up closer together than the orphan.
+    const dist = (x, y) => Math.hypot(one.get(x).x - one.get(y).x, one.get(x).y - one.get(y).y)
+    expect(dist('a', 'b')).toBeLessThan(dist('b', 'd'))
+  })
+})

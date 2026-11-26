@@ -14,7 +14,6 @@ import {
   BookOpen as ParkBookOpen,
   Bookmark as ParkBookmark,
   BookmarkOne as ParkBookmarkOne,
-  BranchOne as ParkBranchOne,
   Calendar as ParkCalendar,
   Cat as ParkCat,
   Caution as ParkCaution,
@@ -49,6 +48,7 @@ import {
   Filter as ParkFilter,
   FoldUpOne as ParkFoldUpOne,
   ExpandLeft as ParkExpandLeft,
+  ContrastView as ParkContrastView,
   More as ParkMore,
   IndentLeft as ParkIndentLeft,
   IndentRight as ParkIndentRight,
@@ -257,7 +257,8 @@ export const FolderPlus = make(ParkFolderPlus, 'FolderPlus')
 export const FolderSync = make(ParkFolderConversion, 'FolderSync')
 export const FolderTree = make(ParkTreeList, 'FolderTree')
 export const Footprints = make(ParkFoot, 'Footprints')
-export const GitCompare = make(ParkBranchOne, 'GitCompare')
+// Two panes side by side: comparing files / versions.
+export const GitCompare = make(ParkContrastView, 'GitCompare')
 export const Globe = make(ParkEarth, 'Globe')
 export const HardDrive = make(ParkHardDisk, 'HardDrive')
 export const Hash = make(ParkPound, 'Hash')

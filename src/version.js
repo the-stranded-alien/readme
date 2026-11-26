@@ -4,9 +4,16 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '2.1'
+export const APP_VERSION = '2.2'
 
 export const RELEASES = [
+  {
+    version: '2.2',
+    date: '2026-11-27',
+    notes: [
+      'Graph view: see how your documents link to each other, open them, and find ones without links.',
+    ],
+  },
   {
     version: '2.1',
     date: '2026-11-27',
@@ -39,15 +46,6 @@ export const RELEASES = [
     notes: [
       'Sub-folders, up to three levels deep.',
       'Rename files from the Files panel; renaming never changes the file’s folder or extension.',
-    ],
-  },
-  {
-    version: '1.7',
-    date: '2026-11-26',
-    notes: [
-      'Copy or export pages for Confluence (storage format XHTML).',
-      'Delete whole folders, with a confirmation and Undo.',
-      'New “Markdown Guide” template showing every supported Markdown feature.',
     ],
   },
 ]

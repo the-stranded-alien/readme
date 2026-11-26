@@ -1003,6 +1003,36 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toContain('- [ ] Book room'))
   })
 
+  it('shows a graph of linked documents with an accessible list, opening and creating documents', async () => {
+    await writeWorkspace({ activeId: 'h', files: [
+      { id: 'h', name: 'Home.md', content: '# Home\n\n[[Plan]] and [[Ghost]] and [idea](notes/Idea.md)' },
+      { id: 'p', name: 'Plan.md', content: '# Plan\n\nBack to [[Home]].' },
+      { id: 'i', name: 'notes/Idea.md', content: '# Idea' },
+      { id: 'o', name: 'Orphan.md', content: '# Orphan' },
+    ] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Graph of linked documents' }))
+    const graph = await screen.findByRole('dialog', { name: 'Graph of linked documents' })
+    expect(graph).toHaveTextContent('4 documents · 4 links · 1 without links')
+    fireEvent.click(within(graph).getByRole('button', { name: 'List of documents and links' }))
+    const list = within(graph).getByRole('navigation', { name: 'Documents and links' })
+    expect(within(list).getByRole('button', { name: /→ Ghost \(missing\)/ })).toBeInTheDocument()
+    fireEvent.click(within(graph).getByRole('checkbox', { name: 'Only without links' }))
+    expect(within(list).getAllByRole('button').map(button => button.textContent)).toEqual(['Orphan.md0 links'])
+    fireEvent.click(within(graph).getByRole('checkbox', { name: 'Only without links' }))
+    fireEvent.click(within(list).getByRole('button', { name: /^Plan\.md/ }))
+    expect(await screen.findByRole('tab', { name: 'Plan.md' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('dialog', { name: 'Graph of linked documents' })).toBeNull()
+    // A missing document can be created from the graph.
+    fireEvent.click(await screen.findByRole('button', { name: 'Graph of linked documents' }))
+    const again = await screen.findByRole('dialog', { name: 'Graph of linked documents' })
+    fireEvent.click(within(again).getByRole('button', { name: 'List of documents and links' }))
+    fireEvent.click(within(again).getByRole('button', { name: /→ Ghost/ }))
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Create “Ghost”?' })).getByRole('button', { name: 'Create document' }))
+    expect(await screen.findByRole('tab', { name: 'Ghost.md' })).toBeInTheDocument()
+  })
+
   it('uses the CodeMirror editor (opt-in) with folds that mirror the preview', async () => {
     localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code', version: 2 }))
     const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body'].join('\n')

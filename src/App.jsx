@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, Workflow, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
   FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
@@ -55,6 +55,7 @@ import PresentationSettings from './components/PresentationSettings'
 import PromptDialog from './components/PromptDialog'
 import TableEditorDialog from './components/TableEditorDialog'
 import TasksPanel from './components/TasksPanel'
+import GraphView from './components/GraphView'
 import { daysUntil, parseTasks, toggleTaskAt } from './tasks'
 import { emptyTable, findTables, parseTable, tableAt, tableToMarkdown } from './tableModel'
 import { detectWikiLink, findBacklinks, remarkWikiLinks, renameWikiLinks, resolveWikiTarget, wikiLinksToMarkdown } from './wikiLinks'
@@ -810,7 +811,7 @@ function Backlinks({ items, onOpen }) {
   )
 }
 
-function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onToggleBookmark, onlyBookmarked = false, onOnlyBookmarked, widthToggle, onPresentFrom, onPresentBookmarked, backlinks = [], onOpenBacklink, onOutline }) {
+function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onToggleBookmark, onlyBookmarked = false, onOnlyBookmarked, widthToggle, onPresentFrom, onPresentBookmarked, backlinks = [], onOpenBacklink, onOutline, onOpenGraph }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
   // Reorganising: drag a heading (drop line before / after a row) or use its ⋯ menu / Alt+arrows.
   const canReorganise = Boolean(onOutline) && !onlyBookmarked
@@ -927,6 +928,11 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
               aria-label="Present bookmarked sections"
             >
               <Presentation size={12} />
+            </button>
+          )}
+          {onOpenGraph && (
+            <button type="button" onClick={onOpenGraph} className="btn-icon !p-1" title="Graph of linked documents" aria-label="Graph of linked documents">
+              <Workflow size={12} />
             </button>
           )}
           {widthToggle && (
@@ -2805,6 +2811,8 @@ export default function App() {
   }, [linkableFiles, closedFiles])
   const tasksDueCount = useMemo(() => allTasks.filter(task => !task.checked && task.due && daysUntil(task.due) <= 0).length, [allTasks])
   const [tasksOpen, setTasksOpen] = useState(false)
+  const [graphOpen, setGraphOpen] = useState(false)
+  const graphFiles = useMemo(() => [...files, ...closedFiles.map(entry => ({ ...entry.file, closed: true }))], [files, closedFiles])
   const [writingStats, setWritingStats] = useState({})
   const [presenting, setPresenting] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -3889,6 +3897,19 @@ export default function App() {
     setClosedFiles(prev => prev.filter(entry => !forget.has(entry.file.id)))
   }, [markWorkspaceEdit])
 
+  // A [[link]] to a document that doesn't exist yet: offer to create it (next to the current file).
+  const createLinkedDocument = useCallback(async target => {
+    const folder = activeFile?.name.split('/').slice(0, -1).join('/') ?? ''
+    const name = `${target.includes('/') ? target.replace(/^\/+/, '') : `${folder ? `${folder}/` : ''}${target}`}`.replace(/\.(md|markdown|txt)$/i, '')
+    const ok = await askConfirm({ title: `Create “${target}”?`, message: `There’s no document called “${target}” yet. Create ${name}.md and open it?`, confirmLabel: 'Create document', icon: FilePlus })
+    if (!ok) return false
+    const id = createFileId()
+    markWorkspaceEdit()
+    setFiles(prev => [...prev, { id, name: `${name}.md`, content: `# ${name.split('/').pop()}\n\n` }])
+    setActiveFileId(id)
+    return true
+  }, [activeFile, askConfirm, markWorkspaceEdit])
+
   // Relative links to other workspace files (e.g. dragged in from the Files panel) open that file.
   const pendingLinkAnchorRef = useRef(null)
   useEffect(() => {
@@ -3917,15 +3938,7 @@ export default function App() {
           else handleReopenFile(found.id)
           return
         }
-        const folder = activeFile.name.split('/').slice(0, -1).join('/')
-        const name = `${wikiTarget.includes('/') ? wikiTarget.replace(/^\/+/, '') : `${folder ? `${folder}/` : ''}${wikiTarget}`}`.replace(/\.(md|markdown|txt)$/i, '')
-        askConfirm({ title: `Create “${wikiTarget}”?`, message: `There’s no document called “${wikiTarget}” yet. Create ${name}.md and open it?`, confirmLabel: 'Create document', icon: FilePlus }).then(ok => {
-          if (!ok) return
-          const id = createFileId()
-          markWorkspaceEdit()
-          setFiles(prev => [...prev, { id, name: `${name}.md`, content: `# ${name.split('/').pop()}\n\n` }])
-          setActiveFileId(id)
-        })
+        createLinkedDocument(wikiTarget)
         return
       }
       const target = resolveFileLink(activeFile.name, link.getAttribute('href'))
@@ -3939,7 +3952,7 @@ export default function App() {
     }
     document.addEventListener('click', onClick)
     return () => document.removeEventListener('click', onClick)
-  }, [activeFile, files, closedFiles, linkableFiles, handleSelectFile, handleReopenFile, askConfirm, markWorkspaceEdit])
+  }, [activeFile, files, closedFiles, linkableFiles, handleSelectFile, handleReopenFile, createLinkedDocument])
   // Wiki links to documents that don't exist yet look different (and say so on hover).
   useEffect(() => {
     const root = previewScrollRef.current
@@ -5631,6 +5644,7 @@ ${fontCss}
     ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => { setDiffCompareId(null); setDiffOpen(true) } }] : []),
     ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
+    { id: 'graph', label: 'Graph of linked documents', hint: 'View', icon: Workflow, run: () => setGraphOpen(true) },
     { id: 'tasks', label: 'Tasks in all documents…', hint: shortcut('K', { shift: true }), icon: ListChecks, run: () => setTasksOpen(true) },
     { id: 'shortcuts', label: 'Keyboard shortcuts', hint: '?', icon: Keyboard, run: () => setShortcutsOpen(true) },
     { id: 'help', label: 'Help: how to use ReadMe', hint: 'Guide', icon: CircleHelp, run: () => setHelpOpen(true) },
@@ -5790,12 +5804,6 @@ ${fontCss}
               onStorage={() => setSettingsOpen('storage')}
               onSaveInPlace={handleSaveInPlace}
             />
-            <button type="button" onClick={() => setTasksOpen(true)} className="btn-icon header-tasks"
-              data-tooltip={tasksDueCount ? `Tasks: ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}
-              aria-label={tasksDueCount ? `Tasks, ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}>
-              <ListChecks size={15} />
-              {tasksDueCount > 0 && <span className="header-badge" aria-hidden="true">{tasksDueCount > 99 ? '99+' : tasksDueCount}</span>}
-            </button>
             <button onClick={toggleFullscreen} data-tooltip={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               className="btn-icon hidden sm:flex">
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -5874,6 +5882,8 @@ ${fontCss}
         onDelete={handleDeleteFile}
         fileTreeOpen={fileTreeOpen}
         onToggleFileTree={() => setFileTreeOpen(open => !open)}
+        onOpenTasks={() => setTasksOpen(true)}
+        tasksDueCount={tasksDueCount}
         searchValue={cmdQuery}
         onSearchChange={value => { setCmdQuery(value); setCmdOpen(true) }}
         onSearchFocus={() => setCmdOpen(true)}
@@ -6566,6 +6576,7 @@ ${fontCss}
                         onlyBookmarked={showOnlyBookmarked} onOnlyBookmarked={setOnlyBookmarked}
                         backlinks={backlinks}
                         onOutline={markdownBody.trim() ? handleOutline : undefined}
+                        onOpenGraph={() => setGraphOpen(true)}
                         onOpenBacklink={id => (files.some(file => file.id === id) ? handleSelectFile(id) : handleReopenFile(id))}
                         onPresentFrom={markdownBody.trim() ? ordinal => openPresentation({ startAt: slideForHeading(markdownBody, ordinal, splitOptions(presentationSettings)) }) : undefined}
                         onPresentBookmarked={markdownBody.trim() ? () => {
@@ -6870,6 +6881,12 @@ ${fontCss}
           onSubmit={submitFolderPrompt}
           onCancel={() => setFolderPrompt(null)}
         />
+      )}
+      {graphOpen && (
+        <GraphView files={graphFiles} activeId={activeFileId}
+          onOpen={id => { setGraphOpen(false); if (closedFiles.some(entry => entry.file.id === id)) handleReopenFile(id); else handleSelectFile(id) }}
+          onCreate={name => { createLinkedDocument(name).then(created => { if (created) setGraphOpen(false) }) }}
+          onClose={() => setGraphOpen(false)} />
       )}
       {tasksOpen && <TasksPanel tasks={allTasks} onToggle={toggleTask} onOpen={openTask} onClose={() => setTasksOpen(false)} />}
       {tableEdit && (
