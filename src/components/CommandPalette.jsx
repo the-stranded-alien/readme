@@ -130,6 +130,12 @@ export default function CommandPalette({
               }
             }}
             placeholder="Jump to file, heading, template, or command…"
+            role="combobox"
+            aria-label="Search files, headings and commands"
+            aria-autocomplete="list"
+            aria-expanded={items.length > 0}
+            aria-controls="command-palette-results"
+            aria-activedescendant={items[activeIdx] ? `cmd-option-${activeIdx}` : undefined}
             className="flex-1 bg-transparent outline-none text-sm"
             style={{ color: 'var(--text-1)' }}
           />
@@ -138,7 +144,7 @@ export default function CommandPalette({
           </button>
         </div>
 
-        <div className="max-h-[52vh] overflow-y-auto p-2">
+        <div className="max-h-[52vh] overflow-y-auto p-2" id="command-palette-results" role="listbox" aria-label="Results">
           {items.length === 0 ? (
             <EmptyState icon={Search} title="No matches" text="No files, headings or commands match. Try fewer words." />
           ) : (
@@ -146,9 +152,12 @@ export default function CommandPalette({
               const ItemIcon = item.icon
               const isSelected = idx === activeIdx
               return (
-                <button
+                <div
                   key={item.id}
-                  type="button"
+                  id={`cmd-option-${idx}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  ref={isSelected ? el => el?.scrollIntoView?.({ block: 'nearest' }) : undefined}
                   onMouseEnter={() => setActiveIdx(idx)}
                   onClick={() => execute(item)}
                   className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-left cursor-pointer transition-colors"
@@ -161,11 +170,11 @@ export default function CommandPalette({
                     <ItemIcon size={13} style={{ color: isSelected ? 'var(--accent)' : 'var(--text-4)', flexShrink: 0 }} />
                     <span className="text-xs font-medium truncate">{item.label}</span>
                   </span>
-                  <span className="flex items-center gap-1.5 shrink-0 text-[10px]" style={{ color: 'var(--text-4)' }}>
+                  <span className="flex items-center gap-1.5 shrink-0 text-[10px]" style={{ color: isSelected ? 'var(--text-2)' : 'var(--text-4)' }}>
                     <span>{item.hint || item.group}</span>
                     {isSelected && <ArrowRight size={11} style={{ color: 'var(--accent)' }} />}
                   </span>
-                </button>
+                </div>
               )
             })
           )}

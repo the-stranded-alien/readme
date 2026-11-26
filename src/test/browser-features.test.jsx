@@ -695,6 +695,26 @@ describe('advanced browser features', () => {
     await expect(readBackup(new Blob(['not a zip']))).rejects.toThrow('not a ZIP')
   })
 
+  it('keeps closed files in backups', async () => {
+    const { createBackup, readBackup, applyBackup } = await import('../backup.js')
+    const blob = await createBackup({ files: [{ id: 'o1', name: 'open.md', content: '# Open' }], activeId: 'o1', closed: [{ index: 1, file: { id: 'c1', name: 'docs/old.md', content: '# Old' } }] })
+    const backup = await readBackup(blob)
+    expect(backup.closed).toEqual([{ index: 1, file: { id: 'c1', name: 'docs/old.md', content: '# Old' } }])
+    await applyBackup(backup)
+    expect((await readWorkspace()).closed.map(entry => entry.file.name)).toEqual(['docs/old.md'])
+  })
+
+  it('clears the editor in a way that can be undone from the toast', async () => {
+    await writeWorkspace({ activeId: 'k', files: [{ id: 'k', name: 'Keep.md', content: '# Keep me\n\nImportant text' }] })
+    installApp()
+    await screen.findByRole('tab', { name: 'Keep.md' })
+    fireEvent.click(screen.getByRole('button', { name: 'Editor', exact: true }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear editor' }))
+    await waitFor(() => expect(document.querySelector('.editor-textarea').value).toBe(''))
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(document.querySelector('.editor-textarea').value).toContain('Important text'))
+  })
+
   it('keeps per-file snapshots, newest first, skipping duplicates', async () => {
     await addSnapshot('h1', { content: 'one', reason: 'Auto-saved' })
     await addSnapshot('h1', { content: 'one', reason: 'Auto-saved' })

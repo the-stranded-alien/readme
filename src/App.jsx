@@ -3390,6 +3390,29 @@ export default function App() {
       return null
     }
   }, [])
+
+  // Clear editor: undoable (⌘Z), kept in version history, and the toast offers Undo.
+  const handleClearEditor = useCallback(() => {
+    const ta = textareaRef.current
+    const fileId = activeFileId
+    const previous = content
+    if (!previous) return
+    takeSnapshot(fileId, previous, 'Before clearing')
+    if (ta) applyTextareaEdit(ta, { from: 0, to: previous.length, text: '', cursor: 0 })
+    if (!ta || ta.value !== '') updateActiveContent('')
+    setToast({
+      message: 'Editor cleared.', tone: 'info', duration: 7000,
+      action: {
+        label: 'Undo',
+        run: () => {
+          const current = textareaRef.current
+          // Still on the cleared file and still empty: put the text back as an undoable edit.
+          if (current && current.value === '' && current.dataset.fileId === fileId) applyTextareaEdit(current, { from: 0, to: 0, text: previous, cursor: 0 })
+          else setFiles(prev => prev.map(f => (f.id === fileId ? { ...f, content: previous } : f)))
+        },
+      },
+    })
+  }, [activeFileId, content, takeSnapshot, updateActiveContent])
   // Automatic snapshot: after 4s without typing, at most once every 10 minutes per file.
   useEffect(() => {
     if (!activeFileId || !workspaceReady || !content.trim()) return undefined
@@ -3828,17 +3851,18 @@ export default function App() {
   const restoreInputRef = useRef(null)
   const handleBackup = useCallback(async () => {
     try {
-      const blob = await createBackup({ files, activeId: activeFileId })
+      const blob = await createBackup({ files, activeId: activeFileId, closed: closedFiles })
       const date = new Date().toISOString().slice(0, 10)
       const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `ReadMe backup ${date}.zip` })
       a.click()
       setTimeout(() => URL.revokeObjectURL(a.href), 1000)
-      setToast({ message: `Backup downloaded (${files.length} file${files.length === 1 ? '' : 's'}, settings and history).`, tone: 'success' })
+      const closedNote = closedFiles.length ? ` + ${closedFiles.length} closed` : ''
+      setToast({ message: `Backup downloaded (${files.length} file${files.length === 1 ? '' : 's'}${closedNote}, settings and history).`, tone: 'success' })
     } catch (error) {
       console.error('Backup failed', error)
       setToast({ message: 'Could not create the backup.', tone: 'warning' })
     }
-  }, [files, activeFileId])
+  }, [files, activeFileId, closedFiles])
   const handleRestoreFile = useCallback(async event => {
     const file = event.target.files?.[0]
     event.target.value = ''
@@ -3846,7 +3870,7 @@ export default function App() {
     try {
       const backup = await readBackup(file)
       const when = backup.createdAt ? new Date(backup.createdAt).toLocaleString() : 'an unknown date'
-      if (!window.confirm(`Restore the backup from ${when}?\n\nIt contains ${backup.files.length} file(s). Your current open files and settings will be replaced.`)) return
+      if (!window.confirm(`Restore the backup from ${when}?\n\nIt contains ${backup.files.length} file(s)${backup.closed.length ? ` and ${backup.closed.length} closed file(s)` : ''}. Your current open files and settings will be replaced.`)) return
       await applyBackup(backup)
       window.location.reload()
     } catch (error) {
@@ -4927,7 +4951,7 @@ ${fontCss}
                     className="cursor-pointer transition-colors history-trigger editor-icon-btn">
                     <History size={11} />
                   </button>
-                  <button onClick={() => updateActiveContent('')} data-tooltip="Clear editor" aria-label="Clear editor"
+                  <button onClick={handleClearEditor} data-tooltip="Clear editor" aria-label="Clear editor"
                     className="cursor-pointer transition-colors editor-icon-btn is-danger"
                     style={{ color: 'var(--text-4)' }}
                     onMouseOver={e => e.currentTarget.style.color = '#f38ba8'}
@@ -5047,6 +5071,7 @@ ${fontCss}
                   ref={textareaRef}
                   onScroll={handleSyncEditorScroll}
                   className="editor-textarea"
+                  data-file-id={activeFileId ?? ''}
                   value={content}
                   onChange={e => updateActiveContent(e.target.value)}
                   onKeyDown={handleEditorKeyDown}
@@ -5729,6 +5754,9 @@ ${fontCss}
         <div className={`app-toast anim-pop-in is-${toast.tone || 'info'}`} role="status" aria-live="polite">
           {toast.tone === 'warning' ? <TriangleAlert size={14} /> : <Check size={14} />}
           <span>{toast.message}</span>
+          {toast.action && (
+            <button type="button" className="app-toast-action" onClick={() => { toast.action.run(); setToast(null) }}>{toast.action.label}</button>
+          )}
         </div>
       )}
 

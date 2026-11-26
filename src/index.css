@@ -3102,3 +3102,6 @@ html.high-contrast { --icon-hover-bg: color-mix(in srgb, var(--accent) 24%, tran
 .file-tree-clear-closed { margin: 4px 10px 8px; padding: 5px 8px; border-radius: 7px; font-size: 11px; color: var(--text-3); background: none; border: 1px dashed var(--border); cursor: pointer; text-align: center; }
 .file-tree-clear-closed:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 html.high-contrast .file-tree-row.is-closed .file-tree-name, html.high-contrast .file-tree-closed-tag { color: var(--text-2); }
+.app-toast-action { margin-left: 4px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border, var(--border)); cursor: pointer; }
+.app-toast-action:hover { background: var(--accent); color: var(--bg-preview); }
+html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(--text-1); }
