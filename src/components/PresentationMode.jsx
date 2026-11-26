@@ -28,8 +28,9 @@ function openPresenterWindow() {
  * body is rendered with the app's own Markdown renderer (`renderMarkdown`).
  * Text after a `???` line is speaker notes, shown in the presenter view.
  */
-export default function PresentationMode({ markdown, renderMarkdown, onClose, startAt = 0, themes = [], theme, onTheme }) {
-  const slides = useMemo(() => splitSlides(markdown).map(splitSlideNotes), [markdown])
+export default function PresentationMode({ markdown, slides: slideTexts, label, renderMarkdown, onClose, startAt = 0, themes = [], theme, onTheme }) {
+  // `slides` (optional) presents just those slides, e.g. the bookmarked sections.
+  const slides = useMemo(() => (slideTexts?.length ? slideTexts : splitSlides(markdown)).map(splitSlideNotes), [markdown, slideTexts])
   const [index, setIndex] = useState(() => Math.min(startAt, slides.length - 1))
   const [fullscreen, setFullscreen] = useState(false)
   const [zoom, setZoom] = useState(readZoom)
@@ -165,7 +166,7 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
       role="dialog"
       aria-modal="true"
       aria-roledescription="slide show"
-      aria-label={`Presentation, slide ${safeIndex + 1} of ${slides.length}`}
+      aria-label={`${label ? `${label} presentation` : 'Presentation'}, slide ${safeIndex + 1} of ${slides.length}`}
       tabIndex={-1}
       onKeyDown={handleKey}
       onTouchStart={event => { touchRef.current = event.touches[0]?.clientX ?? null }}
@@ -189,9 +190,10 @@ export default function PresentationMode({ markdown, renderMarkdown, onClose, st
         </aside>
       )}
       <div className="presentation-controls">
-        <button type="button" onClick={() => go(-1)} disabled={safeIndex === 0} aria-label="Previous slide"><ChevronLeft size={18} /></button>
+        {label && <span className="presentation-label" title={`Presenting ${label.toLowerCase()} only`}>{label}</span>}
+        <button type="button" onClick={() => go(-1)} disabled={safeIndex === 0} aria-label="Previous slide" title="Previous slide (←)"><ChevronLeft size={18} /></button>
         <span className="presentation-counter" aria-live="polite">{safeIndex + 1} / {slides.length}</span>
-        <button type="button" onClick={() => go(1)} disabled={safeIndex === slides.length - 1} aria-label="Next slide"><ChevronRight size={18} /></button>
+        <button type="button" onClick={() => go(1)} disabled={safeIndex === slides.length - 1} aria-label="Next slide" title="Next slide (→)"><ChevronRight size={18} /></button>
         <span className="presentation-divider" />
         <button type="button" onClick={() => zoomBy(-PRESENTATION_ZOOM.step)} disabled={zoom <= PRESENTATION_ZOOM.min} aria-label="Smaller text" title="Smaller text (−)"><ZoomOut size={15} /></button>
         <button type="button" className="presentation-zoom" onClick={() => changeZoom(1)} aria-label={`Text size ${Math.round(zoom * 100)}%. Reset to 100%`} title="Reset text size (0)">{Math.round(zoom * 100)}%</button>

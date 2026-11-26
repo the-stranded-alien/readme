@@ -1223,6 +1223,7 @@ describe('advanced browser features', () => {
     expect(JSON.parse(localStorage.getItem('readme-app-settings'))).toMatchObject({ hideAi: true, lite: true })
     fireEvent.click(within(dialog).getByRole('button', { name: 'About' }))
     expect(within(dialog).getByText('Sahil Gupta')).toBeInTheDocument()
+    expect(within(dialog).getByText(/^Version \d+\.\d+$/)).toBeInTheDocument()
     expect(within(dialog).getByRole('link', { name: 'View on GitHub' })).toHaveAttribute('href', 'https://github.com/the-stranded-alien/readme')
     document.documentElement.classList.remove('lite-mode')
   })
@@ -1359,6 +1360,43 @@ describe('advanced browser features', () => {
     expect(Number(handle.getAttribute('aria-valuenow'))).toBe(Math.max(230, Math.round(window.innerWidth * 0.3)))
     for (let i = 0; i < 80; i += 1) fireEvent.keyDown(handle, { key: 'ArrowLeft' })
     expect(Number(handle.getAttribute('aria-valuenow'))).toBe(230)
+  })
+
+  it('jumps the contents bar between its smallest and largest width', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+    const handle = await screen.findByRole('separator', { name: 'Resize contents' })
+    const max = Math.max(230, Math.round(window.innerWidth * 0.3))
+    fireEvent.click(screen.getByRole('button', { name: 'Widen contents' }))
+    await waitFor(() => expect(Number(handle.getAttribute('aria-valuenow'))).toBe(max))
+    fireEvent.click(screen.getByRole('button', { name: 'Narrow contents' }))
+    await waitFor(() => expect(Number(handle.getAttribute('aria-valuenow'))).toBe(230))
+    // From a width in between, the button widens.
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    expect(screen.getByRole('button', { name: 'Widen contents' })).toBeInTheDocument()
+  })
+
+  it('presents from a heading in the contents, and only bookmarked sections', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+    const toc = document.querySelector('.toc-panel')
+    fireEvent.click(await within(toc).findByRole('button', { name: 'Present from Tables' }))
+    let show = await screen.findByRole('dialog', { name: /Presentation, slide/ })
+    expect(within(show).getByRole('heading', { name: 'Tables' })).toBeInTheDocument()
+    fireEvent.click(within(show).getByRole('button', { name: 'Previous slide' }))
+    await waitFor(() => expect(within(show).getByRole('heading', { name: 'Code Example' })).toBeInTheDocument())
+    fireEvent.keyDown(show, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Presentation/ })).toBeNull())
+
+    expect(within(toc).getByRole('button', { name: 'Present bookmarked sections' })).toBeDisabled()
+    fireEvent.click(within(toc).getByRole('button', { name: 'Bookmark Task List' }))
+    fireEvent.click(within(toc).getByRole('button', { name: 'Bookmark Features' }))
+    fireEvent.click(within(toc).getByRole('button', { name: 'Present bookmarked sections' }))
+    show = await screen.findByRole('dialog', { name: /Bookmarked presentation, slide 1 of 2/ })
+    expect(within(show).getByRole('heading', { name: 'Features' })).toBeInTheDocument()
+    fireEvent.click(within(show).getByRole('button', { name: 'Next slide' }))
+    await waitFor(() => expect(within(show).getByRole('heading', { name: 'Task List' })).toBeInTheDocument())
+    expect(within(show).getByRole('button', { name: 'Next slide' })).toBeDisabled()
   })
 
   it('edits a file inside the comparison and re-compares', async () => {

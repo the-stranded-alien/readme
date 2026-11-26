@@ -512,6 +512,7 @@ Pitfalls:
 - Don't make changes the user didn't ask for. If you spot problems, list them as suggestions.
 - Respect explicit constraints (for example: don't modify the code editor component; keep the simple editor as the default).
 - Pre-existing bugs found during verification get fixed or reported, never hidden.
+- **Version every deployment.** The app version lives in one place (`src/version.js`, shown in Settings → About). Every push to `main` deploys, so bump the minor number in the same commit: 1.3 → 1.4 → 1.5. Use a major bump (2.0) only when the user asks for one.
 - Keep a task list file (for example `Pending.md`) when the user maintains one. Mark items ✅ with a one-line note on what was done, and keep it out of commits unless asked.
 
 ---
@@ -529,3 +530,4 @@ Pitfalls:
 - [ ] Zero axe violations in every theme, with and without high contrast. No console errors.
 - [ ] `eslint .` is clean, `vitest run` passes, `vite build` succeeds, the browser scripts pass, and screenshots have been reviewed.
 - [ ] Help, the shortcuts sheet and the About text are updated for new features.
+- [ ] The version in `src/version.js` is bumped for this deployment.

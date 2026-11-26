@@ -48,6 +48,8 @@ import {
   FileZip as ParkFileZip,
   Filter as ParkFilter,
   FoldUpOne as ParkFoldUpOne,
+  ExpandLeft as ParkExpandLeft,
+  ExpandRight as ParkExpandRight,
   FolderClose as ParkFolderClose,
   FolderConversion as ParkFolderConversion,
   FolderOpen as ParkFolderOpen,
@@ -194,6 +196,8 @@ export const ChevronLeft = make(ParkLeft, 'ChevronLeft')
 export const ChevronRight = make(ParkRight, 'ChevronRight')
 export const ChevronUp = make(ParkUp, 'ChevronUp')
 export const ChevronsDownUp = make(ParkFoldUpOne, 'ChevronsDownUp')
+export const PanelWiden = make(ParkExpandRight, 'PanelWiden')
+export const PanelNarrow = make(ParkExpandLeft, 'PanelNarrow')
 export const ChevronsUpDown = make(ParkUpAndDown, 'ChevronsUpDown')
 export const CircleHelp = make(ParkHelp, 'CircleHelp')
 export const Clock = make(ParkTime, 'Clock')

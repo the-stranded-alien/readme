@@ -41,7 +41,7 @@ const HELP_SECTIONS = [
   {
     id: 'reading', title: 'Reading the page',
     items: [
-      ['Outline', 'The contents bar lists every heading. Click to jump, drag its edge to make it wider, and star sections to bookmark them.'],
+      ['Outline', 'The contents bar lists every heading. Click to jump, drag its edge to make it wider (or use the widen/narrow button to jump between the smallest and largest width), and star sections to bookmark them.'],
       ['Collapse sections', 'Click the arrow beside a heading to fold it, or use Collapse all in the toolbar.'],
       ['Filter', 'Use the filter in the toolbar to show only headings, a heading level, tables, code, lists, quotes or images.'],
       ['Section focus', 'Shows one section at a time; use Alt+← and Alt+→ to move between sections.'],
@@ -64,7 +64,7 @@ const HELP_SECTIONS = [
     items: [
       ['Download', 'Download as Markdown, PDF (with options), Word, HTML, or all files as a .zip.'],
       ['Share link', 'Copy share link puts the whole document in the link itself — no server involved.'],
-      ['Present', 'Present shows one slide per heading. Use the arrow keys, F for fullscreen, T to switch theme and + / − to make the text bigger or smaller (kept for every slide).'],
+      ['Present', 'Present shows one slide per heading. Use the arrow keys, F for fullscreen, T to switch theme and + / − to make the text bigger or smaller (kept for every slide). In the contents bar, hover a heading and click its slide icon to present from there, or use the slide icon at the top to present only your bookmarked sections.'],
       ['Speaker notes', 'Write notes under a line with just ??? at the end of a slide. Press S (or the notes button) for the presenter view: notes, next slide and a timer in a second window.'],
     ],
   },

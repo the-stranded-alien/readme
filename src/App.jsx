@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, SlidersHorizontal, FolderOpen, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
   FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
@@ -49,6 +49,7 @@ import EmptyState from './components/EmptyState'
 import { useHoverTooltip as useToolbarTooltip } from './useHoverTooltip'
 import { MARK_COLORS, rehypeMarks } from './rehypeMarks'
 import { CONTENT_FILTERS, applyContentFilter, clearContentFilter, filterLabel } from './contentFilter'
+import { sectionSlides, slideForHeading } from './presentation'
 import { ALL_THEME_CLASSES, THEME_IDS, availableThemes, nextTheme, themeById, themeClasses } from './themes'
 import TemplatesDialog from './components/TemplatesDialog'
 import SlashMenu from './components/SlashMenu'
@@ -721,7 +722,7 @@ function FilterMenu({ anchorRef, position, value, onPick, onClose }) {
   )
 }
 
-function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onToggleBookmark, onlyBookmarked = false, onOnlyBookmarked }) {
+function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onToggleBookmark, onlyBookmarked = false, onOnlyBookmarked, widthToggle, onPresentFrom, onPresentBookmarked }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
 
   const parentKeys = useMemo(() => {
@@ -822,6 +823,29 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
               <Star size={12} fill={onlyBookmarked ? 'currentColor' : 'none'} />
             </button>
           )}
+          {onPresentBookmarked && (
+            <button
+              type="button"
+              onClick={onPresentBookmarked}
+              disabled={bookmarks.size === 0}
+              className="btn-icon !p-1 toc-present-bookmarks"
+              title={bookmarks.size === 0 ? 'Bookmark a section (☆) to present only bookmarked sections' : 'Present only bookmarked sections'}
+              aria-label="Present bookmarked sections"
+            >
+              <Presentation size={12} />
+            </button>
+          )}
+          {widthToggle && (
+            <button
+              type="button"
+              onClick={widthToggle.onToggle}
+              className="btn-icon !p-1"
+              title={widthToggle.isMax ? 'Narrow contents (smallest width)' : 'Widen contents (largest width)'}
+              aria-label={widthToggle.isMax ? 'Narrow contents' : 'Widen contents'}
+            >
+              {widthToggle.isMax ? <PanelNarrow size={12} /> : <PanelWiden size={12} />}
+            </button>
+          )}
         </div>
       </div>
       <nav className="py-1">
@@ -887,6 +911,17 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
                   }}>
                   {h.text}
                 </button>
+                {onPresentFrom && (
+                  <button
+                    type="button"
+                    className="toc-present"
+                    onClick={event => { event.stopPropagation(); onPresentFrom(i) }}
+                    aria-label={`Present from ${h.text}`}
+                    title="Present from here"
+                  >
+                    <Presentation size={11} />
+                  </button>
+                )}
                 {onToggleBookmark && (
                   <button
                     type="button"
@@ -5684,7 +5719,17 @@ ${fontCss}
                     <div className="py-3 px-2">
                       <TocSidebar headings={headings} activeId={activeHeadingId} onNavigate={navigateToHeading}
                         bookmarks={activeBookmarkIds} onToggleBookmark={toggleSectionBookmark}
-                        onlyBookmarked={showOnlyBookmarked} onOnlyBookmarked={setOnlyBookmarked} />
+                        onlyBookmarked={showOnlyBookmarked} onOnlyBookmarked={setOnlyBookmarked}
+                        onPresentFrom={markdownBody.trim() ? ordinal => setPresenting({ startAt: slideForHeading(markdownBody, ordinal) }) : undefined}
+                        onPresentBookmarked={markdownBody.trim() ? () => {
+                          const ordinals = headings.flatMap((heading, index) => (activeBookmarkIds.has(heading.id) ? [index] : []))
+                          const slides = sectionSlides(markdownBody, ordinals)
+                          if (slides.length) setPresenting({ slides, label: 'Bookmarked' })
+                        } : undefined}
+                        widthToggle={tocMaxWidth() > TOC_MIN_WIDTH ? {
+                          isMax: tocWidth >= tocMaxWidth(),
+                          onToggle: () => setTocWidth(tocWidth >= tocMaxWidth() ? TOC_MIN_WIDTH : tocMaxWidth()),
+                        } : null} />
                     </div>
                   )}
                 </div>
@@ -5993,6 +6038,9 @@ ${fontCss}
       {presenting && activeFile && (
         <PresentationMode
           markdown={markdownBody}
+          startAt={presenting.startAt ?? 0}
+          slides={presenting.slides}
+          label={presenting.label}
           renderMarkdown={markdown => <MarkdownRenderer content={markdown} dark={isDark} />}
           themes={availableThemes(appSettings.extraThemes)}
           theme={theme}

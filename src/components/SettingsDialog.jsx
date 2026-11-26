@@ -3,6 +3,7 @@ import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, Folde
 import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
 import { THEMES, themeClasses } from '../themes'
+import { APP_VERSION } from '../version'
 
 export const REPO_URL = 'https://github.com/the-stranded-alien/readme'
 
@@ -184,7 +185,7 @@ export default function SettingsDialog({
             {section === 'about' && (
               <div className="settings-about">
                 <div className="settings-about-logo"><Feather size={22} /></div>
-                <h3>ReadMe</h3>
+                <h3>ReadMe <span className="settings-about-version">Version {APP_VERSION}</span></h3>
                 <p>
                   ReadMe is a fast, private Markdown reader and editor that runs entirely in your browser.
                   Write with a live preview, present documents as slides, export to PDF, Word or HTML,

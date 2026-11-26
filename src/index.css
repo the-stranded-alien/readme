@@ -2084,6 +2084,8 @@ button[data-tooltip]:not(:focus-visible)::after {
 }
 .presentation-controls button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
 .presentation-controls button:disabled { opacity: .3; cursor: default; }
+.presentation-label { padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #92400e; background: rgba(245,158,11,.14); }
+.dark .presentation-label { color: #fbbf24; }
 .presentation-counter { min-width: 56px; text-align: center; font-size: 13px; font-weight: 600; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .presentation-divider { width: 1px; height: 20px; margin: 0 4px; background: var(--border); }
 
@@ -2279,6 +2281,8 @@ button[data-tooltip]:not(:focus-visible)::after {
 .settings-about p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); }
 .settings-about-logo { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
 .settings-about-link { text-decoration: none; }
+.settings-about h3 { display: flex; align-items: center; gap: 8px; }
+.settings-about-version { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--text-2); background: var(--accent-soft); border: 1px solid var(--accent-border); font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) {
   .settings-body { grid-template-columns: 1fr; }
   .settings-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border-light); }
@@ -2475,13 +2479,16 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 .presentation-slide .heading-tools, .presentation-slide .section-summary { display: none; }
 
 /* Contents: bookmarks + resize */
+.toc-item .toc-present { margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; color: var(--text-4); cursor: pointer; opacity: 0; }
+.toc-item:hover .toc-present, .toc-present:focus-visible { opacity: 1; }
+.toc-item .toc-present + .toc-star { margin-left: 0; }
 .toc-item .toc-star { margin-left: auto; flex-shrink: 0; display: inline-flex; padding: 2px; border: 0; border-radius: 4px; background: transparent; color: var(--text-4); cursor: pointer; opacity: 0; }
 .toc-item:hover .toc-star, .toc-star:focus-visible, .toc-star.is-on { opacity: 1; }
 .toc-star:hover { color: #d97706; }
 .toc-star.is-on { color: #d97706; }
 .toc-item.is-bookmarked:not(.active) { color: var(--text-2); }
 .toc-bookmark-filter.is-on { color: #d97706; background: rgba(245,158,11,.14); }
-.toc-bookmark-filter:disabled { opacity: .35; cursor: not-allowed; }
+.toc-bookmark-filter:disabled, .toc-present-bookmarks:disabled { opacity: .35; cursor: not-allowed; }
 .toc-resize-handle { position: relative; flex-shrink: 0; width: 6px; margin: 0 -3px; z-index: 5; cursor: col-resize; touch-action: none; }
 .toc-resize-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; border-radius: 2px; background: transparent; transition: background .15s; }
 .toc-resize-handle:hover::after, .toc-resize-handle.is-active::after, .toc-resize-handle:focus-visible::after { background: var(--accent); }
@@ -3086,14 +3093,14 @@ html.high-contrast .presentation-slide.rm-prose { background: var(--bg-preview);
 html.high-contrast { --icon-hover-bg: color-mix(in srgb, var(--accent) 24%, transparent); }
 
 :is(.btn-icon, .reading-pet-trigger, .file-tree-toggle, .file-tabs-command-button, .fmt-btn, .editor-options-trigger,
-    .editor-icon-btn, .quality-trigger, .section-toggle, .heading-tool, .wrap-btn, .heading-anchor, .toc-star, .toc-toggle,
+    .editor-icon-btn, .quality-trigger, .section-toggle, .heading-tool, .wrap-btn, .heading-anchor, .toc-star, .toc-present, .toc-toggle,
     .section-summary-actions button, .summary-card-actions button, .file-tab-duplicate, .file-tab-close, .file-tab-add,
     .presentation-controls button, .reader-preview-toolbar button:not(.reader-popover *), .copy-btn, .diff-edit-toggle) {
   border-radius: 999px !important;
   transition: background-color .15s, color .15s, opacity .15s;
 }
 :is(.btn-icon, .reading-pet-trigger, .file-tree-toggle, .file-tabs-command-button, .fmt-btn, .editor-options-trigger,
-    .editor-icon-btn, .quality-trigger, .section-toggle, .heading-tool, .wrap-btn, .heading-anchor, .toc-star, .toc-toggle,
+    .editor-icon-btn, .quality-trigger, .section-toggle, .heading-tool, .wrap-btn, .heading-anchor, .toc-star, .toc-present, .toc-toggle,
     .section-summary-actions button, .summary-card-actions button, .file-tab-duplicate, .file-tab-close, .file-tab-add,
     .presentation-controls button, .reader-preview-toolbar button:not(.reader-popover *), .copy-btn, .diff-edit-toggle):hover:not(:disabled) {
   background-color: var(--icon-hover-bg) !important;
