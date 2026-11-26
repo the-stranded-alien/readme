@@ -87,3 +87,20 @@ export function fileLinkTitle(file) {
   const heading = String(file?.content || '').match(/^#{1,6}\s+(.+?)\s*#*\s*$/m)?.[1]
   return (heading || String(file?.name || '').split('/').pop().replace(/\.[^.]+$/, '')).replace(/[[\]]/g, '')
 }
+
+/** Folders can be nested this deep (a/b/c). */
+export const MAX_FOLDER_DEPTH = 3
+export const folderDepth = path => String(path || '').split('/').filter(Boolean).length
+
+/** "notes/plan.md" → { dir: 'notes/', stem: 'plan', ext: '.md' }. A leading dot is not an extension. */
+export function splitFileName(name) {
+  const value = String(name || '')
+  const slash = value.lastIndexOf('/')
+  const dir = slash === -1 ? '' : value.slice(0, slash + 1)
+  const base = value.slice(slash + 1)
+  const dot = base.lastIndexOf('.')
+  return dot > 0 ? { dir, stem: base.slice(0, dot), ext: base.slice(dot) } : { dir, stem: base, ext: '' }
+}
+
+/** A file name typed by the user: no folder separators or characters file systems reject. */
+export const cleanFileStem = value => String(value || '').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+/, '').trim()

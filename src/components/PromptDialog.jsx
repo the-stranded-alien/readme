@@ -5,9 +5,10 @@ import { useDialogKeys } from '../useDialogKeys'
 /**
  * The app's own text-input dialog (instead of the browser's `prompt()`).
  * `validate(value)` returns an error message or null; Enter submits, Escape cancels.
+ * `prefix` / `suffix` show fixed text around the input (e.g. a folder path and a file extension).
  */
 export default function PromptDialog({
-  title, description, label, initialValue = '', placeholder, hint, confirmLabel = 'OK', icon: Icon, validate, onSubmit, onCancel,
+  title, description, label, initialValue = '', placeholder, hint, confirmLabel = 'OK', icon: Icon, validate, onSubmit, onCancel, prefix, suffix,
 }) {
   const [value, setValue] = useState(initialValue)
   const [touched, setTouched] = useState(false)
@@ -33,9 +34,13 @@ export default function PromptDialog({
         <div className="pdf-dialog-body">
           <label className="prompt-field">
             <span className="pdf-option-label">{label}</span>
-            <input ref={inputRef} type="text" value={value} placeholder={placeholder} spellCheck={false} autoComplete="off"
-              aria-invalid={Boolean(touched && error)} aria-describedby="prompt-dialog-help"
-              onChange={event => { setValue(event.target.value); setTouched(true) }} />
+            <span className={`prompt-input${prefix || suffix ? ' has-affix' : ''}`}>
+              {prefix && <span className="prompt-affix" aria-hidden="true">{prefix}</span>}
+              <input ref={inputRef} type="text" value={value} placeholder={placeholder} spellCheck={false} autoComplete="off"
+                aria-invalid={Boolean(touched && error)} aria-describedby="prompt-dialog-help"
+                onChange={event => { setValue(event.target.value); setTouched(true) }} />
+              {suffix && <span className="prompt-affix" aria-hidden="true">{suffix}</span>}
+            </span>
           </label>
           <p id="prompt-dialog-help" className={`prompt-help${touched && error ? ' is-error' : ''}`} aria-live="polite">{touched && error ? error : hint}</p>
         </div>

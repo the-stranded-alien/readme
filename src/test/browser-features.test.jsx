@@ -1233,6 +1233,64 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('aria-label'))).toEqual(expect.arrayContaining(['archive/plan.md', 'archive/ideas.md', 'archive/todo.md'])))
   })
 
+  it('renames files without touching the folder or the extension', async () => {
+    await writeWorkspace({ activeId: 'a', files: [
+      { id: 'a', name: 'notes/plan.md', content: '# Plan' },
+      { id: 'b', name: 'notes/ideas.md', content: '# Ideas' },
+    ] })
+    installApp()
+    // In the tab: only "plan" is editable; ".md" is shown beside it.
+    fireEvent.doubleClick(within(await screen.findByRole('tab', { name: 'notes/plan.md' })).getByText('plan.md'))
+    const input = screen.getByRole('textbox', { name: /Rename plan/ })
+    expect(input).toHaveValue('plan')
+    expect(input.parentElement).toHaveTextContent('.md')
+    fireEvent.change(input, { target: { value: 'road/map' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(await screen.findByRole('tab', { name: 'notes/road-map.md' })).toBeInTheDocument()
+    // In the Files panel: the app's dialog shows the folder and extension as fixed text.
+    fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
+    const tree = await screen.findByRole('tree', { name: 'Files' })
+    fireEvent.click(within(tree).getByRole('button', { name: 'Rename notes/ideas.md' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Rename file' })
+    const field = within(dialog).getByRole('textbox', { name: 'File name' })
+    expect(field).toHaveValue('ideas')
+    expect(dialog).toHaveTextContent('notes/')
+    expect(dialog).toHaveTextContent('.md')
+    fireEvent.change(field, { target: { value: 'road-map' } })
+    expect(within(dialog).getByText(/already exists here/)).toBeInTheDocument()
+    fireEvent.change(field, { target: { value: 'backlog' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Rename' }))
+    expect(await screen.findByRole('tab', { name: 'notes/backlog.md' })).toBeInTheDocument()
+  })
+
+  it('makes sub-folders up to three levels deep', async () => {
+    await writeWorkspace({ activeId: 'a', files: [{ id: 'a', name: 'one.md', content: '# One' }] })
+    installApp()
+    await screen.findByRole('tab', { name: 'one.md' })
+    fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
+    const tree = await screen.findByRole('tree', { name: 'Files' })
+    fireEvent.click(screen.getByRole('button', { name: 'New folder' }))
+    let dialog = await screen.findByRole('dialog', { name: 'New folder' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Folder name' }), { target: { value: 'a/b/c/d' } })
+    expect(within(dialog).getByText('Folders can go up to 3 levels deep.')).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Folder name' }), { target: { value: 'a' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create folder' }))
+    // a → a/b → a/b/c through "New folder inside".
+    for (const [parent, child] of [['a', 'b'], ['b', 'c']]) {
+      fireEvent.click(await within(tree).findByRole('button', { name: `New folder inside ${parent}` }))
+      dialog = await screen.findByRole('dialog', { name: 'New folder' })
+      expect(dialog).toHaveTextContent(`Inside “`)
+      fireEvent.change(within(dialog).getByRole('textbox', { name: 'Folder name' }), { target: { value: child } })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Create folder' }))
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New folder' })).toBeNull())
+    }
+    expect(within(tree).getByRole('treeitem', { name: 'Folder c' })).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('readme-empty-folders'))).toContain('a/b/c')
+    // The third level can't get another folder inside it.
+    expect(within(tree).queryByRole('button', { name: 'New folder inside c' })).toBeNull()
+    expect(within(tree).getByRole('button', { name: 'New folder inside b' })).toBeInTheDocument()
+  })
+
   it('creates an empty folder from its own dialog, without a file', async () => {
     window.prompt = vi.fn()
     await writeWorkspace({ activeId: 'a', files: [{ id: 'a', name: 'notes/plan.md', content: '# Plan' }] })

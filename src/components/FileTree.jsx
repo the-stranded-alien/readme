@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, RotateCcw, Trash2, X } from '../icons'
-import { FILE_DRAG_TYPE, isModifiedFromDisk, labelColor } from '../fileUtils'
+import { FILE_DRAG_TYPE, MAX_FOLDER_DEPTH, folderDepth, isModifiedFromDisk, labelColor } from '../fileUtils'
 
 
 /** Builds a folder tree from "folder/sub/file.md" style names. */
@@ -36,7 +36,7 @@ const sortFiles = entries => [...entries].sort((a, b) => (Boolean(a.closed) - Bo
 const countFiles = node => node.files.length + [...node.folders.values()].reduce((sum, child) => sum + countFiles(child), 0)
 
 export default function FileTree({
-  files, closedFiles = [], emptyFolders = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onDeleteFolder, onClose,
+  files, closedFiles = [], emptyFolders = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onDeleteFolder, onNewSubfolder, onRenameFile, onClose,
 }) {
   const closedList = useMemo(() => closedFiles.map(entry => entry.file), [closedFiles])
   const tree = useMemo(() => buildFileTree(files, closedList, emptyFolders), [files, closedList, emptyFolders])
@@ -79,6 +79,9 @@ export default function FileTree({
           </button>
           <span className="file-tree-actions">
             <button type="button" onClick={() => onNewFile(node.path)} data-tip={`New file in ${node.name}`} aria-label={`New file in ${node.name}`}><FilePlus size={12} /></button>
+            {onNewSubfolder && folderDepth(node.path) < MAX_FOLDER_DEPTH && (
+              <button type="button" onClick={() => onNewSubfolder(node.path)} data-tip={`New folder inside ${node.name}`} aria-label={`New folder inside ${node.name}`}><FolderPlus size={12} /></button>
+            )}
             <button type="button" onClick={() => onRenameFolder(node.path)} data-tip="Rename folder" aria-label={`Rename folder ${node.name}`}><Pencil size={12} /></button>
             <button type="button" onClick={() => onCloseFolder(node.path)} data-tip={countFiles(node) ? 'Close all files in this folder' : 'Remove this empty folder'} aria-label={countFiles(node) ? `Close folder ${node.name}` : `Remove empty folder ${node.name}`}><X size={12} /></button>
             {onDeleteFolder && <button type="button" className="is-danger" onClick={() => onDeleteFolder(node.path)} data-tip={countFiles(node) ? 'Delete this folder and its files' : 'Delete this folder'} aria-label={`Delete folder ${node.name}`}><Trash2 size={12} /></button>}
@@ -138,9 +141,10 @@ export default function FileTree({
             <span className="file-tree-name">{base}</span>
             {isModifiedFromDisk(file) && <span className="file-modified-dot" aria-label="Unsaved changes" />}
           </button>
-          {onDelete && (
+          {(onDelete || onRenameFile) && (
             <span className="file-tree-actions">
-              <button type="button" onClick={() => onDelete(file.id)} data-tip="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>
+              {onRenameFile && <button type="button" onClick={() => onRenameFile(file.id)} data-tip="Rename file" aria-label={`Rename ${file.name}`}><Pencil size={12} /></button>}
+              {onDelete && <button type="button" onClick={() => onDelete(file.id)} data-tip="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>}
             </span>
           )}
         </div>

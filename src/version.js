@@ -4,9 +4,17 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '1.7'
+export const APP_VERSION = '1.8'
 
 export const RELEASES = [
+  {
+    version: '1.8',
+    date: '2026-11-26',
+    notes: [
+      'Sub-folders, up to three levels deep.',
+      'Rename files from the Files panel; renaming never changes the file’s folder or extension.',
+    ],
+  },
   {
     version: '1.7',
     date: '2026-11-26',

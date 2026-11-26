@@ -30,7 +30,7 @@ import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
 import { canSyncToFolder, existsInFolder, folderPermission, readFolder, removeFromFolder, syncPath, writeToFolder } from './folderSync'
 import { analyzeDocument, applyQualityFix } from './documentAnalysis'
-import { FILE_DRAG_TYPE, fileLinkTitle, makeDuplicateFileName, relativeFileLink, resolveFileLink } from './fileUtils'
+import { FILE_DRAG_TYPE, fileLinkTitle, makeDuplicateFileName, relativeFileLink, resolveFileLink, MAX_FOLDER_DEPTH, cleanFileStem, folderDepth, splitFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
 import FileTabBar from './components/FileTabBar'
 import ImageLightbox from './components/ImageLightbox'
@@ -2631,7 +2631,7 @@ export default function App() {
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [])
-  const [folderPrompt, setFolderPrompt] = useState(null) // { mode: 'new' } | { mode: 'rename', path }
+  const [folderPrompt, setFolderPrompt] = useState(null) // { mode: 'new', parent? } | { mode: 'rename', path }
   // The app's own confirm / text-input dialogs (never the browser's confirm() or prompt()).
   // Both return a promise: askConfirm → true/false, askText → the text or null.
   const [appDialog, setAppDialog] = useState(null)
@@ -4166,14 +4166,21 @@ export default function App() {
     || files.some(file => file.name.startsWith(`${path}/`))
     || closedFiles.some(entry => entry.file.name.startsWith(`${path}/`))
   ), [emptyFolders, files, closedFiles])
+  // How many folder levels sit inside `path` (so a rename can't push them past the limit).
+  const folderLevelsInside = useCallback(path => {
+    const paths = [...emptyFolders, ...[...files, ...closedFiles.map(entry => entry.file)].map(file => file.name.split('/').slice(0, -1).join('/'))]
+    return paths.filter(item => item.startsWith(`${path}/`)).reduce((max, item) => Math.max(max, folderDepth(item) - folderDepth(path)), 0)
+  }, [emptyFolders, files, closedFiles])
   // New folder: asks for a name in the app's own dialog and adds an empty folder (no file).
   const createFolder = useCallback(() => setFolderPrompt({ mode: 'new' }), [])
+  const createSubfolder = useCallback(parent => setFolderPrompt({ mode: 'new', parent }), [])
   const renameFolder = useCallback(path => setFolderPrompt({ mode: 'rename', path }), [])
   const submitFolderPrompt = useCallback(raw => {
     const prompt = folderPrompt
     setFolderPrompt(null)
-    const name = cleanFolderName(raw)
-    if (!prompt || !name) return
+    const typed = cleanFolderName(raw)
+    if (!prompt || !typed) return
+    const name = prompt.parent ? `${prompt.parent}/${typed}` : typed
     if (prompt.mode === 'new') {
       setEmptyFolders(list => (list.includes(name) ? list : [...list, name]))
       // Open the new folder and the folders around it.
@@ -4530,6 +4537,26 @@ export default function App() {
     })
   }, [files, closedFiles, emptyFolders, syncFolder, closeFiles, markWorkspaceEdit, askConfirm])
   const handleDeleteFile = useCallback(id => deleteEntries([id]), [deleteEntries])
+  // Rename from the Files panel: only the name is editable; the folder and the extension stay.
+  const renameFileFromTree = useCallback(async id => {
+    const file = files.find(item => item.id === id)
+    if (!file) return
+    const { dir, stem, ext } = splitFileName(file.name)
+    const taken = new Set([...files, ...closedFiles.map(entry => entry.file)].filter(item => item.id !== id).map(item => item.name.toLowerCase()))
+    const value = await askText({
+      title: 'Rename file', icon: Pencil, label: 'File name', initialValue: stem, confirmLabel: 'Rename',
+      prefix: dir || undefined, suffix: ext || undefined,
+      hint: ext ? `The ${ext} extension stays the same.` : undefined,
+      validate: input => {
+        const next = cleanFileStem(input)
+        if (!next) return 'Enter a file name.'
+        if (taken.has(`${dir}${next}${ext}`.toLowerCase())) return `“${next}${ext}” already exists here.`
+        return null
+      },
+    })
+    const next = value == null ? '' : cleanFileStem(value)
+    if (next && `${dir}${next}${ext}` !== file.name) handleRenameFile(id, `${dir}${next}${ext}`)
+  }, [files, closedFiles, askText, handleRenameFile])
   const handleDeleteFolder = useCallback(path => {
     const ids = [...files, ...closedFiles.map(entry => entry.file)].filter(file => file.name.startsWith(`${path}/`)).map(file => file.id)
     return deleteEntries(ids, { folder: path })
@@ -5035,7 +5062,7 @@ ${fontCss}
       { id: 'dl-md', label: 'Download Markdown (.md)', hint: 'Export', icon: Download, run: handleDownload },
       { id: 'dl-html', label: 'Export Standalone HTML (.html)', hint: 'Export', icon: FileCode2, run: handleExportHtml },
       { id: 'dl-confluence', label: 'Export for Confluence (storage format XHTML)', hint: 'Export', icon: Code2, run: handleExportConfluence },
-      { id: 'copy-confluence', label: 'Copy as Confluence XHTML', hint: 'Copy', icon: Copy, run: handleCopyConfluence },
+      { id: 'copy-confluence', label: 'Copy as XHTML (Confluence)', hint: 'Copy', icon: Copy, run: handleCopyConfluence },
     { id: 'dl-pdf', label: 'Download PDF…', hint: 'Export', icon: FileDown, run: openPdfDialog },
     { id: 'dl-docx', label: 'Export Word Document (.docx)', hint: 'Export', icon: FileText, run: handleExportDocx },
     { id: 'share-link', label: 'Copy share link', hint: 'Share', icon: Share2, run: handleCopyShareLink },
@@ -5278,6 +5305,8 @@ ${fontCss}
             onRenameFolder={renameFolder}
             onCloseFolder={closeFolder}
             onDeleteFolder={handleDeleteFolder}
+            onNewSubfolder={createSubfolder}
+            onRenameFile={renameFileFromTree}
             onClose={() => setFileTreeOpen(false)}
           />
         )}
@@ -5835,8 +5864,8 @@ ${fontCss}
                     <span className="hidden sm:inline reader-toolbar-label">{copyAllDone ? 'Copied!' : 'Copy MD'}</span>
                   </button>
                   <button onClick={handleCopyConfluence}
-                    data-tooltip={copyConfluenceDone ? 'Copied for Confluence' : 'Copy as XHTML for Confluence (storage format)'}
-                    aria-label={copyConfluenceDone ? 'Copied for Confluence' : 'Copy as Confluence XHTML'}
+                    data-tooltip={copyConfluenceDone ? 'Copied' : 'Copy as XHTML (Confluence)'}
+                    aria-label={copyConfluenceDone ? 'Copied' : 'Copy as XHTML (Confluence)'}
                     className="reader-toolbar-copy flex shrink-0 items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
                     style={{ fontSize: 10, fontWeight: 500, color: copyConfluenceDone ? '#40a02b' : 'var(--text-4)' }}>
                     {copyConfluenceDone ? <Check size={11} /> : <Code2 size={11} />}
@@ -6187,18 +6216,22 @@ ${fontCss}
 
       {folderPrompt && (
         <PromptDialog
-          key={folderPrompt.mode + (folderPrompt.path ?? '')}
+          key={folderPrompt.mode + (folderPrompt.path ?? folderPrompt.parent ?? '')}
           icon={folderPrompt.mode === 'new' ? FolderPlus : Pencil}
           title={folderPrompt.mode === 'new' ? 'New folder' : 'Rename folder'}
-          description={folderPrompt.mode === 'new' ? 'Folders group your files in the Files panel.' : `Files inside “${folderPrompt.path}” move with it.`}
+          description={folderPrompt.mode === 'new' ? (folderPrompt.parent ? `Inside “${folderPrompt.parent}”.` : 'Folders group your files in the Files panel.') : `Files inside “${folderPrompt.path}” move with it.`}
+          prefix={folderPrompt.parent ? `${folderPrompt.parent}/` : undefined}
           label="Folder name"
           initialValue={folderPrompt.mode === 'new' ? '' : folderPrompt.path}
           placeholder="notes"
-          hint='Use "/" for a folder inside another, like notes/2026.'
+          hint={folderPrompt.parent ? `Folders go up to ${MAX_FOLDER_DEPTH} levels deep.` : `Use "/" for a folder inside another, like notes/2026 (up to ${MAX_FOLDER_DEPTH} levels).`}
           confirmLabel={folderPrompt.mode === 'new' ? 'Create folder' : 'Rename'}
           validate={value => {
-            const name = cleanFolderName(value)
-            if (!name) return 'Enter a folder name.'
+            const typed = cleanFolderName(value)
+            if (!typed) return 'Enter a folder name.'
+            const name = folderPrompt.parent ? `${folderPrompt.parent}/${typed}` : typed
+            if (folderDepth(name) > MAX_FOLDER_DEPTH) return `Folders can go up to ${MAX_FOLDER_DEPTH} levels deep.`
+            if (folderPrompt.mode === 'rename' && folderDepth(name) + folderLevelsInside(folderPrompt.path) > MAX_FOLDER_DEPTH) return `Its sub-folders would go deeper than ${MAX_FOLDER_DEPTH} levels.`
             if (folderPrompt.mode === 'rename' && name === folderPrompt.path) return null
             if (folderExists(name)) return `A folder called “${name}” already exists.`
             return null

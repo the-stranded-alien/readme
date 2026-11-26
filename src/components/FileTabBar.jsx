@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import { shortcut } from '../platform'
 import { useHoverTooltip } from '../useHoverTooltip'
-import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedFromDisk, labelColor } from '../fileUtils'
+import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedFromDisk, labelColor, cleanFileStem, splitFileName } from '../fileUtils'
 import {
   Check, Command, CopyPlus, Download, FilePlus, FileText, FolderTree, GitCompare, HardDrive, ListTree,
   Pencil, Pin, PinOff, RotateCcw, Search, Trash2, X, XCircle,
@@ -256,10 +256,16 @@ export default function FileTabBar({
     const file = files.find(item => item.id === id)
     if (!file) return
     setEditingId(id)
-    setDraftName(file.name)
+    // Only the name is editable: the folder and the extension stay as they are.
+    setDraftName(splitFileName(file.name).stem)
   }
   const commitRename = id => {
-    onRename(id, draftName)
+    const file = files.find(item => item.id === id)
+    const stem = cleanFileStem(draftName)
+    if (file && stem) {
+      const { dir, ext } = splitFileName(file.name)
+      if (`${dir}${stem}${ext}` !== file.name) onRename(id, `${dir}${stem}${ext}`)
+    }
     setEditingId(null)
   }
 
@@ -371,8 +377,10 @@ export default function FileTabBar({
                 ? <Pin size={12} className="file-tab-icon" style={{ color: color || (isActive ? 'var(--accent)' : 'var(--text-4)') }} aria-hidden="true" />
                 : <FileText size={12} className="file-tab-icon" style={{ color: color || (isActive ? 'var(--accent)' : 'var(--text-4)') }} aria-hidden="true" />}
               {file.pinned && !isEditing ? null : isEditing ? (
+                <span className="file-tab-rename-wrap">
                 <input
                   className="file-tab-rename"
+                  aria-label={`Rename ${splitFileName(file.name).stem}${splitFileName(file.name).ext ? ` (the ${splitFileName(file.name).ext} extension stays)` : ''}`}
                   value={draftName}
                   autoFocus
                   onFocus={event => event.target.select()}
@@ -385,6 +393,8 @@ export default function FileTabBar({
                     else if (event.key === 'Escape') setEditingId(null)
                   }}
                 />
+                {splitFileName(file.name).ext && <span className="file-tab-rename-ext" aria-hidden="true">{splitFileName(file.name).ext}</span>}
+                </span>
               ) : (
                 <span className="truncate" onDoubleClick={event => { event.stopPropagation(); startRename(file.id) }}>
                   {splitPath(file.name).base}

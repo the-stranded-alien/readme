@@ -19,7 +19,7 @@ const HELP_SECTIONS = [
     id: 'files', title: 'Files & tabs',
     items: [
       ['Tabs', 'Drag tabs to reorder them. Right-click a tab to rename, duplicate, pin, colour, compare, download or close it.'],
-      ['File tree', 'The folder icon at the left of the tab bar shows your files as a tree, grouped by folder. Files you close stay listed there (marked closed) — click one to reopen it. New folder asks for a name and makes an empty folder; hover a folder to add a file, rename it or delete it (with its files, after you confirm — Undo brings it back).'],
+      ['File tree', 'The folder icon at the left of the tab bar shows your files as a tree, grouped by folder. Files you close stay listed there (marked closed) — click one to reopen it. New folder asks for a name and makes an empty folder (folders go up to three levels deep). Hover a folder to add a file or a folder inside it, rename it or delete it (with its files, after you confirm — Undo brings it back). Hover a file to rename it: only the name changes, never its folder or extension.'],
       ['Link files', 'Drag a file from the Files panel into the editor to insert a link to it. Clicking the link in the preview opens that file.'],
       ['Delete', 'Right-click a tab (or use the trash icon in the Files panel) → Delete permanently. You can undo it from the notice.'],
       ['Compare', 'Right-click a tab → Compare to see the differences between two files side by side.'],
