@@ -42,15 +42,17 @@ export function ThemePicker({ themes, value, onChange, extraThemes, onExtraTheme
             <strong>Default theme</strong>
             <span>The theme ReadMe opens with every time. “Last used” keeps whichever theme you had last.</span>
           </span>
-          <select className="settings-select" value={defaultTheme} onChange={event => onDefaultTheme(event.target.value)}>
-            <option value="">Last used</option>
-            <optgroup label="Main themes">
-              {THEMES.filter(theme => !theme.extra).map(theme => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
-            </optgroup>
-            <optgroup label="Additional themes">
-              {THEMES.filter(theme => theme.extra).map(theme => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
-            </optgroup>
-          </select>
+          <span className="settings-select-wrap">
+            <select className="settings-select" value={defaultTheme} onChange={event => onDefaultTheme(event.target.value)}>
+              <option value="">Last used</option>
+              <optgroup label="Main themes">
+                {THEMES.filter(theme => !theme.extra).map(theme => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
+              </optgroup>
+              <optgroup label="Additional themes">
+                {THEMES.filter(theme => theme.extra).map(theme => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
+              </optgroup>
+            </select>
+          </span>
         </label>
       )}
     </>

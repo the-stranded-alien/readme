@@ -17,9 +17,11 @@ function Field({ label, description, children }) {
 
 function Select({ label, value, onChange, options }) {
   return (
-    <select className="settings-select" aria-label={label} value={String(value)} onChange={event => onChange(event.target.value)}>
-      {options.map(option => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
-    </select>
+    <span className="settings-select-wrap">
+      <select className="settings-select" aria-label={label} value={String(value)} onChange={event => onChange(event.target.value)}>
+        {options.map(option => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
+      </select>
+    </span>
   )
 }
 
