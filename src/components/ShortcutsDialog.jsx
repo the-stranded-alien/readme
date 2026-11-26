@@ -32,6 +32,7 @@ const GROUPS = [
       [shortcut('V', { shift: true }), 'Paste as plain text'],
       [shortcut('Z'), 'Undo (right after a paste: keep the plain text)'],
       ['[[', 'Link to another document (wiki link)'],
+      [shortcut('K', { shift: true }), 'Tasks in all documents'],
       ['/', 'Insert a block'],
     ],
   },

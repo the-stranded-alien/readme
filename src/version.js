@@ -4,9 +4,17 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '2.0'
+export const APP_VERSION = '2.1'
 
 export const RELEASES = [
+  {
+    version: '2.1',
+    date: '2026-11-27',
+    notes: [
+      'Tasks: every task from all your documents in one panel, with due dates, tags and priorities.',
+      'Tick tasks straight in the preview.',
+    ],
+  },
   {
     version: '2.0',
     date: '2026-11-27',
@@ -40,13 +48,6 @@ export const RELEASES = [
       'Copy or export pages for Confluence (storage format XHTML).',
       'Delete whole folders, with a confirmation and Undo.',
       'New “Markdown Guide” template showing every supported Markdown feature.',
-    ],
-  },
-  {
-    version: '1.6',
-    date: '2026-11-26',
-    notes: [
-      'Create and rename folders from ReadMe’s own dialog; new folders start empty.',
     ],
   },
 ]

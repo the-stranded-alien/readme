@@ -965,6 +965,44 @@ describe('advanced browser features', () => {
     expect(await screen.findByText(/can’t go further/)).toBeInTheDocument()
   })
 
+  it('collects tasks from all documents, ticks them from the panel and the preview', async () => {
+    const pad = n => String(n).padStart(2, '0')
+    const d = new Date(); const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    await writeWorkspace({ activeId: 'a', files: [
+      { id: 'a', name: 'Work.md', content: `# Work\n\n- [ ] Send report due:${today} #ops !high\n- [x] Book room\n` },
+      { id: 'b', name: 'notes/Home.md', content: '# Home\n\n- [ ] Buy milk #errands\n\n```\n- [ ] not a task\n```' },
+    ] })
+    installApp()
+    await screen.findByDisplayValue(/Send report/)
+    // Header button shows tasks due today or overdue.
+    expect(screen.getByRole('button', { name: 'Tasks, 1 due today or overdue' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'k', metaKey: true, shiftKey: true })
+    const panel = await screen.findByRole('dialog', { name: 'Tasks' })
+    expect(within(panel).getByRole('region', { name: 'Work.md' })).toHaveTextContent('Send report')
+    expect(within(panel).getByText('Today')).toBeInTheDocument()
+    expect(within(panel).getByText('High')).toBeInTheDocument()
+    expect(within(panel).queryByText('not a task')).toBeNull()
+    expect(within(panel).queryByText('Book room')).toBeNull() // "Open" filter
+    // Tick a task in another document.
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Mark as done: Buy milk' }))
+    fireEvent.click(within(panel).getByRole('radio', { name: /Done/ }))
+    expect(within(panel).getByText('Buy milk')).toBeInTheDocument()
+    // Filter by tag and group by due date.
+    fireEvent.click(within(panel).getByRole('radio', { name: /All/ }))
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Tag' }), { target: { value: 'ops' } })
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(1)
+    fireEvent.click(within(panel).getByRole('radio', { name: 'By due date' }))
+    expect(within(panel).getByRole('region', { name: 'Today' })).toHaveTextContent('Send report')
+    // Tick the open document's task from the panel.
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Mark as done: Send report' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toContain('- [x] Send report'))
+    fireEvent.click(within(panel).getByRole('button', { name: 'Close tasks' }))
+    // Ticking in the preview changes the document.
+    await waitFor(() => expect(document.querySelectorAll('.rm-prose input[type="checkbox"]')).toHaveLength(2))
+    fireEvent.click(document.querySelectorAll('.rm-prose input[type="checkbox"]')[1])
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toContain('- [ ] Book room'))
+  })
+
   it('uses the CodeMirror editor (opt-in) with folds that mirror the preview', async () => {
     localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code', version: 2 }))
     const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body'].join('\n')

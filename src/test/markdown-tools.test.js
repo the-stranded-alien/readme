@@ -194,3 +194,39 @@ describe('outline editing', async () => {
     expect(outline.insertSection('# Other\n', text, 'end')).toBe('# Other\n\n## Two\n\nSecond[^1]\n')
   })
 })
+
+describe('tasks across documents', async () => {
+  const tasks = await import('../tasks.js')
+  const doc = ['# Plan', '', '- [ ] Write intro due:2026-12-01 #docs !high', '  - [x] Outline #docs', '1. [ ] Numbered 📅 2026-11-20', '> - [ ] In a quote', '', '```', '- [ ] not a task', '```', '- [] not a task either', '* [X] Done item'].join('\n')
+
+  it('finds tasks with due dates, tags and priorities, outside code', () => {
+    const found = tasks.parseTasks(doc)
+    expect(found.map(task => [task.text, task.checked, task.due, task.tags, task.priority, task.depth])).toEqual([
+      ['Write intro', false, '2026-12-01', ['docs'], 'high', 0],
+      ['Outline', true, null, ['docs'], null, 1],
+      ['Numbered', false, '2026-11-20', [], null, 0],
+      ['In a quote', false, null, [], null, 0],
+      ['Done item', true, null, [], null, 0],
+    ])
+    for (const task of found) expect(doc[task.offset - 1] + doc[task.offset + 1]).toBe('[]')
+  })
+
+  it('ticks and unticks a task by its position', () => {
+    const [first, second] = tasks.parseTasks(doc)
+    const ticked = tasks.toggleTaskAt(doc, first.offset)
+    expect(ticked.split('\n')[2]).toBe('- [x] Write intro due:2026-12-01 #docs !high')
+    expect(tasks.toggleTaskAt(ticked, second.offset).split('\n')[3]).toBe('  - [ ] Outline #docs')
+    expect(tasks.toggleTaskAt(doc, 0)).toBe(doc)
+  })
+
+  it('describes due dates', () => {
+    const today = new Date(2026, 10, 27)
+    expect(tasks.dueLabel('2026-11-27', today)).toBe('Today')
+    expect(tasks.dueLabel('2026-11-28', today)).toBe('Tomorrow')
+    expect(tasks.dueLabel('2026-11-24', today)).toBe('Overdue · 3 days')
+    expect(tasks.dueState('2026-11-24', today)).toBe('overdue')
+    expect(tasks.dueState('2026-12-02', today)).toBe('soon')
+    const sorted = tasks.parseTasks(doc).sort((a, b) => tasks.compareTasks(a, b, today)).map(task => task.text)
+    expect(sorted.slice(0, 2)).toEqual(['Numbered', 'Write intro'])
+  })
+})

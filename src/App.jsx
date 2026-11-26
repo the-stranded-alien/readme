@@ -54,6 +54,8 @@ import { PRESENTATION_THEME_KEY, loadPresentationSettings, savePresentationSetti
 import PresentationSettings from './components/PresentationSettings'
 import PromptDialog from './components/PromptDialog'
 import TableEditorDialog from './components/TableEditorDialog'
+import TasksPanel from './components/TasksPanel'
+import { daysUntil, parseTasks, toggleTaskAt } from './tasks'
 import { emptyTable, findTables, parseTable, tableAt, tableToMarkdown } from './tableModel'
 import { detectWikiLink, findBacklinks, remarkWikiLinks, renameWikiLinks, resolveWikiTarget, wikiLinksToMarkdown } from './wikiLinks'
 import ConfirmDialog from './components/ConfirmDialog'
@@ -615,7 +617,7 @@ function MarkdownRenderer({ content, dark }) {
 
     input({ type, checked }) {
       if (type === 'checkbox')
-        return <input type="checkbox" checked={checked} readOnly aria-label={checked ? 'Completed task' : 'Open task'} style={{ marginRight: 6, cursor: 'default' }} />
+        return <input type="checkbox" checked={checked} readOnly aria-label={checked ? 'Completed task — click to mark as not done' : 'Open task — click to mark as done'} style={{ marginRight: 6, cursor: 'pointer' }} />
       return <input type={type} />
     },
 
@@ -2790,6 +2792,19 @@ export default function App() {
   const exportContent = useMemo(() => wikiLinksToMarkdown(content, fileName ?? '', linkableFiles), [content, fileName, linkableFiles])
   const exportBody = useMemo(() => wikiLinksToMarkdown(markdownBody, fileName ?? '', linkableFiles), [markdownBody, fileName, linkableFiles])
   const backlinks = useMemo(() => (activeFile ? findBacklinks(activeFile, linkableFiles) : []), [activeFile, linkableFiles])
+  // Tasks across every document (a file is parsed again only when its text changes).
+  const taskCacheRef = useRef(new Map())
+  const allTasks = useMemo(() => {
+    const cache = taskCacheRef.current
+    const closedIds = new Set(closedFiles.map(entry => entry.file.id))
+    return linkableFiles.flatMap(file => {
+      let entry = cache.get(file.id)
+      if (!entry || entry.content !== file.content) { entry = { content: file.content, tasks: parseTasks(file.content) }; cache.set(file.id, entry) }
+      return entry.tasks.map(task => ({ ...task, fileId: file.id, fileName: file.name, closed: closedIds.has(file.id) }))
+    })
+  }, [linkableFiles, closedFiles])
+  const tasksDueCount = useMemo(() => allTasks.filter(task => !task.checked && task.due && daysUntil(task.due) <= 0).length, [allTasks])
+  const [tasksOpen, setTasksOpen] = useState(false)
   const [writingStats, setWritingStats] = useState({})
   const [presenting, setPresenting] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -3088,7 +3103,7 @@ export default function App() {
   // Cmd/Ctrl + K opens Command Palette; Cmd/Ctrl + F opens in-document search; Esc closes overlays
   useEffect(() => {
     const onKeyDown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setCmdOpen(o => !o)
       } else if (activeFile && ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.altKey ? e.code === 'KeyF' : e.key.toLowerCase() === 'f') && (e.altKey || view === 'editor' || e.target.closest?.('.editor-pane-host'))
@@ -3439,6 +3454,40 @@ export default function App() {
       ta.scrollTop = Math.max(0, (line - 4) * lineHeight)
     }))
   }, [view])
+  // Tick / untick a task. In the open document it's an undoable edit that keeps the cursor,
+  // scroll position and focus where they were; other documents are updated directly.
+  const toggleTask = useCallback(task => {
+    if (task.fileId === activeFileId) {
+      const ta = textareaRef.current
+      if (ta instanceof HTMLTextAreaElement && view !== 'preview' && ta.value === content) {
+        const focused = document.activeElement
+        const { selectionStart, selectionEnd, scrollTop } = ta
+        applyTextareaEdit(ta, { from: task.offset, to: task.offset + 1, text: task.checked ? ' ' : 'x', cursor: selectionStart, cursorEnd: selectionEnd })
+        ta.scrollTop = scrollTop
+        if (focused && focused !== ta && focused.isConnected) focused.focus({ preventScroll: true })
+      } else updateActiveContent(toggleTaskAt(content, task.offset, !task.checked))
+      return
+    }
+    markWorkspaceEdit()
+    const flip = value => toggleTaskAt(value, task.offset, !task.checked)
+    setFiles(prev => prev.map(file => (file.id === task.fileId ? { ...file, content: flip(file.content) } : file)))
+    setClosedFiles(prev => prev.map(entry => (entry.file.id === task.fileId ? { ...entry, file: { ...entry.file, content: flip(entry.file.content) } } : entry)))
+  }, [activeFileId, view, content, updateActiveContent, markWorkspaceEdit])
+  // Checkboxes in the preview tick the task in the document.
+  useEffect(() => {
+    const root = previewScrollRef.current
+    if (!root || !activeFile) return undefined
+    const onClick = event => {
+      const box = event.target.closest?.('.rm-prose input[type="checkbox"]')
+      if (!box || !root.contains(box)) return
+      event.preventDefault()
+      const boxes = [...root.querySelectorAll('.rm-prose input[type="checkbox"]')]
+      const task = parseTasks(content)[boxes.indexOf(box)]
+      if (task) toggleTask({ ...task, fileId: activeFile.id })
+    }
+    root.addEventListener('click', onClick)
+    return () => root.removeEventListener('click', onClick)
+  }, [activeFile, content, toggleTask])
   const handleQualityFix = useCallback(issue => {
     if (!issue.fix) return
     const ta = textareaRef.current
@@ -3828,6 +3877,12 @@ export default function App() {
   }, [markWorkspaceEdit])
   const handleReopenClosed = useCallback(() => reopenClosedEntry(closedFiles.at(-1)), [closedFiles, reopenClosedEntry])
   const handleReopenFile = useCallback(id => reopenClosedEntry(closedFiles.find(entry => entry.file.id === id)), [closedFiles, reopenClosedEntry])
+  const openTask = useCallback(task => {
+    setTasksOpen(false)
+    if (closedFiles.some(entry => entry.file.id === task.fileId)) handleReopenFile(task.fileId)
+    else if (task.fileId !== activeFileId) handleSelectFile(task.fileId)
+    goToEditorLine(task.line + 1)
+  }, [closedFiles, activeFileId, handleReopenFile, handleSelectFile, goToEditorLine])
   const handleForgetClosed = useCallback(ids => {
     const forget = new Set(ids)
     markWorkspaceEdit()
@@ -3915,6 +3970,11 @@ export default function App() {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
         event.preventDefault()
         setGlobalSearchOpen(true)
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setTasksOpen(open => !open)
         return
       }
       if (event.key === '?' && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -5571,6 +5631,7 @@ ${fontCss}
     ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => { setDiffCompareId(null); setDiffOpen(true) } }] : []),
     ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
+    { id: 'tasks', label: 'Tasks in all documents…', hint: shortcut('K', { shift: true }), icon: ListChecks, run: () => setTasksOpen(true) },
     { id: 'shortcuts', label: 'Keyboard shortcuts', hint: '?', icon: Keyboard, run: () => setShortcutsOpen(true) },
     { id: 'help', label: 'Help: how to use ReadMe', hint: 'Guide', icon: CircleHelp, run: () => setHelpOpen(true) },
     ...(activeFile ? [
@@ -5729,6 +5790,12 @@ ${fontCss}
               onStorage={() => setSettingsOpen('storage')}
               onSaveInPlace={handleSaveInPlace}
             />
+            <button type="button" onClick={() => setTasksOpen(true)} className="btn-icon header-tasks"
+              data-tooltip={tasksDueCount ? `Tasks: ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}
+              aria-label={tasksDueCount ? `Tasks, ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}>
+              <ListChecks size={15} />
+              {tasksDueCount > 0 && <span className="header-badge" aria-hidden="true">{tasksDueCount > 99 ? '99+' : tasksDueCount}</span>}
+            </button>
             <button onClick={toggleFullscreen} data-tooltip={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               className="btn-icon hidden sm:flex">
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -6804,6 +6871,7 @@ ${fontCss}
           onCancel={() => setFolderPrompt(null)}
         />
       )}
+      {tasksOpen && <TasksPanel tasks={allTasks} onToggle={toggleTask} onOpen={openTask} onClose={() => setTasksOpen(false)} />}
       {tableEdit && (
         <TableEditorDialog key={`${tableEdit.mode}-${tableEdit.from}`} initial={tableEdit.table} mode={tableEdit.mode}
           onSave={saveTable} onCancel={() => setTableEdit(null)} />
