@@ -695,6 +695,40 @@ describe('advanced browser features', () => {
     await expect(readBackup(new Blob(['not a zip']))).rejects.toThrow('not a ZIP')
   })
 
+  it('moves renamed files in the sync folder and only deletes unchanged copies', async () => {
+    const { writeToFolder, existsInFolder, syncPath } = await import('../folderSync.js')
+    // A tiny in-memory directory handle.
+    const makeDir = () => {
+      const entries = new Map()
+      const dir = {
+        kind: 'directory', entries,
+        async getDirectoryHandle(name, { create } = {}) {
+          if (!entries.has(name)) { if (!create) throw Object.assign(new Error('missing'), { name: 'NotFoundError' }); entries.set(name, makeDir()) }
+          return entries.get(name)
+        },
+        async getFileHandle(name, { create } = {}) {
+          if (!entries.has(name)) { if (!create) throw Object.assign(new Error('missing'), { name: 'NotFoundError' }); entries.set(name, { kind: 'file', text: '' }) }
+          const file = entries.get(name)
+          return { kind: 'file', getFile: async () => ({ text: async () => file.text }), createWritable: async () => ({ write: async t => { file.text = t }, close: async () => {} }) }
+        },
+        async removeEntry(name) { entries.delete(name) },
+      }
+      return dir
+    }
+    const root = makeDir()
+    const written = new Map(), paths = new Map()
+    await writeToFolder(root, [{ id: 'a', name: 'notes/a.md', content: 'A' }, { id: 'b', name: 'b.md', content: 'B' }], written, paths)
+    expect(await existsInFolder(root, 'notes/a.md')).toBe(true)
+    // Rename a (unchanged on disk) → moved; rename b after an outside edit → old copy kept.
+    root.entries.get('b.md').text = 'B edited elsewhere'
+    await writeToFolder(root, [{ id: 'a', name: 'notes/a2.md', content: 'A' }, { id: 'b', name: 'b2.md', content: 'B' }], written, paths)
+    expect(await existsInFolder(root, 'notes/a.md')).toBe(false)
+    expect(await existsInFolder(root, 'notes/a2.md')).toBe(true)
+    expect(await existsInFolder(root, 'b.md')).toBe(true)
+    expect(paths.get('a')).toBe('notes/a2.md')
+    expect(syncPath('../x/y')).toBe('x/y.md')
+  })
+
   it('keeps closed files in backups', async () => {
     const { createBackup, readBackup, applyBackup } = await import('../backup.js')
     const blob = await createBackup({ files: [{ id: 'o1', name: 'open.md', content: '# Open' }], activeId: 'o1', closed: [{ index: 1, file: { id: 'c1', name: 'docs/old.md', content: '# Old' } }] })

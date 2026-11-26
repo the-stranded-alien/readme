@@ -55,6 +55,19 @@ export async function writeToFolder(root, files, written, paths = new Map()) {
   return count
 }
 
+/** True when the folder still has a file at this path (false only when it is really gone). */
+export async function existsInFolder(root, path) {
+  try {
+    const parts = path.split('/')
+    let dir = root
+    for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part)
+    await dir.getFileHandle(parts[parts.length - 1])
+    return true
+  } catch (error) {
+    return error?.name !== 'NotFoundError'
+  }
+}
+
 async function removeIfUnchanged(root, path, expected) {
   if (expected === undefined) return
   const parts = path.split('/')

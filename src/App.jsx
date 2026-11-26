@@ -23,11 +23,12 @@ import {
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
   Settings, SlidersHorizontal, FolderOpen, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
-import { canSyncToFolder, folderPermission, readFolder, syncPath, writeToFolder } from './folderSync'
+import { canSyncToFolder, existsInFolder, folderPermission, readFolder, syncPath, writeToFolder } from './folderSync'
 import { analyzeDocument, applyQualityFix } from './documentAnalysis'
 import { makeDuplicateFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
@@ -3337,6 +3338,7 @@ export default function App() {
   }, [files, closeFiles])
   const reopenClosedEntry = useCallback(entry => {
     if (!entry) return
+    removedFromFolderRef.current?.delete(entry.file.id)
     setClosedFiles(prev => prev.filter(item => item.file.id !== entry.file.id))
     markWorkspaceEdit()
     if (entry.file.diskHandle) diskHandlesRef.current.set(entry.file.id, entry.file.diskHandle)
@@ -3528,7 +3530,8 @@ export default function App() {
   const deleteCustomTemplate = useCallback(id => setCustomTemplates(prev => prev.filter(t => t.id !== id)), [])
 
   // ── Outside changes to disk files (File System Observer + polling fallback) ──
-  const [diskConflicts, setDiskConflicts] = useState({}) // fileId -> { text, at }
+  const [diskConflicts, setDiskConflicts] = useState({}) // fileId -> { text, at, source?: 'folder', path? }
+  const [syncNudge, setSyncNudge] = useState(0) // bump to run a folder sync now
   const [diskCompare, setDiskCompare] = useState(null)
   const diskStampRef = useRef(new Map()) // fileId -> lastModified we have seen
   const filesRef = useRef(files)
@@ -3590,6 +3593,22 @@ export default function App() {
     const conflict = diskConflicts[fileId]
     const file = files.find(item => item.id === fileId)
     if (!conflict || !file) return
+    if (conflict.source === 'folder' && action !== 'compare') {
+      // Sync folder: "reload" takes the folder's version, "keep" writes yours to the folder on the next sync.
+      if (action === 'reload') {
+        await takeSnapshot(fileId, file.content, 'Before using the sync folder version')
+        if (fileId === activeFileId && textareaRef.current) applyTextareaEdit(textareaRef.current, { from: 0, to: textareaRef.current.value.length, text: conflict.text, cursor: 0 })
+        setFiles(prev => prev.map(item => (item.id === fileId ? { ...item, content: conflict.text } : item)))
+        setToast({ message: 'Using the folder version. Your previous text is in version history.', tone: 'success' })
+      } else {
+        await takeSnapshot(fileId, conflict.text, 'Sync folder version (replaced)')
+      }
+      syncWrittenRef.current.set(conflict.path, conflict.text)
+      folderConflictIdsRef.current.delete(fileId)
+      setSyncNudge(n => n + 1)
+      setDiskConflicts(current => { const next = { ...current }; delete next[fileId]; return next })
+      return
+    }
     if (action === 'reload') {
       await takeSnapshot(fileId, file.content, 'Before reloading from disk')
       if (fileId === activeFileId && textareaRef.current) {
@@ -3603,7 +3622,7 @@ export default function App() {
     } else if (action === 'compare') {
       setDiskCompare({
         files: [
-          { id: 'disk-version', name: `${file.name} — on disk`, content: conflict.text },
+          { id: 'disk-version', name: `${file.name} — ${conflict.source === 'folder' ? 'in sync folder' : 'on disk'}`, content: conflict.text },
           { id: 'your-version', name: `${file.name} — your version`, content: file.content },
         ],
       })
@@ -4136,14 +4155,21 @@ export default function App() {
     syncPathsRef.current = new Map()
     writeSyncState(null).catch(() => {})
   }, [])
+  // Files edited both here and in the folder since the last sync: not written until the user picks a version.
+  const folderConflictIdsRef = useRef(new Set())
+  const removedFromFolderRef = useRef(new Set()) // ids closed because they were deleted from the folder
+  const closeFilesRef = useRef(null)
+  useEffect(() => { closeFilesRef.current = closeFiles }, [closeFiles])
   const pullFromFolder = useCallback(async (handle, { first = false } = {}) => {
     const disk = await readFolder(handle)
     const written = syncWrittenRef.current
     const byPath = new Map(filesRef.current.map(file => [syncPath(file.name), file]))
     // Files closed from the tab bar are still in the folder: they stay closed (listed in the Files panel).
     const closedPaths = new Set(closedFilesRef.current.map(entry => syncPath(entry.file.name)))
+    const onDisk = new Set(disk.map(entry => entry.path))
     const imports = []
     const updates = new Map()
+    const conflicts = []
     for (const entry of disk) {
       const local = byPath.get(entry.path)
       if (!local) {
@@ -4152,39 +4178,95 @@ export default function App() {
         written.set(entry.path, entry.content)
         continue
       }
-      if (local.content === entry.content) { written.set(entry.path, entry.content); continue }
-      if (first) {
-        // Both sides have this file and they differ: keep the workspace version,
-        // and keep the folder's version in the file's history so nothing is lost.
-        takeSnapshot(local.id, entry.content, 'Folder version before syncing')
+      if (local.content === entry.content) {
+        written.set(entry.path, entry.content)
+        if (folderConflictIdsRef.current.delete(local.id)) conflicts.push({ id: local.id, resolved: true })
         continue
       }
-      if (written.has(entry.path) && entry.content !== written.get(entry.path) && local.content === written.get(entry.path)) {
+      const last = written.get(entry.path)
+      if (last === undefined) {
+        // Never synced before and the two differ: keep the workspace version,
+        // and keep the folder's version in the file's history so nothing is lost.
+        if (first) takeSnapshot(local.id, entry.content, 'Folder version before syncing')
+        continue
+      }
+      if (entry.content === last) continue // only changed here: written below
+      if (local.content === last) {
         // Changed in the folder by another app, unchanged here: take the folder's version.
         updates.set(local.id, entry.content)
         written.set(entry.path, entry.content)
+      } else {
+        // Changed in both places: ask which to keep (nothing is written until then).
+        folderConflictIdsRef.current.add(local.id)
+        conflicts.push({ id: local.id, text: entry.content, path: entry.path })
       }
+    }
+    // Synced files that were deleted from the folder by another app: close them (still listed in the Files panel).
+    const removed = []
+    for (const [path, file] of byPath) {
+      if (onDisk.has(path) || !written.has(path) || folderConflictIdsRef.current.has(file.id)) continue
+      if (await existsInFolder(handle, path)) continue
+      removed.push(file)
+      written.delete(path)
+      syncPathsRef.current.delete(file.id)
     }
     if (updates.size) setFiles(prev => prev.map(file => (updates.has(file.id) ? { ...file, content: updates.get(file.id) } : file)))
     if (imports.length) setFiles(prev => [...prev, ...imports.map(item => ({ id: createFileId(), ...item }))])
-    return { imported: imports.length, updated: updates.size }
-  }, [takeSnapshot])
-  const runFolderSync = useCallback(async (handle, options) => {
-    try {
-      const pulled = await pullFromFolder(handle, options)
-      const pushed = await writeToFolder(handle, filesRef.current, syncWrittenRef.current, syncPathsRef.current)
-      writeSyncState({ name: handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
-      setSyncFolder(current => current && { ...current, status: 'connected', error: '', lastSync: Date.now() })
-      return { ...pulled, pushed }
-    } catch (error) {
-      const permission = await folderPermission(handle).catch(() => 'denied')
-      setSyncFolder(current => current && {
-        ...current,
-        status: permission === 'granted' ? 'error' : 'needs-permission',
-        error: permission === 'granted' ? (error?.message || 'Could not sync with the folder.') : '',
+    if (conflicts.length) {
+      setDiskConflicts(current => {
+        const next = { ...current }
+        for (const item of conflicts) {
+          if (item.resolved) { if (next[item.id]?.source === 'folder') delete next[item.id] } else next[item.id] = { text: item.text, at: Date.now(), source: 'folder', path: item.path }
+        }
+        return next
       })
-      return null
     }
+    if (removed.length) {
+      closeFilesRef.current?.(removed.map(file => file.id))
+      setToast({
+        message: removed.length === 1
+          ? `“${removed[0].name}” was deleted from the sync folder, so it was closed. Reopen it from the Files panel to put it back.`
+          : `${removed.length} files were deleted from the sync folder, so they were closed. Reopen them from the Files panel to put them back.`,
+        tone: 'warning', duration: 8000,
+      })
+    }
+    return { imported: imports.length, updated: updates.size, removedIds: removed.map(file => file.id) }
+  }, [takeSnapshot])
+  // One sync at a time; a request while one runs queues a single follow-up.
+  const syncRunRef = useRef({ running: null, queued: null })
+  const [syncBusy, setSyncBusy] = useState(false)
+  const runFolderSync = useCallback(async (handle, options) => {
+    const state = syncRunRef.current
+    if (state.running) {
+      state.queued = state.queued || state.running.then(() => { state.queued = null; return runFolderSync(handle, options) })
+      return state.queued
+    }
+    const run = (async () => {
+      setSyncBusy(true)
+      try {
+        const pulled = await pullFromFolder(handle, options)
+        const conflicted = folderConflictIdsRef.current
+        // Removed files are closed by a state update that hasn't landed in filesRef yet: never write them back.
+        for (const id of pulled.removedIds) removedFromFolderRef.current.add(id)
+        const skip = id => conflicted.has(id) || removedFromFolderRef.current.has(id)
+        const pushed = await writeToFolder(handle, filesRef.current.filter(file => !skip(file.id)), syncWrittenRef.current, syncPathsRef.current)
+        writeSyncState({ name: handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
+        setSyncFolder(current => current && { ...current, status: 'connected', error: '', lastSync: Date.now() })
+        return { ...pulled, pushed }
+      } catch (error) {
+        const permission = await folderPermission(handle).catch(() => 'denied')
+        setSyncFolder(current => current && {
+          ...current,
+          status: permission === 'granted' ? 'error' : 'needs-permission',
+          error: permission === 'granted' ? (error?.message || 'Could not sync with the folder.') : '',
+        })
+        return null
+      } finally {
+        setSyncBusy(false)
+      }
+    })()
+    state.running = run
+    try { return await run } finally { state.running = null }
   }, [pullFromFolder])
   // Reconnect the saved folder once the workspace has loaded (so its files aren't mistaken for new ones).
   const syncStartedRef = useRef(false)
@@ -4236,7 +4318,7 @@ export default function App() {
     if (!syncHandle) return
     const timer = setTimeout(() => runFolderSync(syncHandle), 1200)
     return () => clearTimeout(timer)
-  }, [files, syncHandle, runFolderSync])
+  }, [files, syncHandle, runFolderSync, syncNudge])
   useEffect(() => {
     if (!syncHandle) return
     const onFocus = () => runFolderSync(syncHandle)
@@ -4797,6 +4879,23 @@ ${fontCss}
               }
             </button>
             {!appSettings.lite && <ReadingPetFooter />}
+            {syncFolder && (() => {
+              const conflictCount = Object.values(diskConflicts).filter(item => item.source === 'folder').length
+              const state = syncFolder.status !== 'connected' ? syncFolder.status : conflictCount ? 'conflict' : syncBusy ? 'syncing' : 'synced'
+              const label = {
+                synced: `Synced with “${syncFolder.name}”${syncFolder.lastSync ? ` at ${new Date(syncFolder.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`,
+                syncing: `Syncing with “${syncFolder.name}”…`,
+                conflict: `${conflictCount} file${conflictCount === 1 ? '' : 's'} changed in “${syncFolder.name}” and here — choose a version`,
+                'needs-permission': `Sync paused: allow access to “${syncFolder.name}” again`,
+                error: `Sync error: ${syncFolder.error || 'could not sync'}`,
+              }[state]
+              return (
+                <button type="button" onClick={() => setSettingsOpen('workspace')} className={`btn-icon sync-status is-${state}`} data-tooltip={label} aria-label={label}>
+                  <FolderSync size={15} />
+                  <span className="sync-status-dot" aria-hidden="true" />
+                </button>
+              )
+            })()}
             <button type="button" onClick={() => setSettingsOpen('workspace')} className="btn-icon" data-tooltip="Settings" aria-label="Settings">
               <Settings size={15} />
             </button>
@@ -4981,9 +5080,11 @@ ${fontCss}
               {diskConflicts[activeFileId] && (
                 <div className="disk-conflict no-print" role="alert">
                   <FileWarning size={15} aria-hidden="true" />
-                  <span><strong>{activeFile.name}</strong> was changed outside ReadMe while you have unsaved edits.</span>
+                  {diskConflicts[activeFileId].source === 'folder'
+                    ? <span><strong>{activeFile.name}</strong> was changed in the sync folder and here. Which version should be kept?</span>
+                    : <span><strong>{activeFile.name}</strong> was changed outside ReadMe while you have unsaved edits.</span>}
                   <span className="disk-conflict-actions">
-                    <button type="button" onClick={() => resolveDiskConflict(activeFileId, 'reload')}>Reload from disk</button>
+                    <button type="button" onClick={() => resolveDiskConflict(activeFileId, 'reload')}>{diskConflicts[activeFileId].source === 'folder' ? 'Use folder version' : 'Reload from disk'}</button>
                     <button type="button" onClick={() => resolveDiskConflict(activeFileId, 'compare')}>Compare</button>
                     <button type="button" onClick={() => resolveDiskConflict(activeFileId, 'keep')}>Keep mine</button>
                   </span>

@@ -3105,3 +3105,12 @@ html.high-contrast .file-tree-row.is-closed .file-tree-name, html.high-contrast 
 .app-toast-action { margin-left: 4px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border, var(--border)); cursor: pointer; }
 .app-toast-action:hover { background: var(--accent); color: var(--bg-preview); }
 html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(--text-1); }
+
+/* Header: folder sync status (dot colour shows the state). */
+.sync-status { position: relative; }
+.sync-status-dot { position: absolute; right: 5px; bottom: 5px; width: 7px; height: 7px; border-radius: 999px; background: #1a7f37; box-shadow: 0 0 0 2px var(--bg-app, var(--bg-preview)); pointer-events: none; }
+.sync-status.is-syncing .sync-status-dot { background: var(--accent); animation: sync-pulse 1s ease-in-out infinite; }
+.sync-status.is-conflict .sync-status-dot, .sync-status.is-needs-permission .sync-status-dot { background: #d97706; }
+.sync-status.is-error .sync-status-dot { background: #dc2626; }
+@keyframes sync-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .sync-status.is-syncing .sync-status-dot { animation: none; } }
