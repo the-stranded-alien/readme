@@ -20,6 +20,8 @@ const HELP_SECTIONS = [
     items: [
       ['Tabs', 'Drag tabs to reorder them. Right-click a tab to rename, duplicate, pin, colour, compare, download or close it.'],
       ['File tree', 'The folder icon at the left of the tab bar shows your files as a tree, grouped by folder. Files you close stay listed there (marked closed) — click one to reopen it.'],
+      ['Link files', 'Drag a file from the Files panel into the editor to insert a link to it. Clicking the link in the preview opens that file.'],
+      ['Delete', 'Right-click a tab (or use the trash icon in the Files panel) → Delete permanently. You can undo it from the notice.'],
       ['Compare', 'Right-click a tab → Compare to see the differences between two files side by side.'],
       ['History', 'The clock icon above the editor lists earlier versions of the file; restore any of them.'],
       ['Outside changes', 'If a file you opened from disk changes in another app, ReadMe offers to reload it, compare, or keep your version.'],
@@ -62,7 +64,8 @@ const HELP_SECTIONS = [
     items: [
       ['Download', 'Download as Markdown, PDF (with options), Word, HTML, or all files as a .zip.'],
       ['Share link', 'Copy share link puts the whole document in the link itself — no server involved.'],
-      ['Present', 'Present shows one slide per heading. Use the arrow keys, F for fullscreen and T to switch theme.'],
+      ['Present', 'Present shows one slide per heading. Use the arrow keys, F for fullscreen, T to switch theme and + / − to make the text bigger or smaller (kept for every slide).'],
+      ['Speaker notes', 'Write notes under a line with just ??? at the end of a slide. Press S (or the notes button) for the presenter view: notes, next slide and a timer in a second window.'],
     ],
   },
   {

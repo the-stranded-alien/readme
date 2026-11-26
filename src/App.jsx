@@ -30,7 +30,7 @@ import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
 import { canSyncToFolder, existsInFolder, folderPermission, readFolder, removeFromFolder, syncPath, writeToFolder } from './folderSync'
 import { analyzeDocument, applyQualityFix } from './documentAnalysis'
-import { makeDuplicateFileName } from './fileUtils'
+import { FILE_DRAG_TYPE, fileLinkTitle, makeDuplicateFileName, relativeFileLink, resolveFileLink } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
 import FileTabBar from './components/FileTabBar'
 import ImageLightbox from './components/ImageLightbox'
@@ -3267,6 +3267,20 @@ export default function App() {
     insertImages(images, event.currentTarget)
   }, [insertImages])
   const handleEditorDrop = useCallback(event => {
+    // A file dragged from the Files panel: insert a relative link to it where it was dropped.
+    const linkedId = event.dataTransfer?.getData(FILE_DRAG_TYPE)
+    if (linkedId) {
+      const target = files.find(file => file.id === linkedId) ?? closedFiles.find(entry => entry.file.id === linkedId)?.file
+      if (!target || !activeFile) return
+      event.preventDefault()
+      event.stopPropagation()
+      const ta = event.currentTarget
+      const position = document.caretPositionFromPoint?.(event.clientX, event.clientY)
+      const at = position && (position.offsetNode === ta || position.offsetNode?.parentNode === ta) ? position.offset : ta.selectionStart
+      const link = `[${fileLinkTitle(target)}](${relativeFileLink(activeFile.name, target.name)})`
+      applyTextareaEdit(ta, { from: at, to: at, text: link, cursor: at + link.length })
+      return
+    }
     const images = Array.from(event.dataTransfer?.files || []).filter(file => file.type.startsWith('image/'))
     if (!images.length) return
     event.preventDefault()
@@ -3277,7 +3291,7 @@ export default function App() {
     const position = document.caretPositionFromPoint?.(event.clientX, event.clientY)
     if (position?.offsetNode === ta || position?.offsetNode?.parentNode === ta) ta.setSelectionRange(position.offset, position.offset)
     insertImages(images, ta)
-  }, [insertImages])
+  }, [insertImages, files, closedFiles, activeFile])
 
   const handleNewFile = useCallback(() => {
     markWorkspaceEdit()
@@ -3364,6 +3378,36 @@ export default function App() {
     markWorkspaceEdit()
     setClosedFiles(prev => prev.filter(entry => !forget.has(entry.file.id)))
   }, [markWorkspaceEdit])
+
+  // Relative links to other workspace files (e.g. dragged in from the Files panel) open that file.
+  const pendingLinkAnchorRef = useRef(null)
+  useEffect(() => {
+    const onClick = event => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      const link = event.target.closest?.('a[href]')
+      if (!link || !previewScrollRef.current?.contains(link) || !activeFile) return
+      const target = resolveFileLink(activeFile.name, link.getAttribute('href'))
+      if (!target) return
+      const found = files.find(file => file.name === target.name) ?? closedFiles.find(entry => entry.file.name === target.name)?.file
+      event.preventDefault()
+      if (!found) { setToast({ message: `“${target.name}” isn’t open in ReadMe.`, tone: 'warning' }); return }
+      pendingLinkAnchorRef.current = target.anchor || null
+      if (files.some(file => file.id === found.id)) handleSelectFile(found.id)
+      else handleReopenFile(found.id)
+    }
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [activeFile, files, closedFiles, handleSelectFile, handleReopenFile])
+  useEffect(() => {
+    const anchorId = pendingLinkAnchorRef.current
+    if (!anchorId) return undefined
+    pendingLinkAnchorRef.current = null
+    const timer = setTimeout(() => {
+      const el = previewScrollRef.current?.querySelector(`[id="${CSS.escape(anchorId)}"]`)
+      el?.scrollIntoView({ block: 'start', behavior: scrollBehavior() })
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [activeFileId])
 
   // Global search (Cmd/Ctrl+Shift+F) and the keyboard shortcut sheet (?).
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)

@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, RotateCcw, Trash2, X } from '../icons'
-import { isModifiedFromDisk, labelColor } from '../fileUtils'
+import { FILE_DRAG_TYPE, isModifiedFromDisk, labelColor } from '../fileUtils'
 
-const FILE_DRAG_TYPE = 'application/x-readme-file'
 
 /** Builds a folder tree from "folder/sub/file.md" style names. */
 function buildFileTree(files, closedFiles = []) {
@@ -89,7 +88,8 @@ export default function FileTree({
     if (closed) return (
       <li key={`closed:${file.id}`} role="treeitem" aria-selected={false} aria-label={`${file.name} (closed)`}>
         <div className="file-tree-row is-closed" style={{ '--depth': depth }}>
-          <button type="button" className="file-tree-main" onClick={() => onReopen(file.id)} title={`Reopen ${file.name}`}>
+          <button type="button" className="file-tree-main" onClick={() => onReopen(file.id)} title={`Reopen ${file.name}`}
+            draggable onDragStart={event => { event.dataTransfer.setData(FILE_DRAG_TYPE, file.id); event.dataTransfer.setData('text/plain', file.name); event.dataTransfer.effectAllowed = 'copyMove' }}>
             <span className="file-tree-chevron-spacer" aria-hidden="true" />
             <FileText size={13} aria-hidden="true" />
             <span className="file-tree-name">{base}</span>
@@ -115,7 +115,7 @@ export default function FileTree({
             onDragStart={event => {
               event.dataTransfer.setData(FILE_DRAG_TYPE, file.id)
               event.dataTransfer.setData('text/plain', file.name)
-              event.dataTransfer.effectAllowed = 'move'
+              event.dataTransfer.effectAllowed = 'copyMove'
             }}
             onClick={() => onSelect(file.id)}
             title={file.name}
@@ -155,7 +155,7 @@ export default function FileTree({
           Clear {closedList.length} closed file{closedList.length === 1 ? '' : 's'} from the list
         </button>
       )}
-      <p className="file-tree-hint">Closed files stay here; click one to reopen it. Drag files onto a folder to move them. Folders come from paths like <code>notes/plan.md</code>.</p>
+      <p className="file-tree-hint">Closed files stay here; click one to reopen it. Drag a file onto a folder to move it, or into the editor to link to it. Folders come from paths like <code>notes/plan.md</code>.</p>
     </aside>
   )
 }

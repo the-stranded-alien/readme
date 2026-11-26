@@ -42,6 +42,17 @@ const GROUPS = [
     ],
   },
   {
+    title: 'Presentation',
+    items: [
+      ['← →', 'Previous / next slide'],
+      ['↓  Space', 'Scroll a long slide, then next slide'],
+      ['+  −  0', 'Larger / smaller / reset text size'],
+      ['S', 'Presenter view (notes, next slide, timer)'],
+      ['F', 'Fullscreen'],
+      ['T', 'Switch theme'],
+    ],
+  },
+  {
     title: 'Image viewer',
     items: [
       ['← →', 'Previous / next image'],

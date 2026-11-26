@@ -3120,3 +3120,29 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 /* Shortcut hints in the tab menu: readable on every theme. */
 .tab-context-menu kbd { color: var(--text-3); }
 .global-search-file .file-tree-closed-tag { margin-left: 0; }
+
+/* Presentation: text size (zoom) kept across slides. */
+.presentation-slide.rm-prose { font-size: calc(clamp(18px, 1.6vw + 8px, 30px) * var(--slide-zoom, 1)); }
+.presentation-controls .presentation-zoom { min-width: 48px; width: auto; padding: 0 6px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Speaker notes under the slide (when the presenter window can't open). */
+.presentation-notes { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); width: min(900px, calc(100% - 32px)); max-height: 28vh; overflow: auto; padding: 12px 16px; border-radius: 14px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-xl); z-index: 3; }
+.presentation-notes-head { display: flex; gap: 14px; align-items: baseline; font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
+.presentation-notes-head strong { color: var(--text-1); }
+.presentation-notes .rm-prose { font-size: 15px; }
+
+/* Presenter window. */
+.presenter-body { margin: 0; background: var(--bg-app); color: var(--text-1); font-family: var(--font-sans); }
+.presenter { display: flex; flex-direction: column; gap: 14px; min-height: 100vh; box-sizing: border-box; padding: 20px 28px; }
+.presenter-head { display: flex; align-items: center; gap: 16px; font-size: 14px; color: var(--text-3); }
+.presenter-timer { font-size: 28px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.presenter-clock { margin-left: auto; font-variant-numeric: tabular-nums; }
+.presenter button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-preview); color: var(--text-1); font: inherit; font-size: 13px; cursor: pointer; }
+.presenter button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.presenter button:disabled { opacity: .5; cursor: default; }
+.presenter-title { margin: 0; font-size: 26px; }
+.presenter-notes { flex: 1; overflow: auto; padding: 16px 20px; border-radius: 14px; background: var(--bg-preview); border: 1px solid var(--border); font-size: 20px; line-height: 1.55; }
+.presenter-empty { color: var(--text-3); font-size: 16px; }
+.presenter-foot { display: flex; align-items: center; gap: 14px; }
+.presenter-next { flex: 1; text-align: center; color: var(--text-2); }
+.presenter-notes.rm-prose { max-width: none; width: auto; margin: 0; align-self: stretch; box-sizing: border-box; }

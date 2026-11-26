@@ -52,3 +52,38 @@ export function fuzzyScore(query, text) {
   }
   return score
 }
+
+// ── Links between workspace files ("notes/plan.md" style names) ──
+export const FILE_DRAG_TYPE = 'application/x-readme-file'
+
+/** Relative link from one workspace file to another, URL-encoded per segment. */
+export function relativeFileLink(fromName, toName) {
+  const from = String(fromName || '').split('/').slice(0, -1)
+  const to = String(toName || '').split('/')
+  let common = 0
+  while (common < from.length && common < to.length - 1 && from[common] === to[common]) common += 1
+  const parts = [...from.slice(common).map(() => '..'), ...to.slice(common)]
+  return parts.map(part => encodeURIComponent(part)).join('/')
+}
+
+/** Workspace name a relative .md link points to (or null for web links, anchors, other files). */
+export function resolveFileLink(fromName, href) {
+  if (!href || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#') || href.startsWith('//')) return null
+  const [pathPart, anchor = ''] = href.split('#')
+  let path
+  try { path = decodeURIComponent(pathPart.split('?')[0]) } catch { path = pathPart }
+  if (!/\.(md|markdown|mdx|txt)$/i.test(path)) return null
+  const parts = path.startsWith('/') ? [] : String(fromName || '').split('/').slice(0, -1)
+  for (const part of path.split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') parts.pop()
+    else parts.push(part)
+  }
+  return { name: parts.join('/'), anchor }
+}
+
+/** Link text for a file: its first heading, or its name without the extension. */
+export function fileLinkTitle(file) {
+  const heading = String(file?.content || '').match(/^#{1,6}\s+(.+?)\s*#*\s*$/m)?.[1]
+  return (heading || String(file?.name || '').split('/').pop().replace(/\.[^.]+$/, '')).replace(/[[\]]/g, '')
+}
