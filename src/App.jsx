@@ -2379,6 +2379,10 @@ function WritingGoal({ words, goal, sessionWords, activeMs, onGoalChange }) {
 // ── App ────────────────────────────────────────────────────────
 export default function App() {
   const [theme, setTheme] = useState(() => {
+    // A default theme chosen in Settings wins over the last-used one on every launch.
+    let preferred = ''
+    try { preferred = JSON.parse(localStorage.getItem('readme-app-settings') || '{}').defaultTheme ?? '' } catch { /* ignore */ }
+    if (THEME_IDS.includes(preferred)) return preferred
     const saved = localStorage.getItem('readme-theme')
     return THEME_IDS.includes(saved)
       ? saved
@@ -2393,7 +2397,7 @@ export default function App() {
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
   const [appSettings, setAppSettings] = useState(() => {
-    const defaults = { hideAi: false, lite: false, extraThemes: false }
+    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '' }
     try { return { ...defaults, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return defaults }
   })
   const updateAppSetting = useCallback((key, value) => setAppSettings(current => ({ ...current, [key]: value })), [])
@@ -4962,6 +4966,7 @@ ${fontCss}
                 : theme === 'monokai' ? <Palette size={15} className="theme-icon-enter" style={{ color: '#a6e22e' }} />
                 : theme === 'nord' ? <Snowflake size={15} className="theme-icon-enter" style={{ color: '#88c0d0' }} />
                 : theme === 'solarized' ? <SunDim size={15} className="theme-icon-enter" style={{ color: '#268bd2' }} />
+                : theme === 'marble' ? <Contrast size={15} className="theme-icon-enter" style={{ color: '#111111' }} />
                 : theme === 'ocean' ? <Waves size={15} className="theme-icon-enter" style={{ color: '#38bdf8' }} />
                 : theme === 'forest' ? <Leaf size={15} className="theme-icon-enter" style={{ color: '#2f7d4f' }} />
                 : ENABLE_SEPIA_THEME && theme === 'sepia'
@@ -6015,7 +6020,17 @@ ${fontCss}
           )}
           appearanceExtra={(
             <ThemePicker themes={availableThemes(appSettings.extraThemes)} value={theme} onChange={chooseTheme}
-              extraThemes={appSettings.extraThemes} onExtraThemes={value => updateAppSetting('extraThemes', value)} />
+              extraThemes={appSettings.extraThemes} onExtraThemes={value => {
+                updateAppSetting('extraThemes', value)
+                // An additional default theme can't apply once additional themes are off.
+                if (!value && themeById(appSettings.defaultTheme).extra) updateAppSetting('defaultTheme', '')
+              }}
+              defaultTheme={appSettings.defaultTheme} onDefaultTheme={id => {
+                updateAppSetting('defaultTheme', id)
+                if (!id) return
+                if (themeById(id).extra) updateAppSetting('extraThemes', true)
+                chooseTheme(id)
+              }} />
           )}
           onClose={() => setSettingsOpen(null)}
         />

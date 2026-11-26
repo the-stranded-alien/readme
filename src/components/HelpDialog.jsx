@@ -80,7 +80,7 @@ const HELP_SECTIONS = [
   {
     id: 'settings', title: 'Settings & themes',
     items: [
-      ['Themes', 'The theme button cycles Light, Dark and Sepia. Turn on Additional themes in Settings → Appearance for Neon (pink, blue, green, purple or multicolour rainbow), Ocean, Forest, Sun, Monokai, Nord and Solarized. High contrast works with every theme.'],
+      ['Themes', 'The theme button cycles Light, Dark and Sepia. Turn on Additional themes in Settings → Appearance for Neon (pink, blue, green, purple or multicolour rainbow), Ocean, Forest, Sun, Monokai, Nord, Solarized and Marble (black and white). High contrast works with every theme. Settings → Appearance → Default theme picks the theme ReadMe always opens with (or “Last used”).'],
       ['Lite mode', 'Settings → Features → Lite mode uses less memory by turning off syntax colours, diagrams, link previews, the reading cats and animations.'],
       ['Shortcuts', 'Press ? (outside the editor) to see every keyboard shortcut.'],
     ],

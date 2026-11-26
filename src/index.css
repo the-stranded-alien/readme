@@ -2262,6 +2262,10 @@ button[data-tooltip]:not(:focus-visible)::after {
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-toggle { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-light); background: var(--bg-editor); cursor: pointer; }
 .settings-toggle.is-disabled { opacity: .55; cursor: not-allowed; }
+.settings-field { cursor: default; flex-wrap: wrap; }
+.settings-select { height: 32px; min-width: 150px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-preview); color: var(--text-1); font-size: 12.5px; font-weight: 500; cursor: pointer; }
+.settings-select:hover { border-color: var(--accent-border); }
+.settings-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .settings-toggle-text { flex: 1; display: grid; gap: 3px; }
 .settings-toggle-text strong { font-size: 13px; color: var(--text-1); font-weight: 600; }
 .settings-toggle-text span { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
@@ -2670,11 +2674,38 @@ html:not(.high-contrast).theme-neon-rainbow .brand-accent { background: var(--ra
 .theme-solarized .surface-preview { background-color: #eee8d5; background-image: none; }
 .theme-solarized .rm-prose h3 { color: #8a3a12; }
 
+/* Marble: white surfaces, black ink and a black accent. Icons keep their usual colours. */
+.theme-marble {
+  --bg-app: #ececec; --bg-editor: #fafafa; --bg-preview: #ffffff;
+  --bg-header: rgba(255,255,255,0.92); --bg-toolbar: rgba(248,248,248,0.95); --bg-toc: rgba(250,250,250,0.98);
+  --border: #dcdcdc; --border-light: #ebebeb; --border-strong: #a8a8a8;
+  --text-1: #0a0a0a; --text-2: #262626; --text-3: #525252; --text-4: #5f5f5f;
+  --accent: #111111; --accent-2: #404040;
+  --accent-soft: rgba(0,0,0,0.06); --accent-border: rgba(0,0,0,0.22); --accent-glow: rgba(0,0,0,0.14);
+  --surface-highlight: rgba(255,255,255,0.8);
+  --code-bg: #f5f5f5; --code-header-bg: #ececec; --code-header-border: #dcdcdc;
+  --code-lang-color: #404040; --code-border: #dcdcdc; --code-ln-color: #a3a3a3;
+  --copy-bg: rgba(255,255,255,0.7); --copy-color: #525252; --copy-border: #dcdcdc;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05), 0 0 0 1px rgba(0,0,0,0.03);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-lg: 0 14px 40px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.05);
+  --shadow-xl: 0 24px 64px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.07);
+}
+/* Soft grey veins, like polished stone. */
+.theme-marble .app-shell {
+  background-color: var(--bg-app);
+  background-image:
+    linear-gradient(115deg, transparent 38%, rgba(0,0,0,.035) 42%, transparent 47%),
+    linear-gradient(160deg, transparent 58%, rgba(0,0,0,.03) 61%, transparent 65%),
+    radial-gradient(ellipse 70% 50% at 10% 0%, rgba(255,255,255,.9) 0%, transparent 60%);
+}
+.theme-marble .surface-preview { background-color: #f0f0f0; background-image: none; }
+
 /* ── High contrast for every theme ────────────────────────────
    Keeps each theme's character but uses pure text colours, strong borders,
    flat backgrounds and no glows. Declared last so it beats theme tokens. */
 html.high-contrast .app-shell, html.high-contrast .surface-preview { background-image: none !important; }
-html.high-contrast:is(.theme-neon, .theme-ocean, .theme-forest, .theme-sun, .theme-monokai, .theme-nord, .theme-solarized) .surface-preview { background-color: var(--bg-app) !important; }
+html.high-contrast:is(.theme-neon, .theme-ocean, .theme-forest, .theme-sun, .theme-monokai, .theme-nord, .theme-solarized, .theme-marble) .surface-preview { background-color: var(--bg-app) !important; }
 html.high-contrast .book-page { border: 1.5px solid var(--border) !important; box-shadow: var(--shadow-md) !important; }
 html.high-contrast .rm-prose :is(h1, h2, h3, h4, h5, h6, a, strong) { text-shadow: none !important; filter: none !important; }
 html.high-contrast .rm-prose h1 { background: none !important; -webkit-text-fill-color: var(--text-1) !important; color: var(--text-1) !important; }
@@ -2736,6 +2767,14 @@ html.high-contrast.theme-solarized {
   --code-bg: #f7f0da; --code-header-bg: #ece4c9; --code-header-border: #4f5f5f; --code-border: #4f5f5f; --code-lang-color: #073642; --code-ln-color: #2a464e;
   --copy-bg: #fffbef; --copy-color: #073642; --copy-border: #4f5f5f;
 }
+html.high-contrast.theme-marble {
+  --bg-app: #e8e8e8; --bg-editor: #ffffff; --bg-preview: #ffffff; --bg-header: #ffffff; --bg-toolbar: #f5f5f5; --bg-toc: #fafafa;
+  --border: #4d4d4d; --border-light: #9a9a9a; --border-strong: #000000;
+  --text-1: #000000; --text-2: #000000; --text-3: #1a1a1a; --text-4: #3a3a3a;
+  --accent: #000000; --accent-2: #262626; --accent-soft: rgba(0,0,0,0.1); --accent-border: rgba(0,0,0,0.7);
+  --code-bg: #f7f7f7; --code-header-bg: #e8e8e8; --code-header-border: #4d4d4d; --code-border: #4d4d4d; --code-lang-color: #1a1a1a; --code-ln-color: #3a3a3a;
+  --copy-bg: #ffffff; --copy-color: #1a1a1a; --copy-border: #4d4d4d;
+}
 /* Theme heading colours get the stronger HC accent in light themes. */
 html.high-contrast:is(.theme-sun, .theme-solarized, .theme-forest) .rm-prose :is(h1, h2, h3, h4) { color: var(--text-1) !important; }
 
@@ -2768,6 +2807,8 @@ html.high-contrast:is(.theme-sun, .theme-solarized, .theme-forest) .rm-prose :is
 .theme-forest { --ip-pop: #f59e0b; --ip-mc-stroke: #12301d; }
 .theme-sun { --ip-pop: #0ea5e9; --ip-mc-stroke: #3b1d04; }
 .theme-solarized { --ip-pop: #d33682; --ip-mc-stroke: #002b36; }
+/* Marble's accent is black, so icons keep the default violet tint instead. */
+.theme-marble { --ip-tone: #6d28d9; --ip-mc-fill: #6d28d9; --ip-mc-stroke: color-mix(in srgb, #6d28d9 45%, #14102a); }
 .theme-ocean { --ip-pop: #fb7185; }
 .theme-nord { --ip-pop: #ebcb8b; }
 .theme-monokai { --ip-pop: #a6e22e; }

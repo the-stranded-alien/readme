@@ -15,6 +15,7 @@ export const THEMES = [
   { id: 'monokai', label: 'Monokai', dark: true, extra: true, swatch: ['#272822', 'linear-gradient(90deg, #f92672, #a6e22e, #66d9ef)'] },
   { id: 'nord', label: 'Nord', dark: true, extra: true, swatch: ['#2e3440', '#88c0d0'] },
   { id: 'solarized', label: 'Solarized', dark: false, extra: true, swatch: ['#fdf6e3', '#268bd2'] },
+  { id: 'marble', label: 'Marble', dark: false, extra: true, swatch: ['#ffffff', '#111111'] },
 ]
 export const THEME_IDS = THEMES.map(theme => theme.id)
 /** Classes a theme puts on <html> (besides `dark`), and every such class any theme uses. */

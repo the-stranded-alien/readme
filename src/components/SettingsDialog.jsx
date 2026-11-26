@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, Info, Palette, RefreshCw, Settings, Sparkles, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
-import { themeClasses } from '../themes'
+import { THEMES, themeClasses } from '../themes'
 
 export const REPO_URL = 'https://github.com/the-stranded-alien/readme'
 
@@ -15,7 +15,7 @@ const SECTIONS = [
 ]
 
 /** Theme swatches + the "Additional themes" switch (shown in Appearance). */
-export function ThemePicker({ themes, value, onChange, extraThemes, onExtraThemes }) {
+export function ThemePicker({ themes, value, onChange, extraThemes, onExtraThemes, defaultTheme = '', onDefaultTheme }) {
   return (
     <>
       <div className="theme-picker" role="radiogroup" aria-label="Theme">
@@ -33,7 +33,24 @@ export function ThemePicker({ themes, value, onChange, extraThemes, onExtraTheme
           </button>
         ))}
       </div>
-      <SettingsToggle label="Additional themes" description="Adds Neon (pink, blue, green, purple and multicolour rainbow), Ocean, Forest, Sun, Monokai, Nord and Solarized to the theme switcher." checked={extraThemes} onChange={onExtraThemes} />
+      <SettingsToggle label="Additional themes" description="Adds Neon (pink, blue, green, purple and multicolour rainbow), Ocean, Forest, Sun, Monokai, Nord, Solarized and Marble to the theme switcher." checked={extraThemes} onChange={onExtraThemes} />
+      {onDefaultTheme && (
+        <label className="settings-toggle settings-field">
+          <span className="settings-toggle-text">
+            <strong>Default theme</strong>
+            <span>The theme ReadMe opens with every time. “Last used” keeps whichever theme you had last.</span>
+          </span>
+          <select className="settings-select" value={defaultTheme} onChange={event => onDefaultTheme(event.target.value)}>
+            <option value="">Last used</option>
+            <optgroup label="Main themes">
+              {THEMES.filter(theme => !theme.extra).map(theme => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
+            </optgroup>
+            <optgroup label="Additional themes">
+              {THEMES.filter(theme => theme.extra).map(theme => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
+            </optgroup>
+          </select>
+        </label>
+      )}
     </>
   )
 }

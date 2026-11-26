@@ -128,7 +128,7 @@ export const nextTheme = (current, extra) => { /* cycle through availableThemes 
 ```
 
 - On `<html>`, a dark theme adds `dark` plus its own classes. Always remove `ALL_THEME_CLASSES` before adding the new ones.
-- **Base set:** Light, Dark and Sepia. **Optional set:** Neon (Pink, Blue, Green, Purple and Rainbow), Ocean, Forest, Sun, Monokai, Nord and Solarized.
+- **Base set:** Light, Dark and Sepia. **Optional set:** Neon (Pink, Blue, Green, Purple and Rainbow), Ocean, Forest, Sun, Monokai, Nord, Solarized and Marble (white surfaces, black accent; icons keep the default violet tint via `--ip-tone`).
 - **Theme families share a base class.** All neon variants use `theme-neon` and set `--neon-1 … --neon-6` as RGB triplets (`rgb(var(--neon-2))`). Rainbow also defines `--rainbow: linear-gradient(…)`, which borders and progress bars use when it's present: `var(--rainbow, linear-gradient(135deg, var(--accent), var(--accent-2)))`.
 - **Every theme overrides the full token set:** surfaces, text tiers, accent, code, shadows and icon variables.
 - **Code blocks follow the theme.** Each theme maps to a matching syntax style, for example:
@@ -146,7 +146,8 @@ export const nextTheme = (current, extra) => { /* cycle through availableThemes 
 
 ### Theme UX
 
-- The header theme button cycles through the available themes. Its icon changes per theme: Sun/Moon, BookOpen for sepia, Zap for neon, Sunrise for Sun, Palette for Monokai, Snowflake for Nord, SunDim for Solarized, Waves for Ocean and Leaf for Forest. It animates in with `theme-icon-enter`.
+- The header theme button cycles through the available themes. Its icon changes per theme: Sun/Moon, BookOpen for sepia, Zap for neon, Sunrise for Sun, Palette for Monokai, Snowflake for Nord, SunDim for Solarized, Contrast for Marble, Waves for Ocean and Leaf for Forest. It animates in with `theme-icon-enter`.
+- **Default theme.** Settings → Appearance has a Default theme select ("Last used", then Main and Additional optgroups), stored as `defaultTheme` in the app settings. On launch a valid default wins over the last-used theme. Picking an additional theme as the default turns Additional themes on, and turning them off clears an additional default.
 - The Settings → Appearance picker shows **live mini previews**: a tiny page drawn with the theme's own classes, so the tokens apply locally. A swatch alone isn't enough.
 - Theme switches use the **View Transitions API** when available:
 

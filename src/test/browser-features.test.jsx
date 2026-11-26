@@ -1243,7 +1243,7 @@ describe('advanced browser features', () => {
     fireEvent.click(within(dialog).getByRole('radio', { name: 'Neon Green' }))
     await waitFor(() => expect(document.documentElement).not.toHaveClass('theme-neon-rainbow'))
     expect(document.documentElement).toHaveClass('theme-neon-green')
-    for (const name of ['Sun', 'Monokai', 'Nord', 'Solarized']) expect(within(dialog).getByRole('radio', { name })).toBeInTheDocument()
+    for (const name of ['Sun', 'Monokai', 'Nord', 'Solarized', 'Marble']) expect(within(dialog).getByRole('radio', { name })).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('radio', { name: 'Monokai' }))
     await waitFor(() => expect(document.documentElement).toHaveClass('theme-monokai'))
     fireEvent.click(within(dialog).getByRole('switch', { name: /High contrast/ }))
@@ -1251,6 +1251,25 @@ describe('advanced browser features', () => {
     expect(document.documentElement).toHaveClass('theme-monokai')
     fireEvent.click(within(dialog).getByRole('switch', { name: /Additional themes/ }))
     await waitFor(() => expect(document.documentElement).not.toHaveClass('theme-neon'))
+  })
+
+  it('opens with the default theme chosen in Settings', async () => {
+    const { unmount } = installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Appearance' }))
+    const select = within(dialog).getByRole('combobox', { name: /Default theme/ })
+    expect(select).toHaveValue('')
+    fireEvent.change(select, { target: { value: 'marble' } })
+    await waitFor(() => expect(document.documentElement).toHaveClass('theme-marble'))
+    expect(within(dialog).getByRole('switch', { name: /Additional themes/ })).toBeChecked()
+    expect(JSON.parse(localStorage.getItem('readme-app-settings')).defaultTheme).toBe('marble')
+    unmount()
+    // Last used was Dark, but the default theme wins on the next launch.
+    localStorage.setItem('readme-theme', 'dark')
+    installApp()
+    await waitFor(() => expect(document.documentElement).toHaveClass('theme-marble'))
+    expect(document.documentElement).not.toHaveClass('dark')
   })
 
   it('switches theme inside presentation mode', async () => {
