@@ -2301,7 +2301,7 @@ function EditorOptions({ prefs, onChange }) {
   )
   return (
     <div className="editor-options" ref={ref}>
-      <button type="button" className="editor-options-trigger" onClick={() => setOpen(value => !value)}
+      <button type="button" className={`editor-options-trigger${prefs.engine === 'code' && prefs.keymap !== 'default' ? ' has-label' : ''}`} onClick={() => setOpen(value => !value)}
         aria-label="Editor options" aria-expanded={open} data-tooltip="Editor options">
         <Settings2 size={11} />
         {prefs.engine === 'code' && prefs.keymap !== 'default' && <span>{prefs.keymap === 'vim' ? 'Vim' : 'Emacs'}</span>}

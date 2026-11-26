@@ -3111,6 +3111,8 @@ html.high-contrast { --icon-hover-bg: color-mix(in srgb, var(--accent) 24%, tran
 /* Square hit areas for icon-only controls (so the hover is round, not oval). */
 .file-tree-toggle, .file-tabs-command-button { width: 28px !important; height: 28px !important; padding: 0 !important; }
 .editor-options-trigger, .editor-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0 !important; }
+/* With a keymap label (Vim / Emacs) the trigger becomes a pill that fits its text. */
+.editor-options-trigger.has-label { width: auto; gap: 4px; padding: 0 8px !important; white-space: nowrap; }
 .file-tab-duplicate, .file-tab-close { width: 20px; height: 20px; }
 .heading-anchor { width: 26px; height: 26px; justify-content: center; margin-left: 4px; vertical-align: middle; }
 .toc-item .toc-star { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
