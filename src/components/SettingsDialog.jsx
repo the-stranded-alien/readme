@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, History, Info, Palette, Presentation, RefreshCw, Settings, Sparkles, X } from '../icons'
+import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, History, Info, AppDownload, CircleCheck, Palette, Presentation, RefreshCw, Settings, Sparkles, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
 import { THEMES, themeClasses } from '../themes'
@@ -13,6 +13,7 @@ const SECTIONS = [
   { id: 'presentation', label: 'Presentation', icon: Presentation },
   { id: 'features', label: 'Features', icon: Sparkles },
   { id: 'storage', label: 'Storage', icon: HardDrive },
+  { id: 'app', label: 'App', icon: AppDownload },
   { id: 'versions', label: 'Versions', icon: History },
   { id: 'about', label: 'About', icon: Info },
 ]
@@ -115,7 +116,7 @@ export function SettingsToggle({ label, description, checked, onChange, disabled
  */
 export default function SettingsDialog({
   initialSection = 'workspace', settings, onChange, fileCount,
-  onBackup, onRestore, onExportZip, density, onDensity, highContrast, onHighContrast,
+  onBackup, onRestore, onExportZip, appInstall, density, onDensity, highContrast, onHighContrast,
   appearanceExtra, workspaceExtra, presentationExtra, onClose,
 }) {
   const [section, setSection] = useState(SECTIONS.some(item => item.id === initialSection) ? initialSection : 'workspace')
@@ -184,6 +185,30 @@ export default function SettingsDialog({
                 <h3>Storage</h3>
                 <p className="settings-muted">Your files, history and settings are stored in this browser.</p>
                 <StoragePanel />
+              </>
+            )}
+            {section === 'app' && (
+              <>
+                <h3>App</h3>
+                <p className="settings-muted">Install ReadMe as an app: it opens in its own window, works offline, and can open .md files from your computer.</p>
+                <div className={`app-install-card is-${appInstall?.status ?? 'unavailable'}`} role="group" aria-label="ReadMe app">
+                  <img className="app-install-logo" src="/icon-192.png" alt="" width="42" height="42" />
+                  <div className="app-install-text">
+                    <strong>ReadMe app</strong>
+                    <span>Version {APP_VERSION}</span>
+                  </div>
+                  {appInstall?.status === 'installed' ? (
+                    <span className="app-install-status" role="status"><CircleCheck size={14} />{appInstall.standalone ? 'Installed · you are using the app' : 'Already installed'}</span>
+                  ) : appInstall?.status === 'available' ? (
+                    <button type="button" className="pdf-dialog-primary" onClick={appInstall.onInstall}><AppDownload size={14} />Download ReadMe app</button>
+                  ) : null}
+                </div>
+                {appInstall?.status === 'installed' && !appInstall.standalone && (
+                  <p className="settings-muted">Open it from your apps (Dock, Start menu or launcher). It updates by itself whenever a new version is released.</p>
+                )}
+                {appInstall?.status === 'unavailable' && (
+                  <p className="settings-muted">This browser doesn’t offer installing from here. In Chrome or Edge, use the install icon in the address bar or the browser menu → “Install ReadMe”. In Safari, choose File → Add to Dock (Mac) or Share → Add to Home Screen (iPhone, iPad).</p>
+                )}
               </>
             )}
             {section === 'presentation' && (

@@ -1,3 +1,5 @@
+import JSZip from 'jszip'
+import { publishSite } from '../sitePublisher.js'
 import { describe, expect, it } from 'vitest'
 import { htmlToMarkdown, looksRich, parseDelimited, rowsToMarkdownTable, webPageToMarkdown } from '../htmlToMarkdown.js'
 
@@ -259,5 +261,35 @@ describe('link graph', async () => {
     // Linked documents end up closer together than the orphan.
     const dist = (x, y) => Math.hypot(one.get(x).x - one.get(y).x, one.get(x).y - one.get(y).y)
     expect(dist('a', 'b')).toBeLessThan(dist('b', 'd'))
+  })
+})
+
+describe('site publisher', () => {
+  it('publishes documents as a static website with working links, search and a home page', async () => {
+    const files = [
+      { id: 'h', name: 'Home.md', content: '# Welcome\n\nSee [[Plan]] and [guide](notes/Guide.md#setup).\n\n> [!TIP] Pro\n> hi\n\n```js\nconst a = 1\n```\n\n$x^2$\n\n## Part A\n\n## Part B\n' },
+      { id: 'p', name: 'Plan.md', content: '---\ntitle: x\n---\n# The plan\n\nBack [home](Home.md). [[Missing]]' },
+      { id: 'g', name: 'notes/Guide.md', content: '# Guide\n\n## Setup\n\n[[Home]]' },
+    ]
+    const { blob, pages, home } = await publishSite(files, { title: 'Docs', homeId: 'h' })
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer())
+    const names = Object.keys(zip.files)
+    const h = await zip.file('Home.html').async('string')
+    const g = await zip.file('notes/Guide.html').async('string')
+    const p = await zip.file('Plan.html').async('string')
+    expect(names).toEqual(expect.arrayContaining(['index.html', 'Home.html', 'Plan.html', 'notes/Guide.html', 'assets/site.css', 'assets/search-index.js', 'assets/search.js', '.nojekyll']))
+    expect(pages).toHaveLength(3)
+    expect(home).toBe('Home.html')
+    expect(h).toContain('href="Plan.html"')
+    expect(h).toContain('href="notes/Guide.html#setup"')
+    expect(h).toContain('class="callout callout-tip"')
+    expect(h).toContain('token keyword')
+    expect(h).toContain('katex')
+    expect(h).toContain('href="#part-a"')
+    expect(g).toContain('href="../Home.html"')
+    expect(g).toContain('href="../assets/site.css"')
+    expect(p).not.toContain('title: x')
+    expect(p.indexOf('Welcome</a>')).toBeLessThan(p.indexOf('<summary>notes'))
+    expect(await zip.file('index.html').async('string')).toContain('url=Home.html')
   })
 })

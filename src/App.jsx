@@ -22,7 +22,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, Workflow, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, Workflow, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, AppDownload, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
   FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
@@ -36,6 +36,8 @@ import FileTabBar from './components/FileTabBar'
 import ImageLightbox from './components/ImageLightbox'
 import LinkPreview from './components/LinkPreview'
 import PdfExportDialog from './components/PdfExportDialog'
+import PublishSiteDialog from './components/PublishSiteDialog'
+import { useAppInstall } from './appInstall'
 import EmptyWorkspace from './components/EmptyWorkspace'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import GlobalSearch from './components/GlobalSearch'
@@ -1738,6 +1740,8 @@ function DownloadMenuButton({
   onExportSlides,
   onCopyShareLink,
   onExportZip,
+  onPublishSite,
+  onInstallApp,
   onBackup,
   onRestore,
   onStorage,
@@ -1944,6 +1948,15 @@ function DownloadMenuButton({
               .zip
             </span>
           </button>
+          {onPublishSite && (
+            <button type="button" role="menuitem" className="download-menu-item" disabled={fileCount === 0} onClick={() => { setOpen(false); onPublishSite() }}>
+              <span className="flex items-center gap-2">
+                <Globe size={13} style={{ color: 'var(--accent)' }} />
+                <span>Publish as a Website…</span>
+              </span>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>site</span>
+            </button>
+          )}
           <div className="download-menu-separator" role="separator" />
           <button type="button" role="menuitem" className="download-menu-item" onClick={() => { setOpen(false); onBackup() }}>
             <span className="flex items-center gap-2">
@@ -1964,6 +1977,18 @@ function DownloadMenuButton({
               <span>Storage &amp; Data Safety…</span>
             </span>
           </button>
+          {onInstallApp && (
+            <>
+              <div className="download-menu-separator" role="separator" />
+              <button type="button" role="menuitem" className="download-menu-item" onClick={() => { setOpen(false); onInstallApp() }}>
+                <span className="flex items-center gap-2">
+                  <AppDownload size={13} style={{ color: 'var(--accent)' }} />
+                  <span>Download ReadMe App</span>
+                </span>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>app</span>
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -2681,7 +2706,7 @@ export default function App() {
   const [cmdQuery, setCmdQuery]       = useState('')
   const [diffOpen, setDiffOpen] = useState(false)
   const [qualityOpen, setQualityOpen] = useState(false)
-  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null)
+  const appInstall = useAppInstall()
   const [speechActive, setSpeechActive] = useState(false)
   const [speechPaused, setSpeechPaused] = useState(false)
   const [keepAwake, setKeepAwake] = useState(false)
@@ -2909,28 +2934,10 @@ export default function App() {
     localStorage.setItem('readme-ui-density', uiDensity)
   }, [uiDensity])
 
-  useEffect(() => {
-    const onBeforeInstall = event => {
-      event.preventDefault()
-      setDeferredInstallPrompt(event)
-    }
-    const onInstalled = () => setDeferredInstallPrompt(null)
-    window.addEventListener('beforeinstallprompt', onBeforeInstall)
-    window.addEventListener('appinstalled', onInstalled)
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall)
-      window.removeEventListener('appinstalled', onInstalled)
-    }
-  }, [])
-
   const handleInstallApp = useCallback(async () => {
-    if (!deferredInstallPrompt) return
-    try {
-      await deferredInstallPrompt.prompt()
-      await deferredInstallPrompt.userChoice
-    } catch { /* the browser may cancel or dismiss the install prompt */ }
-    setDeferredInstallPrompt(null)
-  }, [deferredInstallPrompt])
+    const accepted = await appInstall.install()
+    if (accepted) setToast({ message: 'ReadMe is installed. Open it from your apps, Dock or Start menu.', tone: 'success', duration: 5000 })
+  }, [appInstall])
 
   const toggleTheme = useCallback(() => {
     withThemeTransition(() => {
@@ -4662,6 +4669,32 @@ export default function App() {
     URL.revokeObjectURL(a.href)
   }, [files])
 
+  // Publish documents as a static website (ZIP), made on this device.
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [publishBusy, setPublishBusy] = useState(false)
+  const [publishProgress, setPublishProgress] = useState(0)
+  const handlePublishSite = useCallback(async ({ includeClosed, ...options }) => {
+    setPublishBusy(true)
+    setPublishProgress(0)
+    try {
+      const { publishSite, renderSiteDiagrams } = await import('./sitePublisher')
+      const pool = includeClosed ? [...files, ...closedFileList] : files
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6d28d9'
+      const { blob, pages } = await publishSite(pool, { ...options, accent, renderDiagrams: renderSiteDiagrams, onProgress: setPublishProgress })
+      const slug = (options.title || 'site').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'site'
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${slug}-website.zip` })
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+      setPublishOpen(false)
+      setToast({ message: `Website ready: ${pages.length} ${pages.length === 1 ? 'page' : 'pages'}. Unzip and upload the folder to any static host.`, tone: 'success', duration: 5000 })
+    } catch (error) {
+      console.error(error)
+      setToast({ message: `Could not make the website: ${error?.message || 'unknown error'}`, tone: 'warning' })
+    } finally {
+      setPublishBusy(false)
+    }
+  }, [files, closedFileList])
+
   const uniqueName = (name, taken) => {
     const lower = new Set(taken.map(item => item.toLowerCase()))
     if (!lower.has(name.toLowerCase())) return name
@@ -5633,7 +5666,7 @@ ${fontCss}
 
   const paletteActions = useMemo(() => [
     { id: 'new', label: 'New blank file', hint: 'Action', icon: FilePlus, run: handleNewFile },
-    ...(deferredInstallPrompt ? [{ id: 'install', label: 'Install ReadMe app', hint: 'App', icon: Download, run: handleInstallApp }] : []),
+    ...(appInstall.status === 'available' ? [{ id: 'install', label: 'Install ReadMe app', hint: 'App', icon: AppDownload, run: handleInstallApp }] : []),
     { id: 'upload', label: 'Open files…', hint: 'Action', icon: Upload, run: handleOpenDiskFiles },
     { id: 'url-import', label: 'Import Markdown from URL…', hint: 'Action', icon: Globe, run: handleImportUrl },
     ...(activeFile ? [{ id: 'save-in-place', label: 'Save file in place…', hint: 'Disk', icon: Save, run: handleSaveInPlace }] : []),
@@ -5645,6 +5678,7 @@ ${fontCss}
     ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
     { id: 'graph', label: 'Graph of linked documents', hint: 'View', icon: Workflow, run: () => setGraphOpen(true) },
+    { id: 'publish-site', label: 'Publish as a website', hint: 'Export', icon: Globe, run: () => setPublishOpen(true) },
     { id: 'tasks', label: 'Tasks in all documents…', hint: shortcut('K', { shift: true }), icon: ListChecks, run: () => setTasksOpen(true) },
     { id: 'shortcuts', label: 'Keyboard shortcuts', hint: '?', icon: Keyboard, run: () => setShortcutsOpen(true) },
     { id: 'help', label: 'Help: how to use ReadMe', hint: 'Guide', icon: CircleHelp, run: () => setHelpOpen(true) },
@@ -5690,7 +5724,7 @@ ${fontCss}
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
     ] : []),
   ], [
-    handleNewFile, deferredInstallPrompt, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
+    handleNewFile, appInstall.status, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, handleExportConfluence, handleCopyConfluence, handleExportSlides, openTableEditor, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
@@ -5799,6 +5833,8 @@ ${fontCss}
               onExportSlides={handleExportSlides}
               onCopyShareLink={handleCopyShareLink}
               onExportZip={handleExportZip}
+              onPublishSite={() => setPublishOpen(true)}
+              onInstallApp={appInstall.status === 'available' ? handleInstallApp : undefined}
               onBackup={handleBackup}
               onRestore={() => restoreInputRef.current?.click()}
               onStorage={() => setSettingsOpen('storage')}
@@ -6968,6 +7004,7 @@ ${fontCss}
           onBackup={handleBackup}
           onRestore={() => restoreInputRef.current?.click()}
           onExportZip={handleExportZip}
+          appInstall={{ status: appInstall.status, standalone: appInstall.standalone, onInstall: handleInstallApp }}
           density={uiDensity}
           onDensity={setUiDensity}
           highContrast={highContrast}
@@ -7068,6 +7105,10 @@ ${fontCss}
         />
       )}
 
+      {publishOpen && (
+        <PublishSiteDialog files={files} closedFiles={closedFileList} activeId={activeFileId} busy={publishBusy} progress={publishProgress}
+          onPublish={handlePublishSite} onClose={() => { if (!publishBusy) setPublishOpen(false) }} />
+      )}
       {pdfDialogOpen && (
         <PdfExportDialog
           fileName={(fileName || 'document').replace(/\.[^.]+$/, '') + '.pdf'}

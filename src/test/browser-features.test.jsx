@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import App from '../App.jsx'
+import { APP_VERSION } from '../version.js'
 import { analyzeDocument, applyQualityFix, checkMarkdownQuality } from '../documentAnalysis.js'
 import { diffLines } from '../documentDiff.js'
 import { fuzzyScore, isModifiedFromDisk, makeDuplicateFileName } from '../fileUtils.js'
@@ -297,6 +298,30 @@ describe('advanced browser features', () => {
     fireEvent.change(paletteSearch, { target: { value: 'Install ReadMe' } })
     fireEvent.click(await screen.findByText('Install ReadMe app'))
     await waitFor(() => expect(prompt).toHaveBeenCalledOnce())
+  })
+
+  it('offers the app in the Download menu and Settings → App, and shows when it is installed', async () => {
+    const prompt = vi.fn(async () => {})
+    const installEvent = new Event('beforeinstallprompt', { cancelable: true })
+    Object.assign(installEvent, { prompt, userChoice: Promise.resolve({ outcome: 'accepted' }) })
+    installApp()
+    window.dispatchEvent(installEvent)
+    fireEvent.click(await screen.findByRole('button', { name: 'Download and export options' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Download ReadMe App/ }))
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce())
+    // Once installed, the menu no longer offers it and Settings → App says so, with the version.
+    fireEvent.click(await screen.findByRole('button', { name: 'Download and export options' }))
+    expect(screen.queryByRole('menuitem', { name: /Download ReadMe App/ })).toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.click(screen.getByRole('button', { name: 'Open command palette' }))
+    fireEvent.change(screen.getByPlaceholderText('Jump to file, heading, template, or command…'), { target: { value: 'Settings' } })
+    fireEvent.click((await screen.findAllByText(/^Settings/))[0])
+    const settings = await screen.findByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(settings).getByRole('button', { name: 'App' }))
+    const card = within(settings).getByRole('group', { name: 'ReadMe app' })
+    expect(card).toHaveTextContent(`Version ${APP_VERSION}`)
+    expect(card).toHaveTextContent('Already installed')
+    localStorage.removeItem('readme-app-installed')
   })
 
   it('copies rich HTML and plain Markdown through the Clipboard API', async () => {
@@ -1031,6 +1056,27 @@ describe('advanced browser features', () => {
     fireEvent.click(within(again).getByRole('button', { name: /→ Ghost/ }))
     fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Create “Ghost”?' })).getByRole('button', { name: 'Create document' }))
     expect(await screen.findByRole('tab', { name: 'Ghost.md' })).toBeInTheDocument()
+  })
+
+  it('publishes documents as a website from the Download menu, per folder, with a home page', async () => {
+    await writeWorkspace({ activeId: 'h', files: [
+      { id: 'h', name: 'Home.md', content: '# Home' },
+      { id: 'g', name: 'guides/Start.md', content: '# Start' },
+      { id: 'r', name: 'guides/README.md', content: '# Guides' },
+    ] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Download and export options' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Publish as a Website/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Publish as a website' })
+    expect(dialog).toHaveTextContent('3 pages.')
+    expect(within(dialog).getByRole('combobox', { name: 'Home page' })).toHaveValue('h')
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Pages from' }), { target: { value: 'guides' } })
+    expect(dialog).toHaveTextContent('2 pages.')
+    // A README in the folder becomes its home page.
+    expect(within(dialog).getByRole('combobox', { name: 'Home page' })).toHaveValue('r')
+    expect(within(dialog).getByRole('button', { name: 'Download website (.zip)' })).toBeEnabled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Publish as a website' })).toBeNull())
   })
 
   it('uses the CodeMirror editor (opt-in) with folds that mirror the preview', async () => {

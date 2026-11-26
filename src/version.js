@@ -4,9 +4,18 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '2.2'
+export const APP_VERSION = '2.3'
 
 export const RELEASES = [
+  {
+    version: '2.3',
+    date: '2026-11-27',
+    notes: [
+      'Publish as a website: turn your documents (or one folder) into a small website with a sidebar, search, and links between pages, ready for GitHub Pages, Netlify or any web host.',
+      'Download the ReadMe app from the Download menu or Settings → App, which also shows whether it is installed and its version.',
+      'Diagrams draw at the right size when your system asks for reduced motion.',
+    ],
+  },
   {
     version: '2.2',
     date: '2026-11-27',
@@ -38,14 +47,6 @@ export const RELEASES = [
     notes: [
       'Download a presentation as a landscape PDF or a PowerPoint file (with speaker notes).',
       'Pin up to 5 files; the file pinned last comes first.',
-    ],
-  },
-  {
-    version: '1.8',
-    date: '2026-11-26',
-    notes: [
-      'Sub-folders, up to three levels deep.',
-      'Rename files from the Files panel; renaming never changes the file’s folder or extension.',
     ],
   },
 ]

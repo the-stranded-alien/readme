@@ -49,6 +49,8 @@ import {
   FoldUpOne as ParkFoldUpOne,
   ExpandLeft as ParkExpandLeft,
   ContrastView as ParkContrastView,
+  DownloadComputer as ParkDownloadComputer,
+  CheckOne as ParkCheckOne,
   More as ParkMore,
   IndentLeft as ParkIndentLeft,
   IndentRight as ParkIndentRight,
@@ -289,6 +291,8 @@ export const MessageSquareWarning = make(ParkMessageFailed, 'MessageSquareWarnin
 export const Minimize2 = make(ParkOffScreen, 'Minimize2')
 export const Minus = make(ParkMinus, 'Minus')
 export const MonitorDown = make(ParkCup, 'MonitorDown')
+export const AppDownload = make(ParkDownloadComputer, 'AppDownload')
+export const CircleCheck = make(ParkCheckOne, 'CircleCheck')
 export const MonitorUp = make(ParkTeaDrink, 'MonitorUp')
 export const Moon = make(ParkMoon, 'Moon')
 export const OctagonAlert = make(ParkError, 'OctagonAlert')
