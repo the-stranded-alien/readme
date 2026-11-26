@@ -15,6 +15,32 @@ const BODY_Y = 1.4, BODY_W = W - 2 * PAD_X, BODY_H = H - BODY_Y - 0.5
 const TEXT = '1F2433', MUTED = '5B6178', CODE_BG = 'F4F5FA'
 const CALLOUT_COLORS = { note: '0969DA', tip: '1A7F37', important: '8250DF', warning: '9A6700', caution: 'CF222E' }
 const FONT = 'Calibri', MONO = 'Consolas'
+const GAP = 0.12, MIN_PICTURE = 1.6, TABLE_SIZE = 12
+const PT = 1 / 72
+
+// Estimated height (inches) of one paragraph of runs in a box `width` inches wide.
+function paragraphHeight(paragraphRuns, width) {
+  const first = paragraphRuns[0]?.options ?? {}
+  const size = paragraphRuns.find(run => run.options.fontSize)?.options.fontSize ?? 18
+  const mono = paragraphRuns.some(run => run.options.fontFace === MONO)
+  const indent = (first.bullet ? 0.35 : 0) + (first.indentLevel || 0) * 0.35
+  const usable = Math.max(1, width - indent - 0.1)
+  const charWidth = size * (mono ? 0.6 : 0.49) * PT // Calibri averages ~0.47em per character
+  const segments = ['']
+  for (const run of paragraphRuns) {
+    if (run.options.softBreakBefore) segments.push('')
+    segments[segments.length - 1] += run.text
+  }
+  const lines = segments.reduce((sum, segment) => sum + Math.max(1, Math.ceil(segment.length * charWidth / usable)), 0)
+  return lines * size * 1.2 * PT + ((first.paraSpaceBefore || 0) + (first.paraSpaceAfter ?? 6)) * PT
+}
+// Estimated height of a table row: its tallest cell.
+function tableRowHeight(row, columnWidth) {
+  const charWidth = TABLE_SIZE * 0.47 * PT
+  const lines = Math.max(1, ...row.children.map(cell => Math.ceil(runs(cell.children).map(run => run.text).join('').length * charWidth / Math.max(0.3, columnWidth - 0.2))))
+  return lines * TABLE_SIZE * 1.2 * PT + 0.12
+}
+
 const hex = color => String(color || '#6d28d9').replace('#', '').slice(0, 6).toUpperCase()
 
 const bytesToDataUrl = bytes => {
@@ -52,7 +78,15 @@ function runs(nodes, style = {}) {
 const PARAGRAPH_KEYS = ['bullet', 'indentLevel', 'align', 'paraSpaceBefore', 'paraSpaceAfter']
 /** One paragraph of runs; its last run ends the line. */
 function paragraph(items, options = {}) {
-  const list = items.length ? items : [{ text: ' ', options: {} }]
+  // pptxgenjs drops empty runs (and their line breaks): move a break onto the next run with text.
+  const cleaned = []
+  let pendingBreak = false
+  for (const item of items) {
+    if (item.text === '') { pendingBreak ||= Boolean(item.options?.softBreakBefore); continue }
+    cleaned.push(pendingBreak ? { ...item, options: { ...item.options, softBreakBefore: true } } : item)
+    pendingBreak = false
+  }
+  const list = cleaned.length ? cleaned : [{ text: ' ', options: {} }]
   const runStyle = Object.fromEntries(Object.entries(options).filter(([key]) => !PARAGRAPH_KEYS.includes(key)))
   const paraStyle = Object.fromEntries(Object.entries(options).filter(([key]) => PARAGRAPH_KEYS.includes(key)))
   return list.map((item, index) => ({
@@ -66,17 +100,30 @@ function layoutSlide(tree, accent) {
   let title = null
   const text = []
   const visuals = []
+  // Everything in order, for paginating: { kind: 'text', runs } per paragraph, or a visual.
+  const flow = []
+  const addText = items => {
+    text.push(...items)
+    let current = []
+    for (const item of items) {
+      current.push(item)
+      if (item.options.breakLine) { flow.push({ kind: 'text', runs: current }); current = [] }
+    }
+    if (current.length) flow.push({ kind: 'text', runs: current })
+  }
+  const addVisual = visual => { visuals.push(visual); flow.push(visual) }
   const block = (node, depth = 0, quote = null) => {
     switch (node.type) {
       case 'heading':
         if (!title && depth === 0) { title = { runs: runs(node.children), depth: node.depth }; return }
-        text.push(...paragraph(runs(node.children), { bold: true, fontSize: node.depth <= 2 ? 22 : 19, color: hex(accent), paraSpaceBefore: 6 }))
+        addText(paragraph(runs(node.children), { bold: true, fontSize: node.depth <= 2 ? 22 : 19, color: hex(accent), paraSpaceBefore: 6 }))
         return
       case 'paragraph': {
         const images = node.children.filter(child => child.type === 'image')
-        const rest = node.children.filter(child => child.type !== 'image' && !(child.type === 'text' && !child.value.trim()))
-        images.forEach(image => visuals.push({ kind: 'image', url: image.url, alt: image.alt }))
-        if (rest.length) text.push(...paragraph(runs(rest), { indentLevel: depth, ...(quote ? { color: quote.color, italic: !quote.callout } : {}) }))
+        // Whitespace between images is dropped, but a line break ("\n") between links or words is kept.
+        const rest = node.children.filter(child => child.type !== 'image' && !(child.type === 'text' && !child.value.trim() && !child.value.includes('\n')))
+        images.forEach(image => addVisual({ kind: 'image', url: image.url, alt: image.alt }))
+        if (rest.length) addText(paragraph(runs(rest), { indentLevel: depth, ...(quote ? { color: quote.color, italic: !quote.callout } : {}) }))
         return
       }
       case 'list': {
@@ -85,9 +132,10 @@ function layoutSlide(tree, accent) {
           const [first, ...rest] = item.children
           // Task items show a check box instead of a bullet; numbered lists keep their start number.
           const bullet = typeof item.checked === 'boolean' ? false
-            : node.ordered ? { type: 'number', ...(index === 0 && (node.start ?? 1) !== 1 ? { numberStartAt: node.start } : {}) } : true
+            // Each numbered item states its own number, so every app shows 1, 2, 3 (not 1, 1, 1).
+            : node.ordered ? { type: 'number', numberStartAt: (node.start ?? 1) + index } : true
           const content = first?.type === 'paragraph' ? runs(first.children) : []
-          text.push(...paragraph([{ text: prefix, options: {} }, ...content].filter(run => run.text !== ''), { bullet, indentLevel: depth }))
+          addText(paragraph([{ text: prefix, options: {} }, ...content].filter(run => run.text !== ''), { bullet, indentLevel: depth }))
           rest.forEach(child => block(child, depth + 1, quote))
         })
         return
@@ -97,7 +145,7 @@ function layoutSlide(tree, accent) {
         const marker = first?.type === 'paragraph' && first.children[0]?.type === 'text' ? parseCalloutMarker(first.children[0].value) : null
         if (marker) {
           const color = CALLOUT_COLORS[marker.type]
-          text.push(...paragraph([{ text: marker.title || CALLOUT_TYPES[marker.type], options: { bold: true, color } }]))
+          addText(paragraph([{ text: marker.title || CALLOUT_TYPES[marker.type], options: { bold: true, color } }]))
           const remaining = first.children[0].value.slice(marker.length).replace(/^\n/, '')
           const firstRest = [{ ...first.children[0], value: remaining }, ...first.children.slice(1)].filter(child => !(child.type === 'text' && !child.value.trim()) && child.type !== 'break')
           if (firstRest.length) block({ ...first, children: firstRest }, depth, { color: TEXT, callout: true })
@@ -108,16 +156,17 @@ function layoutSlide(tree, accent) {
         return
       }
       case 'code':
-        if (node.lang === 'mermaid') { visuals.push({ kind: 'mermaid', source: node.value }); return }
-        text.push(...node.value.split('\n').map((line, index, all) => ({
-          text: line || ' ', options: { fontFace: MONO, fontSize: 13, color: TEXT, highlight: CODE_BG, breakLine: true, ...(index === 0 ? { paraSpaceBefore: 4 } : {}), ...(index === all.length - 1 ? { paraSpaceAfter: 6 } : {}) },
+        if (node.lang === 'mermaid') { addVisual({ kind: 'mermaid', source: node.value }); return }
+        addText(node.value.split('\n').map((line, index, all) => ({
+          // Code lines sit tight together (pptxgenjs treats 0 as "unset", so use a hair of space).
+          text: line || ' ', options: { fontFace: MONO, fontSize: 13, color: TEXT, highlight: CODE_BG, breakLine: true, paraSpaceAfter: index === all.length - 1 ? 6 : 0.01, ...(index === 0 ? { paraSpaceBefore: 4 } : {}) },
         })))
         return
       case 'math':
-        text.push(...paragraph([{ text: node.value, options: { italic: true, color: MUTED } }], { align: 'center' }))
+        addText(paragraph([{ text: node.value, options: { italic: true, color: MUTED } }], { align: 'center' }))
         return
       case 'table':
-        visuals.push({ kind: 'table', node })
+        addVisual({ kind: 'table', node })
         return
       case 'thematicBreak': case 'definition': case 'footnoteDefinition': case 'yaml': case 'html':
         return
@@ -126,7 +175,7 @@ function layoutSlide(tree, accent) {
     }
   }
   tree.children.forEach(child => block(child))
-  return { title, text, visuals }
+  return { title, text, visuals, flow }
 }
 
 /**
@@ -157,7 +206,81 @@ export async function exportPresentationPptx(slides, { title = 'Presentation', f
     try { diagrams.set(source, { dataUrl: bytesToDataUrl(await svgToPng(svg.markup, size.width, size.height, 2)), ...size }) } catch (error) { console.warn('Diagram export failed', error) }
   }))
 
+  // 1. Plan: lay each slide's content out top to bottom at a fixed text size, starting a
+  //    "(continued)" slide whenever the next paragraph, table row or picture wouldn't fit.
+  const planned = []
   layouts.forEach((layout, index) => {
+    const hasTitle = Boolean(layout.title)
+    const bodyY = hasTitle ? BODY_Y : TITLE_Y
+    const avail = (H - bodyY - 0.55) * 0.95 // a little slack for font differences between apps
+    const textX = PAD_X + (hasTitle ? 0.2 : 0)
+    const textW = BODY_W - (hasTitle ? 0.2 : 0)
+    let page = null
+    let used = 0
+    const newPage = () => {
+      page = { layout, hasTitle, bodyY, continued: Boolean(page), items: [], notes: page ? '' : slides[index].notes }
+      planned.push(page)
+      used = 0
+    }
+    newPage()
+    const place = height => {
+      if (used > 0 && used + height > avail) newPage()
+      const y = bodyY + used
+      used += height + GAP
+      return y
+    }
+    for (const item of layout.flow) {
+      if (item.kind === 'text') {
+        const height = paragraphHeight(item.runs, textW)
+        const last = page.items.at(-1)
+        if (last?.kind === 'text' && used + height - GAP <= avail) {
+          last.runs.push(...item.runs)
+          last.h += height
+          used += height
+        } else {
+          const y = place(height)
+          page.items.push({ kind: 'text', runs: [...item.runs], x: textX, y, w: textW, h: height })
+        }
+      } else if (item.kind === 'table') {
+        const [header, ...body] = item.node.children
+        const columns = header.children.length
+        const rowHeight = row => tableRowHeight(row, BODY_W / Math.max(1, columns))
+        // Split long tables across slides, repeating the header row.
+        let chunk = []
+        let chunkHeight = rowHeight(header)
+        const flush = () => {
+          const y = place(chunkHeight)
+          page.items.push({ kind: 'table', node: item.node, rows: [header, ...chunk], y, h: chunkHeight })
+          chunk = []
+          chunkHeight = rowHeight(header)
+        }
+        for (const row of body) {
+          const height = rowHeight(row)
+          if (used + chunkHeight + height > avail) {
+            if (chunk.length) flush()
+            if (used > 0) newPage()
+          }
+          chunk.push(row)
+          chunkHeight += height
+        }
+        flush()
+      } else {
+        const source = item.kind === 'image' ? images.get(item.url) : diagrams.get(item.source)
+        if (!source) continue
+        const natural = BODY_W * source.height / source.width
+        // A picture needs at least MIN_PICTURE of height; otherwise it goes on the next slide.
+        if (used > 0 && Math.min(natural, MIN_PICTURE) > avail - used) newPage()
+        const height = Math.min(natural, avail - used)
+        const y = place(height)
+        const ratio = Math.min(BODY_W / source.width, height / source.height)
+        const w = source.width * ratio, h = source.height * ratio
+        page.items.push({ kind: 'picture', data: source.dataUrl, x: PAD_X + (BODY_W - w) / 2, y, w, h, alt: item.alt || 'Diagram' })
+      }
+    }
+  })
+
+  // 2. Draw the planned slides.
+  planned.forEach((page, index) => {
     const slide = pptx.addSlide()
     slide.background = { color: 'FFFFFF' }
     // The slide frame: a rounded border in the theme's accent, like presentation mode.
@@ -165,55 +288,32 @@ export async function exportPresentationPptx(slides, { title = 'Presentation', f
       x: INSET, y: INSET, w: W - 2 * INSET, h: H - 2 * INSET, rectRadius: 0.18,
       fill: { type: 'none' }, line: { color: accentHex, width: 4.5 },
     })
-    slide.addText(`${index + 1} / ${layouts.length}`, { x: W - INSET - 1.3, y: H - INSET - 0.42, w: 1.1, h: 0.3, fontSize: 9, fontFace: FONT, color: '9AA0B8', align: 'right' })
-
-    const hasTitle = Boolean(layout.title)
-    const bodyY = hasTitle ? BODY_Y : TITLE_Y
-    const bodyH = H - bodyY - 0.55
-    if (hasTitle) {
-      slide.addText(layout.title.runs.length ? layout.title.runs : [{ text: ' ' }], {
-        x: PAD_X + 0.22, y: TITLE_Y, w: BODY_W - 0.22, h: TITLE_H, fontFace: FONT, fontSize: layout.title.depth === 1 ? 34 : 28, bold: true,
-        color: '14172B', valign: 'middle', fit: 'shrink', margin: 0,
+    slide.addText(`${index + 1} / ${planned.length}`, { x: W - INSET - 1.3, y: H - INSET - 0.42, w: 1.1, h: 0.3, fontSize: 9, fontFace: FONT, color: '9AA0B8', align: 'right' })
+    if (page.hasTitle) {
+      const titleRuns = page.layout.title.runs.length ? page.layout.title.runs : [{ text: ' ' }]
+      slide.addText(page.continued ? [...titleRuns, { text: ' (continued)', options: { color: '9AA0B8', bold: false } }] : titleRuns, {
+        x: PAD_X + 0.22, y: TITLE_Y, w: BODY_W - 0.22, h: TITLE_H, fontFace: FONT,
+        fontSize: page.layout.title.depth === 1 ? 34 : 28, bold: true, color: '14172B', valign: 'middle', fit: 'shrink', margin: 0,
       })
       slide.addShape(pptx.ShapeType.rect, { x: PAD_X, y: TITLE_Y + 0.12, w: 0.07, h: TITLE_H - 0.24, fill: { color: accentHex }, line: { type: 'none' } })
     }
-    const visuals = layout.visuals.filter(item => item.kind === 'table' || (item.kind === 'image' && images.has(item.url)) || (item.kind === 'mermaid' && diagrams.has(item.source)))
-    const hasText = layout.text.length > 0
-    // Text on top, visuals below (or the whole body when only one of them exists).
-    const textH = hasText ? (visuals.length ? bodyH * 0.42 : bodyH) : 0
-    if (hasText) {
-      slide.addText(layout.text, {
-        x: PAD_X + (hasTitle ? 0.2 : 0), y: bodyY, w: BODY_W - (hasTitle ? 0.2 : 0), h: textH,
-        fontSize: 18, fontFace: FONT, color: TEXT, valign: 'top', fit: 'shrink', paraSpaceAfter: 6, margin: 0.04,
-      })
+    for (const item of page.items) {
+      if (item.kind === 'text') {
+        slide.addText(item.runs, { x: item.x, y: item.y, w: item.w, h: item.h + 0.06, fontSize: 18, fontFace: FONT, color: TEXT, valign: 'top', paraSpaceAfter: 6, margin: 0.04 })
+      } else if (item.kind === 'table') {
+        const align = item.node.align ?? []
+        const cell = (node, columnIndex, head) => ({
+          text: runs(node.children).map(run => ({ text: run.text, options: run.options })),
+          options: { bold: head, fill: { color: head ? 'F1F2F8' : 'FFFFFF' }, align: align[columnIndex] || 'left', valign: 'middle' },
+        })
+        slide.addTable(item.rows.map((row, rowIndex) => row.children.map((node, columnIndex) => cell(node, columnIndex, rowIndex === 0))), {
+          x: PAD_X, y: item.y, w: BODY_W, fontSize: TABLE_SIZE, fontFace: FONT, color: TEXT, border: { type: 'solid', pt: 0.75, color: 'D9DCEB' }, autoPage: false,
+        })
+      } else {
+        slide.addImage({ data: item.data, x: item.x, y: item.y, w: item.w, h: item.h, altText: item.alt })
+      }
     }
-    if (visuals.length) {
-      const top = bodyY + (hasText ? textH + 0.12 : 0)
-      const height = bodyY + bodyH - top
-      const gap = 0.2
-      const width = (BODY_W - gap * (visuals.length - 1)) / visuals.length
-      visuals.forEach((visual, n) => {
-        const x = PAD_X + n * (width + gap)
-        if (visual.kind === 'table') {
-          const [header, ...body] = visual.node.children
-          const align = visual.node.align ?? []
-          const cell = (node, columnIndex, head) => ({
-            text: runs(node.children).map(run => ({ text: run.text, options: run.options })),
-            options: { bold: head, fill: { color: head ? 'F1F2F8' : 'FFFFFF' }, align: align[columnIndex] || 'left', valign: 'middle' },
-          })
-          slide.addTable([header, ...body].map((row, rowIndex) => row.children.map((node, columnIndex) => cell(node, columnIndex, rowIndex === 0))), {
-            x, y: top, w: width, fontSize: 12, fontFace: FONT, color: TEXT, border: { type: 'solid', pt: 0.75, color: 'D9DCEB' }, autoPage: false,
-          })
-          return
-        }
-        const source = visual.kind === 'image' ? images.get(visual.url) : diagrams.get(visual.source)
-        // Fit inside the box, keeping the aspect ratio, centred.
-        const ratio = Math.min(width / source.width, height / source.height)
-        const w = source.width * ratio, h = source.height * ratio
-        slide.addImage({ data: source.dataUrl, x: x + (width - w) / 2, y: top + (height - h) / 2, w, h, altText: visual.alt || 'Diagram' })
-      })
-    }
-    if (slides[index].notes) slide.addNotes(slides[index].notes)
+    if (page.notes) slide.addNotes(page.notes)
   })
 
   // pptxgenjs writes paragraph properties once per text run; later runs (bold words, links)

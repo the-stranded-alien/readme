@@ -614,8 +614,8 @@ function scaleBlock(node, k) {
   }
   // Images and diagrams fit inside the slide, never taller than it.
   if ((out.image || out.svg) && typeof out.width === 'number') {
-    // At smaller text sizes (long slides) pictures shrink too, so everything fits one page.
-    const maxHeight = (DECK.height - 2 * (DECK.inset + DECK.padY) - 70) * Math.min(1, k / DECK.scale)
+    // Pictures fit inside one slide.
+    const maxHeight = DECK.height - 2 * (DECK.inset + DECK.padY) - 70
     out.fit = [out.width, maxHeight]
     delete out.width
   }
@@ -644,12 +644,15 @@ function deckSlide({ tree, images, rendered }, k) {
 }
 
 function deckDefinition(slideBlocks, { title, accent, backdrop }) {
-  const content = slideBlocks.map(({ stack, fontSize }, index) => ({
-    // One cell the size of the slide, with its content centred vertically.
-    table: { widths: [DECK_CONTENT.width], heights: [DECK_CONTENT.height], body: [[{ stack, fontSize, verticalAlignment: 'middle' }]] },
-    layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
-    ...(index > 0 ? { pageBreak: 'before' } : {}),
-  }))
+  const content = slideBlocks.map(({ stack, fontSize, long }, index) => (long
+    // A slide too long for one page flows on to the next page(s), top-aligned.
+    ? { id: `slide-${index}`, stack, fontSize }
+    : {
+      // One cell the size of the slide, with its content centred vertically.
+      table: { widths: [DECK_CONTENT.width], heights: [DECK_CONTENT.height], body: [[{ stack, fontSize, verticalAlignment: 'middle' }]] },
+      id: `slide-${index}`,
+      layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
+    }))
   const frameW = DECK.width - 2 * DECK.inset, frameH = DECK.height - 2 * DECK.inset
   return {
     info: { title: cleanText(title), creator: 'ReadMe' },
@@ -665,6 +668,15 @@ function deckDefinition(slideBlocks, { title, accent, backdrop }) {
     }),
     defaultStyle: { font: 'Roboto', fontSize: BASE_SIZE * DECK.scale, lineHeight: 1.35, color: COLORS.text },
     content,
+    // Each slide starts a new page — unless the page is still empty (a long slide that just
+    // filled the previous page must not leave a blank page behind).
+    pageBreakBefore: (node, queries) => {
+      if (!/^slide-[1-9]/.test(node.id || '')) return false
+      const previous = queries?.getPreviousNodesOnPage?.() ?? queries?.previousNodesOnPage ?? []
+      // Only nodes that draw something count (not empty containers left over from a long slide).
+      const visible = node => node.image || node.svg || node.canvas || (node.text != null && textOf(node.text).trim() !== '')
+      return previous.some(visible)
+    },
     footer: (currentPage, pageCount) => ({
       // The footer sits in the bottom margin: put the slide number inside the card's corner.
       text: `${currentPage} / ${pageCount}`, alignment: 'right', fontSize: 9, color: '#9aa0b8',
@@ -675,33 +687,40 @@ function deckDefinition(slideBlocks, { title, accent, backdrop }) {
 
 /**
  * pdfmake definition for a slide deck. `slides` are Markdown strings (speaker notes already
- * removed); `accent` colours the slide frame like the presentation's theme. `scales` sets each
- * slide's text size (defaults to the presentation size).
+ * removed); `accent` colours the slide frame like the presentation's theme.
  */
-export async function buildPresentationPdfDefinition(slides, { title = 'Presentation', accent = COLORS.accent, backdrop = '#ebecf6', options = {}, scales = [] } = {}) {
+export async function buildPresentationPdfDefinition(slides, { title = 'Presentation', accent = COLORS.accent, backdrop = '#ebecf6', options = {} } = {}) {
   const prepared = await prepareDeck(slides, { ...DEFAULT_PDF_OPTIONS, ...options })
-  return deckDefinition(prepared.map((slide, index) => deckSlide(slide, scales[index] ?? DECK.scale)), { title, accent, backdrop })
+  return deckDefinition(prepared.map(slide => deckSlide(slide, DECK.scale)), { title, accent, backdrop })
 }
 
-// Text sizes tried, largest first, until a slide fits on one page.
-const DECK_SCALES = [DECK.scale, 1.45, 1.25, 1.05, 0.9, 0.75, 0.62, 0.5]
+// Every slide uses the same text size; a slide too long for one page continues on the next
+// page (the frame is drawn on every page). Long slides are found by laying each slide out alone.
+const textOf = value => (Array.isArray(value) ? value.map(item => textOf(item?.text ?? item)).join('') : typeof value === 'object' && value ? textOf(value.text) : String(value ?? ''))
+
+// A long slide's last block shouldn't push its bottom margin onto an otherwise empty page.
+function trimTrailingMargin(block) {
+  const stack = [...block.stack]
+  const last = stack.length - 1
+  if (last >= 0 && Array.isArray(stack[last]?.margin)) stack[last] = { ...stack[last], margin: [stack[last].margin[0], stack[last].margin[1], stack[last].margin[2], 0] }
+  return { ...block, stack }
+}
+// pdfmake compresses its page objects, so read the page count from the footer callback while it lays out.
 const countPdfPages = async (pdfMake, definition) => {
-  const bytes = await pdfMake.createPdf(definition).getBuffer()
-  return (new TextDecoder('latin1').decode(bytes).match(/\/Type\s*\/Page(?!s)/g) || []).length
+  let pages = 0
+  const footer = definition.footer
+  await pdfMake.createPdf({ ...definition, footer: (current, count) => { pages = Math.max(pages, count); return footer(current, count) } }).getBuffer()
+  return pages
 }
-
 export async function exportPresentationPdf(slides, { title = 'Presentation', fileName, accent = COLORS.accent, backdrop = '#ebecf6', options } = {}) {
   const pdfMake = await loadPdfMake()
   const prepared = await prepareDeck(slides, { ...DEFAULT_PDF_OPTIONS, ...options })
-  // Every slide is one page: long slides get smaller text (like the presentation, which scrolls).
+  const look = { title, accent, backdrop }
   const blocks = []
   for (const slide of prepared) {
-    let chosen = null
-    for (const k of DECK_SCALES) {
-      chosen = deckSlide(slide, k)
-      if (await countPdfPages(pdfMake, deckDefinition([chosen], { title, accent, backdrop })) <= 1) break
-    }
-    blocks.push(chosen)
+    const block = deckSlide(slide, DECK.scale)
+    const pages = await countPdfPages(pdfMake, deckDefinition([block], look))
+    blocks.push(pages > 1 ? { ...trimTrailingMargin(block), long: true } : block)
   }
-  await pdfMake.createPdf(deckDefinition(blocks, { title, accent, backdrop })).download(fileName || 'presentation.pdf')
+  await pdfMake.createPdf(deckDefinition(blocks, look)).download(fileName || 'presentation.pdf')
 }

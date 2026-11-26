@@ -1169,13 +1169,16 @@ describe('advanced browser features', () => {
     expect(guide.content).toMatch(/!\[[^\]]+\]\(data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+ "The title shows on hover"\)/)
   })
 
-  it('builds a landscape presentation PDF with one centred page per slide', async () => {
+  it('builds a landscape presentation PDF: a centred page per slide, same text size', async () => {
     const { buildPresentationPdfDefinition } = await import('../pdfExport.js')
     const def = await buildPresentationPdfDefinition(['# Deck\n\nIntro', '## Two\n\n- a\n- b', '## Three\n\n| A |\n| - |\n| 1 |'], { title: 'Deck', accent: '#123456', options: { diagrams: false } })
     expect(def.pageSize).toEqual({ width: 960, height: 540 })
     expect(def.content).toHaveLength(3)
-    expect(def.content[0].pageBreak).toBeUndefined()
-    expect(def.content[1].pageBreak).toBe('before')
+    // Every slide after the first starts a new page, unless the page is still empty.
+    const ink = [{ text: 'something' }]
+    expect(def.pageBreakBefore(def.content[0], { getPreviousNodesOnPage: () => ink })).toBe(false)
+    expect(def.pageBreakBefore(def.content[1], { getPreviousNodesOnPage: () => ink })).toBe(true)
+    expect(def.pageBreakBefore(def.content[1], { getPreviousNodesOnPage: () => [{ stack: [] }] })).toBe(false)
     // Each slide is one full-height cell with its content centred vertically, like presentation mode.
     const cell = def.content[0].table.body[0][0]
     expect(cell.verticalAlignment).toBe('middle')

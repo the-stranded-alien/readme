@@ -62,7 +62,7 @@ const HELP_SECTIONS = [
   {
     id: 'export', title: 'Export & share',
     items: [
-      ['Download', 'Download as Markdown, PDF (with options), Word, HTML, Confluence (.xml), or all files as a .zip. Presentation PDF and Presentation PowerPoint save the slides: a landscape page per slide (long slides get smaller text so each fits one page), or a .pptx with speaker notes. The download button in the slide toolbar saves exactly the slides you are presenting.'],
+      ['Download', 'Download as Markdown, PDF (with options), Word, HTML, Confluence (.xml), or all files as a .zip. Presentation PDF and Presentation PowerPoint save the slides: a landscape page per slide, or a .pptx with speaker notes. The text size is the same on every slide: a long slide continues on the next page (PDF) or on a “continued” slide (PowerPoint), and long tables repeat their header row. The download button in the slide toolbar saves exactly the slides you are presenting.'],
       ['Confluence', 'Copy XHTML (next to Copy MD) copies the page for Confluence: paste into a Confluence page, or into its storage-format (source) editor or API, which gets Confluence storage format — XHTML with code, task list and info-panel macros. Download → Export for Confluence saves the same as a .xml file.'],
       ['Share link', 'Copy share link puts the whole document in the link itself — no server involved.'],
       ['Present', 'Present shows one slide per heading. Use the arrow keys, F for fullscreen, T to switch theme and + / − to make the text bigger or smaller (kept for every slide). In the contents bar, hover a heading and click its slide icon to present from there, or use the slide icon at the top to present only your bookmarked sections.'],
