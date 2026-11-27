@@ -1889,6 +1889,26 @@ button[data-tooltip]:not(:focus-visible)::after {
 .global-search-snippet mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text-1); border-radius: 3px; padding: 0 1px; }
 
 .history-body { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 14px; padding: 10px 20px 16px; min-height: 280px; }
+.recovery-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); display: flex; flex-direction: column; }
+.recovery-body { overflow: auto; padding: 8px 20px 20px; }
+.recovery-section + .recovery-section { margin-top: 18px; }
+.recovery-section h3 { margin: 0 0 8px; color: var(--text-2); font-size: 12px; }
+.recovery-section ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.recovery-section li { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--border-light); border-radius: 10px; }
+.recovery-section li > span { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.recovery-section li strong { overflow: hidden; text-overflow: ellipsis; color: var(--text-1); font-size: 12px; }
+.recovery-section li small { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); font-size: 10.5px; }
+.recovery-interval-setting { margin-top: 18px; }
+.link-check-dialog { width: min(820px, calc(100vw - 32px)); max-height: calc(100vh - 48px); display: flex; flex-direction: column; }
+.link-check-filters { flex: none; margin: 12px 20px 0; align-self: flex-start; max-width: calc(100% - 40px); overflow-x: auto; }
+.link-check-body { flex: 1; min-height: 120px; overflow: auto; padding: 12px 20px 20px; }
+.link-check-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.link-check-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: 10px; color: var(--text-3); }
+.link-check-item > span { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.link-check-item strong { color: var(--text-1); font-size: 12.5px; }
+.link-check-item small { color: var(--text-3); font-size: 11px; }
+.link-check-item.is-attachment, .link-check-item.is-broken { color: #b45309; }
+@media (max-width: 540px) { .link-check-item { align-items: flex-start; flex-wrap: wrap; } .link-check-item .reader-chip { margin-left: 24px; } }
 @media (max-width: 640px) { .history-body { grid-template-columns: 1fr; } }
 .history-empty { grid-column: 1 / -1; padding: 40px 0; text-align: center; font-size: 13px; color: var(--text-4); }
 .history-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; align-content: start; max-height: 52vh; overflow: auto; }
@@ -3524,6 +3544,18 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .tasks-filters button { flex: 1 1 auto; justify-content: center; gap: 8px; padding: 6px 12px; }
 .tasks-row { gap: 10px 12px; }
 .tasks-body { padding: 10px 20px 24px; }
+.agenda-mode { margin: 0 20px 10px; align-self: flex-start; flex: none; }
+.agenda-documents { display: flex; flex-direction: column; gap: 12px; }
+.agenda-document-search { flex: none; }
+.agenda-document-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.agenda-document-list li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 9px 10px; border: 1px solid var(--border-light); border-radius: 10px; }
+.agenda-document-open { flex: 1; min-width: 100px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 7px; padding: 0; border: 0; background: none; color: var(--text-1); text-align: left; cursor: pointer; }
+.agenda-document-open > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+.agenda-document-open > small { grid-column: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 10.5px; }
+.agenda-document-list input[type="date"] { max-width: 150px; min-width: 0; padding: 5px 7px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-editor); color: var(--text-1); font: inherit; font-size: 11px; }
+.agenda-reminder { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: 11px; white-space: nowrap; }
+.agenda-reminder input { accent-color: var(--accent); }
+@media (max-width: 640px) { .agenda-document-list li { flex-wrap: wrap; } .agenda-document-open { flex-basis: 100%; } }
 .tasks-group h3 { margin: 18px 8px 8px; }
 .tasks-group ul { gap: 4px; }
 .tasks-item { align-items: flex-start; gap: 12px; padding: 9px 12px 9px calc(12px + var(--depth, 0) * 20px); }

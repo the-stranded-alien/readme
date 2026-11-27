@@ -493,7 +493,7 @@ export default function FileTabBar({
         </div>
         {onOpenTasks && (
           <button type="button" onClick={onOpenTasks} className="file-tabs-command-button file-tabs-tasks"
-            data-tooltip={tasksDueCount ? `Tasks: ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}
+            data-tooltip={tasksDueCount ? `Tasks: ${tasksDueCount} due today or overdue` : 'Tasks in all documents · includes document agenda'}
             aria-label={tasksDueCount ? `Tasks, ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}>
             <ListChecks size={14} />
             {tasksDueCount > 0 && <span className="header-badge" aria-hidden="true">{tasksDueCount > 99 ? '99+' : tasksDueCount}</span>}

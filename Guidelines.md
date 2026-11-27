@@ -413,7 +413,7 @@ Target: **zero axe violations** in every view, in every theme, with and without 
 
 | Data | Store |
 |---|---|
-| Workspace (open files, active id, **closed files**) | IndexedDB `state` store, key `workspace` (debounced write ~300ms) |
+| Workspace (open files, active id, **closed files**) | IndexedDB `state` store, key `workspace` (debounced write; delay is configurable in Settings → Workspace) |
 | Version history (≤ 30 snapshots per file) | IndexedDB `history` store |
 | Folder handle + sync state (`written: Map path→text`, `paths: Map id→path`) | IndexedDB (handles and Maps are structured-cloneable) |
 | Small settings and UI preferences (theme, density, reader prefs, zoom) | `localStorage`, prefixed `readme-…`, every access wrapped in `try/catch` |
@@ -429,6 +429,10 @@ Target: **zero axe violations** in every view, in every theme, with and without 
 - **Delete permanently** asks first and offers Undo. It removes the file from the sync folder only if nobody changed it there, and **never** touches a file opened from disk.
 - Folders are virtual paths (`notes/plan.md`). You can drag a file onto a folder, rename a folder, and close a folder.
 - Version history records a snapshot before every risky operation: before clearing, before reloading from disk, the folder's version before syncing, and the replaced version after a conflict.
+- Document deadlines live in front matter (`due: YYYY-MM-DD`, optionally `reminder: true`) and appear with task due dates in the workspace agenda. Reminder notices are local to this browser and appear at most once per document per day.
+- Custom templates keep separate editable YAML front matter, Markdown starter content, and a default folder; creating a file validates the folder depth and chooses a unique file name.
+- The workspace link checker resolves local wiki and Markdown links, checks heading anchors and image attachments, and reports documents with no inbound links. It never fetches external URLs.
+- Browser autosave delay and recovery snapshot cadence are user settings. Recovery snapshots use the existing per-file history store; do not make autosave itself optional or imply that browser storage is the same as saving to disk.
 - **Backup/restore** is one `.zip` containing `files/…`, `closed/…`, and a manifest with settings and history. Validate it on read and say plainly what is wrong.
 
 ### Disk files (File System Access API)

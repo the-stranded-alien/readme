@@ -16,6 +16,7 @@ The app runs at the local URL printed by Vite. For a production build use `npm r
 ## Features
 
 - Markdown editing and live preview, with themes, document properties, history, and file organization.
+- Workspace agenda for task and document deadlines, link checks, reusable templates, and recovery snapshots.
 - Workspace backups, exports, optional local folder sync, and installable offline PWA support.
 - No account or application server is required. Documents and settings are stored in browser storage.
 

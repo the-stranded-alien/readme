@@ -5,9 +5,19 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '3.5'
+export const APP_VERSION = '3.6'
 
 export const RELEASES = [
+  {
+    version: '3.6',
+    date: '2026-11-27',
+    notes: [
+      'Added a workspace agenda for document due dates and in-app reminders alongside task due dates.',
+      'Custom templates now support editable front matter, starter content, and a default folder.',
+      'Added workspace link checks for broken links, missing image attachments, and orphaned documents.',
+      'Recovery settings now control snapshots and show recoverable versions and changes not saved to disk.',
+    ],
+  },
   {
     version: '3.5',
     date: '2026-11-27',

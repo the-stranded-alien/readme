@@ -133,6 +133,8 @@ export function documentInfo(file) {
     folder: file.name.split('/').slice(0, -1).join('/'),
     tags,
     status: typeof meta.status === 'string' ? meta.status.trim().toLowerCase() : '',
+    due: /^\d{4}-\d{2}-\d{2}$/.test(String(meta.due ?? '')) ? String(meta.due) : '',
+    reminder: meta.reminder === true || String(meta.reminder).toLowerCase() === 'true',
     words: (plain.match(/\S+/g) || []).length,
     updatedAt: Number(file.updatedAt) || 0,
     pinned: Boolean(file.pinned),

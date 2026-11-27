@@ -3,7 +3,13 @@ import { useDialogKeys } from '../useDialogKeys'
 import EmptyState from './EmptyState'
 import { Copy, FilePlus, LayoutTemplate, Lock, Plus, Save, Trash2, X } from '../icons'
 
-const emptyDraft = { name: '', description: '', fileName: '', content: '' }
+const emptyDraft = { name: '', description: '', fileName: '', folder: '', content: '' }
+const normalize = template => {
+  const content = String(template?.content ?? '')
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content)
+  return { ...template, folder: template?.folder ?? '', frontMatter: template?.frontMatter ?? match?.[1] ?? '', starterContent: template?.starterContent ?? (match ? content.slice(match[0].length) : content) }
+}
+const compose = value => `${value.frontMatter.trim() ? `---\n${value.frontMatter.trim()}\n---\n\n` : ''}${value.starterContent ?? ''}`
 
 /**
  * Manage templates: built-in ones are read-only (duplicate to customise);
@@ -21,16 +27,18 @@ export default function TemplatesDialog({ builtIn, custom, onSave, onDelete, onU
 
   const startNew = (base = emptyDraft) => {
     setSelectedId(null)
-    setDraft({ id: null, name: base.name, description: base.description || '', fileName: base.fileName || '', content: base.content || '' })
+    setDraft({ ...normalize(base), id: null, name: base.name || '', description: base.description || '', fileName: base.fileName || '', folder: base.folder || '' })
   }
-  const update = (key, value) => setDraft(current => ({ ...(current ?? editing), [key]: value }))
+  const update = (key, value) => setDraft(current => ({ ...normalize(current ?? editing), [key]: value }))
   const save = () => {
-    const value = draft ?? editing
+    const value = normalize(draft ?? editing)
     if (!value?.name.trim()) return
     const saved = onSave({
       ...value,
       name: value.name.trim(),
       fileName: (value.fileName || value.name).trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/(\.md)?$/i, '.md'),
+      folder: value.folder.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/{2,}/g, '/'),
+      content: compose(value),
     })
     setDraft(null)
     setSelectedId(saved.id)
@@ -94,10 +102,18 @@ export default function TemplatesDialog({ builtIn, custom, onSave, onDelete, onU
                     <span>File name</span>
                     <input value={editing.fileName} onChange={event => update('fileName', event.target.value)} placeholder="weekly-report.md" />
                   </label>
+                  <label className="templates-field">
+                    <span>Default folder</span>
+                    <input value={normalize(editing).folder} onChange={event => update('folder', event.target.value)} placeholder="reports/weekly" />
+                  </label>
                 </div>
                 <label className="templates-field is-grow">
-                  <span>Content (Markdown)</span>
-                  <textarea value={editing.content} onChange={event => update('content', event.target.value)} spellCheck={false} />
+                  <span>Front matter (YAML)</span>
+                  <textarea value={normalize(editing).frontMatter} onChange={event => update('frontMatter', event.target.value)} spellCheck={false} placeholder={'title: Weekly report\nstatus: draft'} />
+                </label>
+                <label className="templates-field is-grow">
+                  <span>Starter content (Markdown)</span>
+                  <textarea value={normalize(editing).starterContent} onChange={event => update('starterContent', event.target.value)} spellCheck={false} />
                 </label>
               </>
             ) : selected ? (

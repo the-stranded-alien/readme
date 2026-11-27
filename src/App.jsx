@@ -29,7 +29,7 @@ import {
 } from './icons'
 import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
-import { addSnapshot, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
+import { addSnapshot, readAllHistory, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
 import { canSyncToFolder, existsInFolder, folderPermission, readFolder, removeFromFolder, syncPath, writeAttachmentsToFolder, writeToFolder } from './folderSync'
 import { analyzeDocument, applyQualityFix, extractHeadings } from './documentAnalysis'
 import { FILE_DRAG_TYPE, fileLinkTitle, fuzzyScore, makeDuplicateFileName, relativeFileLink, resolveFileLink, MAX_FOLDER_DEPTH, cleanFileStem, folderDepth, splitFileName } from './fileUtils'
@@ -80,6 +80,8 @@ import PresentationSettings from './components/PresentationSettings'
 import PromptDialog from './components/PromptDialog'
 import TableEditorDialog from './components/TableEditorDialog'
 import TasksPanel from './components/TasksPanel'
+import LinkCheckDialog from './components/LinkCheckDialog'
+import RecoveryDialog from './components/RecoveryDialog'
 import GraphView from './components/GraphView'
 import { daysUntil, parseTasks, toggleTaskAt } from './tasks'
 import { emptyTable, findTables, parseTable, tableAt, tableToMarkdown } from './tableModel'
@@ -2531,6 +2533,14 @@ const IMPORTABLE_FILE_RE = /\.(md|markdown|txt|docx|html?)$/i
 const CONVERTIBLE_FILE_RE = /\.(docx|html?)$/i
 // At most this many files can be pinned (they stay first in the tab bar).
 const MAX_PINNED = 5
+const uniqueName = (name, taken) => {
+  const lower = new Set(taken.map(item => item.toLowerCase()))
+  if (!lower.has(name.toLowerCase())) return name
+  const slash = name.lastIndexOf('/')
+  const dir = slash === -1 ? '' : name.slice(0, slash + 1)
+  return dir + makeDuplicateFileName(name.slice(slash + 1), taken.filter(item => item.startsWith(dir)).map(item => item.slice(dir.length)))
+}
+const cleanFolderName = raw => raw.trim().replace(/\s*\/\s*/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/{2,}/g, '/').replace(/[\\:*?"<>|]+/g, '-')
 function orderPinnedFirst(list) {
   return [...list.filter(file => file.pinned), ...list.filter(file => !file.pinned)]
 }
@@ -2731,7 +2741,7 @@ export default function App() {
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
   const [appSettings, setAppSettings] = useState(() => {
-    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '', embedImages: false, defaultDocStyle: 'readme', workspaceSyncDisabled: false }
+    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '', embedImages: false, defaultDocStyle: 'readme', workspaceSyncDisabled: false, workspaceAutosaveMs: 300, recoverySnapshotMinutes: 10 }
     try { return { ...defaults, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return defaults }
   })
   const updateAppSetting = useCallback((key, value) => setAppSettings(current => ({ ...current, [key]: value })), [])
@@ -2791,6 +2801,8 @@ export default function App() {
   const [cmdQuery, setCmdQuery]       = useState('')
   const [diffOpen, setDiffOpen] = useState(false)
   const [qualityOpen, setQualityOpen] = useState(false)
+  const [linkCheckOpen, setLinkCheckOpen] = useState(false)
+  const [recoveryData, setRecoveryData] = useState(null)
   const appInstall = useAppInstall()
   const [speechActive, setSpeechActive] = useState(false)
   const [speechPaused, setSpeechPaused] = useState(false)
@@ -2967,7 +2979,11 @@ export default function App() {
       return entry.tasks.map(task => ({ ...task, fileId: file.id, fileName: file.name, closed: closedIds.has(file.id) }))
     })
   }, [linkableFiles, closedFiles])
-  const tasksDueCount = useMemo(() => allTasks.filter(task => !task.checked && task.due && daysUntil(task.due) <= 0).length, [allTasks])
+  const agendaDocuments = useMemo(() => [
+    ...files.map(file => documentInfo(file)),
+    ...closedFiles.map(entry => documentInfo({ ...entry.file, closed: true })),
+  ], [files, closedFiles])
+  const tasksDueCount = useMemo(() => allTasks.filter(task => !task.checked && task.due && daysUntil(task.due) <= 0).length + agendaDocuments.filter(doc => doc.due && daysUntil(doc.due) <= 0).length, [allTasks, agendaDocuments])
   const [tasksOpen, setTasksOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const graphFiles = useMemo(() => [...files, ...closedFiles.map(entry => ({ ...entry.file, closed: true }))], [files, closedFiles])
@@ -3155,9 +3171,9 @@ export default function App() {
         // Quota exceeded or storage disabled — keep everything working in memory
       }
       if (workspaceReady) writeWorkspace({ files, activeId: activeFileId, closed: closedFiles }).catch(() => {})
-    }, 300)
+    }, Math.max(100, Number(appSettings.workspaceAutosaveMs ?? 300)))
     return () => clearTimeout(timer)
-  }, [files, activeFileId, workspaceReady, closedFiles])
+  }, [files, activeFileId, workspaceReady, closedFiles, appSettings.workspaceAutosaveMs])
 
   useEffect(() => {
     if (!('BroadcastChannel' in window)) return
@@ -4317,21 +4333,39 @@ export default function App() {
       },
     })
   }, [activeFileId, content, takeSnapshot, updateActiveContent])
-  // Automatic snapshot: after 4s without typing, at most once every 10 minutes per file.
+  // Recovery snapshots are written after a short pause, using the workspace cadence setting.
   useEffect(() => {
-    if (!activeFileId || !workspaceReady || !content.trim()) return undefined
+    const minutes = Number(appSettings.recoverySnapshotMinutes ?? 10)
+    if (!activeFileId || !workspaceReady || !content.trim() || minutes <= 0) return undefined
     const timer = setTimeout(() => {
-      const last = lastSnapshotAtRef.current[activeFileId] ?? 0
-      if (Date.now() - last >= 10 * 60 * 1000) takeSnapshot(activeFileId, content, 'Auto-saved')
+      readHistory(activeFileId).then(history => {
+        const last = lastSnapshotAtRef.current[activeFileId] ?? history[0]?.at ?? 0
+        lastSnapshotAtRef.current[activeFileId] = last
+        if (Date.now() - last >= minutes * 60 * 1000) takeSnapshot(activeFileId, content, 'Recovery snapshot')
+      }).catch(() => { if (Date.now() - (lastSnapshotAtRef.current[activeFileId] ?? 0) >= minutes * 60 * 1000) takeSnapshot(activeFileId, content, 'Recovery snapshot') })
     }, 4000)
     return () => clearTimeout(timer)
-  }, [activeFileId, content, workspaceReady, takeSnapshot])
+  }, [activeFileId, content, workspaceReady, takeSnapshot, appSettings.recoverySnapshotMinutes])
   const openHistory = useCallback(async () => {
     if (!activeFileId) return
     setHistoryState({ fileId: activeFileId, snapshots: [], loading: true })
     const snapshots = await readHistory(activeFileId).catch(() => [])
     setHistoryState(state => (state?.fileId === activeFileId ? { fileId: activeFileId, snapshots, loading: false } : state))
   }, [activeFileId])
+  const openRecovery = useCallback(async () => {
+    setRecoveryData({ loading: true, snapshots: {} })
+    const snapshots = await readAllHistory().catch(() => ({}))
+    setRecoveryData({ loading: false, snapshots })
+  }, [])
+  const restoreRecoverySnapshot = useCallback(async (fileId, snapshot) => {
+    const file = linkableFiles.find(item => item.id === fileId)
+    if (!file || !snapshot) return
+    const accepted = await askConfirm({ title: 'Restore this recovery snapshot?', message: `The current version of “${file.name}” will be saved to history first.`, confirmLabel: 'Restore snapshot', icon: History })
+    if (!accepted) return
+    await takeSnapshot(file.id, file.content, 'Before recovery restore')
+    changeDocuments(new Map([[file.id, snapshot.content]]), `Recovered “${file.name}” from an earlier snapshot.`)
+    setRecoveryData(null)
+  }, [linkableFiles, askConfirm, takeSnapshot, changeDocuments])
   const restoreSnapshot = useCallback(async snapshot => {
     if (!activeFile || !snapshot) return
     if (!(await askConfirm({ title: 'Restore this version?', message: 'The current text is saved as a snapshot first, so you can undo this from history.', confirmLabel: 'Restore', icon: History }))) return
@@ -4947,13 +4981,6 @@ export default function App() {
     }
   }, [files, closedFileList, appSettings.defaultDocStyle])
 
-  const uniqueName = (name, taken) => {
-    const lower = new Set(taken.map(item => item.toLowerCase()))
-    if (!lower.has(name.toLowerCase())) return name
-    const slash = name.lastIndexOf('/')
-    const dir = slash === -1 ? '' : name.slice(0, slash + 1)
-    return dir + makeDuplicateFileName(name.slice(slash + 1), taken.filter(item => item.startsWith(dir)).map(item => item.slice(dir.length)))
-  }
   const moveFileToFolder = useCallback((id, folder) => {
     setFiles(prev => {
       const file = prev.find(item => item.id === id)
@@ -4990,7 +5017,6 @@ export default function App() {
     setMobileTab('editor')
     requestAnimationFrame(() => textareaRef.current?.focus())
   }, [markWorkspaceEdit, view])
-  const cleanFolderName = raw => raw.trim().replace(/\s*\/\s*/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/{2,}/g, '/').replace(/[\\:*?"<>|]+/g, '-')
   const folderExists = useCallback(path => (
     emptyFolders.includes(path)
     || files.some(file => file.name.startsWith(`${path}/`))
@@ -5479,6 +5505,17 @@ export default function App() {
     apply(changes, true)
     setToast({ message, tone: 'success', duration: 6000, action: { label: 'Undo', run: () => apply(before, false) } })
   }, [markWorkspaceEdit])
+  const updateAgendaProperty = useCallback((id, key, value) => {
+    const file = linkableFiles.find(item => item.id === id)
+    if (!file) return
+    const { entries } = readFrontMatter(file.content)
+    const existing = entries.find(entry => entry.key?.toLowerCase() === key.toLowerCase())
+    const properties = entries.filter(entry => entry.key).map(entry => ({ key: entry.key, type: entry.type, value: entry.value, style: entry.style }))
+    const retained = properties.filter(property => property.key.toLowerCase() !== key.toLowerCase())
+    if (value !== '' && value != null && value !== false) retained.push({ key: existing?.key || key, type: key === 'reminder' ? 'checkbox' : 'date', value })
+    const next = writeFrontMatter(file.content, retained)
+    if (next !== file.content) changeDocuments(new Map([[id, next]]), `${key === 'due' ? 'Deadline' : 'Reminder'} updated for “${file.name}”.`)
+  }, [linkableFiles, changeDocuments])
   const libraryMove = useCallback(async ids => {
     const raw = await askText({ title: `Move ${ids.length === 1 ? 'document' : `${ids.length} documents`} to a folder`, label: 'Folder (empty for the top level)', placeholder: 'e.g. notes/2026', confirmLabel: 'Move', allowEmpty: true })
     if (raw == null) return
@@ -5878,6 +5915,26 @@ export default function App() {
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   // Share links + transient toast messages.
   const [toast, setToast] = useState(null)
+  useEffect(() => {
+    if (!workspaceReady) return
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    let due = []
+    try {
+      due = agendaDocuments.filter(doc => {
+        if (!doc.reminder || !doc.due || doc.due > today) return false
+        const key = `readme-reminder-shown:${doc.id}`
+        if (localStorage.getItem(key) === today) return false
+        localStorage.setItem(key, today)
+        return true
+      })
+    } catch { due = [] }
+    if (due.length) setToast({
+      message: due.length === 1 ? `Reminder: “${due[0].title}” is due ${due[0].due === today ? 'today' : 'overdue'}.` : `${due.length} document reminders are due or overdue.`,
+      tone: 'info', duration: 9000,
+      action: { label: 'Open agenda', run: () => setTasksOpen(true) },
+    })
+  }, [agendaDocuments, workspaceReady])
   // One-time tips (at most one per session; Settings → Features → Show tips turns them off).
   const tipsQuiet = appSettings.showTips === false || presenting || tourOpen || Boolean(startupNotice)
   const tipCountRef = useRef({ links: null })
@@ -6082,28 +6139,23 @@ export default function App() {
   }, [exportContent, fileName, headings])
 
   const handleCreateFromTemplate = useCallback((tpl) => {
+    const folder = cleanFolderName(tpl.folder || '').split('/').filter(part => part && part !== '.' && part !== '..').join('/')
+    if (folderDepth(folder) > MAX_FOLDER_DEPTH) {
+      setToast({ message: `Template folder can be at most ${MAX_FOLDER_DEPTH} levels deep.`, tone: 'warning' })
+      return
+    }
     markWorkspaceEdit()
     const id = createFileId()
-    setFiles(prev => {
-      const taken = new Set(prev.map(f => f.name.toLowerCase()))
-      let name = tpl.fileName
-      if (taken.has(name.toLowerCase())) {
-        const dot = name.lastIndexOf('.')
-        const base = dot > -1 ? name.slice(0, dot) : name
-        const ext = dot > -1 ? name.slice(dot) : '.md'
-        let n = 2
-        while (taken.has(`${base}-${n}${ext}`.toLowerCase())) n += 1
-        name = `${base}-${n}${ext}`
-      }
-      return [...prev, { id, name, content: tpl.content }]
-    })
+    const requestedName = [folder, tpl.fileName || 'Untitled.md'].filter(Boolean).join('/')
+    const name = uniqueName(requestedName, linkableFiles.map(file => file.name))
+    setFiles(prev => [...prev, { id, name, content: tpl.content }])
     setActiveFileId(id)
     setActiveHeadingId(null)
     setShowScrollTop(false)
     if (view === 'preview') setView('split')
     setMobileTab('editor')
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [view, markWorkspaceEdit])
+  }, [view, markWorkspaceEdit, linkableFiles])
 
   const handleExportHtml = useCallback(async () => {
     const article = previewScrollRef.current?.querySelector('.book-page')
@@ -6240,13 +6292,15 @@ ${fontCss}
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
     ...(activeFile ? [{ id: 'preview-edit', label: previewEditOn ? 'Stop editing in the preview' : 'Edit in preview', hint: 'View', icon: Pencil, run: () => { setPreviewEditOn(on => !on); if (view === 'editor') setView('preview') } }] : []),
     { id: 'library', label: 'Library: all documents', hint: 'View', icon: Library, run: () => setLibraryOpen(true) },
+    { id: 'check-links', label: 'Check workspace links…', hint: 'Workspace', icon: Link2, run: () => setLinkCheckOpen(true) },
+    { id: 'recovery', label: 'Recovery & unsaved changes…', hint: 'Workspace', icon: HardDrive, run: openRecovery },
     { id: 'tour', label: 'Take the tour', hint: 'Help', icon: Sparkles, run: startTour },
     ...(activeFile ? [{ id: 'doc-style', label: 'Document style…', hint: 'Document', icon: Palette, run: () => { if (view === 'editor') setView('split'); setReaderOpen(true) } }] : []),
     { id: 'images', label: 'Images (attachments)', hint: 'View', icon: Images, run: () => setImagesOpen(true) },
     ...(activeFile ? [{ id: 'properties', label: 'Document properties (front matter)', hint: 'Document', icon: SlidersHorizontal, run: () => setPropertiesFor(activeFileId) }] : []),
     { id: 'graph', label: 'Graph of linked documents', hint: 'View', icon: Workflow, run: () => setGraphOpen(true) },
     { id: 'publish-site', label: 'Publish as a website', hint: 'Export', icon: Globe, run: () => setPublishOpen(true) },
-    { id: 'tasks', label: 'Tasks in all documents…', hint: shortcut('K', { shift: true }), icon: ListChecks, run: () => setTasksOpen(true) },
+    { id: 'tasks', label: 'Tasks & document agenda…', hint: shortcut('K', { shift: true }), icon: ListChecks, run: () => setTasksOpen(true) },
     { id: 'shortcuts', label: 'Keyboard shortcuts', hint: '?', icon: Keyboard, run: () => setShortcutsOpen(true) },
     { id: 'help', label: 'Help: how to use ReadMe', hint: 'Guide', icon: CircleHelp, run: () => setHelpOpen(true) },
     ...(activeFile ? [
@@ -6297,7 +6351,7 @@ ${fontCss}
     handleNewFile, appInstall.status, handleInstallApp, previewEditOn, activeFileId, startTour, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, handleExportConfluence, handleCopyConfluence, handleExportSlides, openTableEditor, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
-    headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
+    headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables, openRecovery,
     openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes, activeFont.label, cycleDocFont, handleSaveInPlace, isFullscreen, keepAwake, toggleFullscreen, openPresentation,
   ])
 
@@ -7556,7 +7610,17 @@ ${fontCss}
           onEditYaml={propertiesFor === activeFileId ? () => goToEditorLine(2) : undefined}
           onClose={() => setPropertiesFor(null)} />
       )}
-      {tasksOpen && <TasksPanel tasks={allTasks} onToggle={toggleTask} onOpen={openTask} onClose={() => setTasksOpen(false)} />}
+      {tasksOpen && <TasksPanel tasks={allTasks} documents={agendaDocuments} onToggle={toggleTask} onOpen={openTask}
+        onOpenDocument={id => { setTasksOpen(false); openDocument(id) }}
+        onSetDocumentDue={(id, value) => updateAgendaProperty(id, 'due', value)}
+        onToggleDocumentReminder={(id, value) => updateAgendaProperty(id, 'reminder', value)}
+        onClose={() => setTasksOpen(false)} />}
+      {linkCheckOpen && <LinkCheckDialog files={[...files, ...closedFiles.map(entry => ({ ...entry.file, closed: true }))]}
+        attachmentPaths={[...attachments.keys()]} onOpen={id => { setLinkCheckOpen(false); openDocument(id) }} onClose={() => setLinkCheckOpen(false)} />}
+      {recoveryData && <RecoveryDialog files={[...files, ...closedFiles.map(entry => ({ ...entry.file, closed: true }))]}
+        snapshots={recoveryData.snapshots} loading={recoveryData.loading}
+        onOpen={id => { setRecoveryData(null); openDocument(id) }}
+        onRestore={restoreRecoverySnapshot} onClose={() => setRecoveryData(null)} />}
       {tableEdit && (
         <TableEditorDialog key={`${tableEdit.mode}-${tableEdit.from}`} initial={tableEdit.table} mode={tableEdit.mode}
           onSave={saveTable} onCancel={() => setTableEdit(null)} onDelete={tableEdit.mode === 'edit' ? deleteTable : undefined} />
@@ -7662,11 +7726,26 @@ ${fontCss}
           highContrast={highContrast}
           onHighContrast={value => { if (value !== highContrast) toggleHighContrast() }}
           workspaceExtra={(
-            <FolderSyncCard supported={canSyncToFolder()} state={syncFolder} disabled={Boolean(appSettings.workspaceSyncDisabled)}
-              activity={syncActivity}
-              onConnect={connectSyncFolder} onReconnect={reconnectSyncFolder}
-              onSyncNow={() => syncFolder?.handle && runFolderSync(syncFolder.handle)} onDisconnect={disconnectSyncFolder}
-              onToggleDisabled={value => updateAppSetting('workspaceSyncDisabled', value)} />
+            <>
+              <FolderSyncCard supported={canSyncToFolder()} state={syncFolder} disabled={Boolean(appSettings.workspaceSyncDisabled)}
+                activity={syncActivity}
+                onConnect={connectSyncFolder} onReconnect={reconnectSyncFolder}
+                onSyncNow={() => syncFolder?.handle && runFolderSync(syncFolder.handle)} onDisconnect={disconnectSyncFolder}
+                onToggleDisabled={value => updateAppSetting('workspaceSyncDisabled', value)} />
+              <label className="settings-field recovery-interval-setting">
+                <span className="settings-toggle-text"><strong>Browser autosave</strong><span>Keep edits in this browser automatically, with this short pause after typing.</span></span>
+                <span className="settings-select-wrap"><select className="settings-select" value={appSettings.workspaceAutosaveMs ?? 300} onChange={event => updateAppSetting('workspaceAutosaveMs', Number(event.target.value))} aria-label="Browser autosave delay">
+                  <option value={100}>After 0.1 seconds</option><option value={300}>After 0.3 seconds</option><option value={1000}>After 1 second</option><option value={3000}>After 3 seconds</option>
+                </select></span>
+              </label>
+              <label className="settings-field recovery-interval-setting">
+                <span className="settings-toggle-text"><strong>Recovery snapshot interval</strong><span>Save an earlier version after you pause editing. Browser autosave remains immediate.</span></span>
+                <span className="settings-select-wrap"><select className="settings-select" value={appSettings.recoverySnapshotMinutes ?? 10} onChange={event => updateAppSetting('recoverySnapshotMinutes', Number(event.target.value))} aria-label="Recovery snapshot interval">
+                  <option value={0}>Off</option><option value={1}>Every minute</option><option value={5}>Every 5 minutes</option><option value={10}>Every 10 minutes</option><option value={30}>Every 30 minutes</option>
+                </select></span>
+              </label>
+              <div className="settings-actions"><button type="button" className="reader-chip" onClick={openRecovery}><History size={12} />Recovery &amp; unsaved changes</button></div>
+            </>
           )}
           petExtra={(
             <ReadingPetSettings prefs={petPrefs} onChange={updatePetPref} lite={appSettings.lite} />

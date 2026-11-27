@@ -10,7 +10,8 @@ const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low' }
  * Every task in the workspace in one place. `tasks`: [{ ...task, fileId, fileName, closed }].
  * Ticking calls onToggle(task); clicking a task's text calls onOpen(task).
  */
-export default function TasksPanel({ tasks, onToggle, onOpen, onClose }) {
+export default function TasksPanel({ tasks, documents = [], onToggle, onOpen, onOpenDocument, onSetDocumentDue, onToggleDocumentReminder, onClose }) {
+  const [mode, setMode] = useState('tasks')
   const [filter, setFilter] = useState(() => (tasks.some(task => !task.checked) ? 'open' : 'all'))
   const [groupBy, setGroupBy] = useState('document')
   const [tag, setTag] = useState('')
@@ -66,10 +67,30 @@ export default function TasksPanel({ tasks, onToggle, onOpen, onClose }) {
         <div className="pdf-dialog-header">
           <div>
             <h2 id="tasks-title" className="flex items-center gap-2"><ListChecks size={16} style={{ color: 'var(--accent)' }} />Tasks</h2>
-            <p>Every task list item in your documents. Add <code>due:2026-12-01</code>, <code>#tag</code> or <code>!high</code> to a task to plan with it.</p>
+            <p>Plan task due dates and document deadlines across your workspace.</p>
           </div>
           <button type="button" className="btn-icon" onClick={onClose} aria-label="Close tasks" data-tooltip="Close (Esc)"><X size={15} /></button>
         </div>
+        <div className="agenda-mode pdf-segmented" role="radiogroup" aria-label="Agenda view">
+          <button type="button" role="radio" aria-checked={mode === 'tasks'} className={mode === 'tasks' ? 'is-active' : ''} onClick={() => setMode('tasks')}>Tasks</button>
+          <button type="button" role="radio" aria-checked={mode === 'documents'} className={mode === 'documents' ? 'is-active' : ''} onClick={() => setMode('documents')}>Document deadlines</button>
+        </div>
+        {mode === 'documents' ? (
+          <div className="tasks-body agenda-documents">
+            <label className="tasks-search agenda-document-search"><Search size={13} aria-hidden="true" /><input ref={searchRef} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find a document" aria-label="Find a document deadline" /></label>
+            {documents.filter(doc => !query.trim() || `${doc.title} ${doc.name}`.toLowerCase().includes(query.trim().toLowerCase())).length ? (
+              <ul className="agenda-document-list">{documents.filter(doc => !query.trim() || `${doc.title} ${doc.name}`.toLowerCase().includes(query.trim().toLowerCase())).map(doc => (
+                <li key={doc.id}>
+                  <button type="button" className="agenda-document-open" onClick={() => onOpenDocument(doc.id)}><FileText size={13} /><span>{doc.title}</span><small>{doc.name}</small></button>
+                  <label><span className="sr-only">Due date for {doc.title}</span><input type="date" value={doc.due || ''} onChange={event => onSetDocumentDue(doc.id, event.target.value)} /></label>
+                  {doc.due && <span className={`tasks-chip is-${dueState(doc.due, today)}`}>{dueLabel(doc.due, today)}</span>}
+                  <label className="agenda-reminder"><input type="checkbox" checked={doc.reminder} onChange={event => onToggleDocumentReminder(doc.id, event.target.checked)} /><span>Remind me</span></label>
+                  {doc.closed && <span className="tasks-closed">closed</span>}
+                </li>
+              ))}</ul>
+            ) : <EmptyState compact icon={CalendarDays} title="No matching documents" text="Try another search." />}
+          </div>
+        ) : <>
         <div className="tasks-controls">
           <div className="pdf-segmented tasks-filters" role="radiogroup" aria-label="Show">
             {TASK_FILTERS.map(item => (
@@ -131,6 +152,7 @@ export default function TasksPanel({ tasks, onToggle, onOpen, onClose }) {
             </section>
           ))}
         </div>
+        </>}
       </div>
     </div>
   )
