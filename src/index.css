@@ -3780,3 +3780,10 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .table-step:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .table-step:disabled { opacity: .35; cursor: default; }
 .table-menu { z-index: 1200; }
+
+/* Table editor: a little wider, with room around the grid (row numbers no longer touch the edge). */
+.table-editor { width: min(1180px, calc(100vw - 32px)); }
+.table-editor .pdf-dialog-header { padding-left: 28px; padding-right: 24px; }
+.table-editor .table-toolbar { padding-left: 28px; padding-right: 28px; }
+.table-editor .table-grid-scroll { padding: 18px 28px 20px; }
+.table-editor .pdf-dialog-footer { padding-left: 28px; padding-right: 28px; }
