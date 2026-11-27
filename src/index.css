@@ -3735,3 +3735,17 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .startup-actions .reader-chip { flex: none; }
 .empty-tour { margin: -6px auto 18px; padding: 4px 10px; border: 0; background: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 @media print { .startup-card, .tour-layer { display: none !important; } }
+
+/* Installed app, "window controls overlay": ReadMe draws the title bar itself
+   (theme's dark colour, bold name, draggable; the window buttons sit on top of it). */
+.wco-titlebar { display: none; }
+.wco { --titlebar-h: env(titlebar-area-height, 33px); }
+.wco .wco-titlebar {
+  display: flex; align-items: center; justify-content: center;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000; height: var(--titlebar-h);
+  padding-left: env(titlebar-area-x, 0px); padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  background: var(--titlebar-bg, #3b1680); color: #fff;
+  font: 700 13px/1 'Inter', system-ui, sans-serif; letter-spacing: .01em;
+  -webkit-app-region: drag; app-region: drag; user-select: none;
+}
+.wco .app-shell { height: calc(100vh - var(--titlebar-h)) !important; margin-top: var(--titlebar-h); }

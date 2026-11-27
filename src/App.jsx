@@ -621,6 +621,27 @@ function markdownUrlTransform(url, key, node) {
   return defaultUrlTransform(url)
 }
 
+/**
+ * A dark, solid title-bar colour from the theme's accent: darkened until white text reads well
+ * on it (contrast ≥ 7). Returns "#rrggbb", or null if the colour can't be read.
+ */
+function titleBarColor(accent) {
+  if (!accent || typeof document === 'undefined') return null
+  const context = document.createElement('canvas').getContext?.('2d')
+  if (!context) return null
+  context.fillStyle = '#000'
+  context.fillStyle = accent
+  const hex = String(context.fillStyle)
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex) || null
+  let rgb = match ? match.slice(1).map(part => parseInt(part, 16))
+    : (/rgba?\(([^)]+)\)/.exec(hex)?.[1].split(',').slice(0, 3).map(Number) ?? null)
+  if (!rgb) return null
+  const channel = value => { const c = value / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4 }
+  const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+  for (let i = 0; i < 12 && 1.05 / (luminance(rgb) + 0.05) < 7; i += 1) rgb = rgb.map(value => Math.round(value * 0.85))
+  return `#${rgb.map(value => value.toString(16).padStart(2, '0')).join('')}`
+}
+
 function MarkdownRenderer({ content, dark, sourceRanges = false }) {
   const components = useMemo(() => ({
     pre({ children }) { return <>{children}</> },
@@ -3048,15 +3069,21 @@ export default function App() {
     const active = themeClasses(themeById(theme))
     for (const name of ALL_THEME_CLASSES) root.classList.toggle(name, active.includes(name))
     root.classList.toggle('high-contrast', highContrast)
-    // The installed app's title bar (and mobile browser bars) follow the theme.
-    const bar = getComputedStyle(root).getPropertyValue('--bg-header').trim() || getComputedStyle(root).getPropertyValue('--bg-app').trim()
-    // Title bars can't be see-through: drop the alpha ("#ffffffd6" → "#ffffff", rgba → rgb).
-    const solid = /^#[0-9a-f]{8}$/i.test(bar) ? bar.slice(0, 7)
-      : /^rgba\(/i.test(bar) ? bar.replace(/^rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/i, 'rgb($1,$2,$3)') : bar
+    // The installed app's title bar (and mobile browser bars) use the theme's dark colour.
+    const solid = titleBarColor(getComputedStyle(root).getPropertyValue('--accent').trim())
     let meta = document.querySelector('meta[name="theme-color"]')
     if (!meta) { meta = document.createElement('meta'); meta.name = 'theme-color'; document.head.append(meta) }
-    if (solid) meta.content = solid
+    if (solid) { meta.content = solid; root.style.setProperty('--titlebar-bg', solid) }
   }, [isDark, isSepia, highContrast, theme])
+  // Installed app with "window controls overlay": ReadMe draws its own title bar (see .wco-titlebar).
+  useEffect(() => {
+    const query = window.matchMedia?.('(display-mode: window-controls-overlay)')
+    if (!query) return undefined
+    const apply = () => document.documentElement.classList.toggle('wco', query.matches)
+    apply()
+    query.addEventListener?.('change', apply)
+    return () => query.removeEventListener?.('change', apply)
+  }, [])
   // Turning additional themes off while one is active falls back to Dark.
   useEffect(() => {
     if (!appSettings.extraThemes && themeById(theme).extra) setTheme('dark')
@@ -6223,6 +6250,7 @@ ${fontCss}
     <IconStyleContext.Provider value={smallIconStyle}>
     <LiteContext.Provider value={appSettings.lite}>
     <CodeThemeContext.Provider value={highContrast ? null : theme}>
+    <div className="wco-titlebar no-print" aria-hidden="true"><span>ReadMe</span></div>
     <div
       ref={appRef}
       className="h-screen flex flex-col app-shell overflow-hidden anim-fade-in"

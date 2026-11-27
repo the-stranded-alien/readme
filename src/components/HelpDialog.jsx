@@ -97,7 +97,7 @@ const HELP_SECTIONS = [
   {
     id: 'settings', title: 'Settings & themes',
     items: [
-      ['Install the app', 'Settings → App (or Download → Download ReadMe App, shown when your browser can install it) installs ReadMe as an app: its own window, works offline, opens .md files from your computer, and updates by itself. Settings → App shows whether it is already installed and the version. In the app, the title bar follows your theme.'],
+      ['Install the app', 'Settings → App (or Download → Download ReadMe App, shown when your browser can install it) installs ReadMe as an app: its own window, works offline, opens .md files from your computer, and updates by itself. Settings → App shows whether it is already installed and the version. In the app, the title bar takes your theme’s dark colour. Click the small arrow in the app’s title bar (“Hide title bar”) and ReadMe draws the title bar itself, with the name in bold; click it again to go back.'],
       ['Versions', 'Settings → Versions lists every ReadMe version with its date and what changed; Settings → About shows the version you are using.'],
       ['Themes', 'The theme button cycles Light, Dark and Sepia. Turn on Additional themes in Settings → Appearance for Neon (pink, blue, green, purple or multicolour rainbow), Ocean, Forest, Sun, Monokai, Nord, Solarized and Marble (black and white). High contrast works with every theme. Settings → Appearance → Default theme picks the theme ReadMe always opens with (or “Last used”).'],
       ['Lite mode', 'Settings → Features → Lite mode uses less memory by turning off syntax colours, diagrams, link previews, the reading cats and animations.'],
