@@ -2336,8 +2336,14 @@ describe('advanced browser features', () => {
 
     // Hide / Show closed files toggle
     expect(within(tree).getByRole('treeitem', { name: 'One.md (closed)' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Closed file options' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide closed files' }))
+    const closedOptionsButton = screen.getByRole('button', { name: 'Closed file options' })
+    closedOptionsButton.getBoundingClientRect = () => ({ left: 0, right: 24, top: 20, bottom: 44, width: 24, height: 24 })
+    fireEvent.click(closedOptionsButton)
+    const closedOptionsMenu = screen.getByRole('menu', { name: 'Closed file options' })
+    expect(closedOptionsMenu.style.position).toBe('fixed')
+    expect(closedOptionsMenu.style.left).toBe('8px')
+    expect(closedOptionsMenu.style.width).toBe('242px')
+    fireEvent.click(within(closedOptionsMenu).getByRole('menuitem', { name: 'Hide closed files' }))
     expect(within(tree).queryByRole('treeitem', { name: 'One.md (closed)' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Closed file options' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Show closed files' }))

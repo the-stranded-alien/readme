@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronRight, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, MoreHorizontal, Pencil, Pin, PinOff, RotateCcw, Trash2, X } from '../icons'
 import { FILE_DRAG_TYPE, MAX_FOLDER_DEPTH, folderDepth, isModifiedFromDisk, labelColor } from '../fileUtils'
 
@@ -42,15 +43,41 @@ export default function FileTree({
     try { return localStorage.getItem(SHOW_CLOSED_KEY) !== 'false' } catch { return true }
   })
   const [closedMenuOpen, setClosedMenuOpen] = useState(false)
+  const [closedMenuPosition, setClosedMenuPosition] = useState(null)
+  const closedMenuTriggerRef = useRef(null)
   const closedMenuRef = useRef(null)
+  const positionClosedMenu = useCallback(() => {
+    const rect = closedMenuTriggerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const width = Math.min(242, window.innerWidth - 16)
+    const height = 92
+    const above = rect.bottom + height > window.innerHeight && rect.top > height
+    setClosedMenuPosition({
+      left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+      width,
+      ...(above ? { bottom: window.innerHeight - rect.top + 5 } : { top: rect.bottom + 5 }),
+      maxHeight: Math.max(120, above ? rect.top - 16 : window.innerHeight - rect.bottom - 16),
+    })
+  }, [])
   useEffect(() => {
     if (!closedMenuOpen) return undefined
-    const closeOutside = event => { if (!closedMenuRef.current?.contains(event.target)) setClosedMenuOpen(false) }
-    const closeEscape = event => { if (event.key === 'Escape') setClosedMenuOpen(false) }
+    const closeOutside = event => {
+      if (!closedMenuTriggerRef.current?.contains(event.target) && !closedMenuRef.current?.contains(event.target)) setClosedMenuOpen(false)
+    }
+    const closeEscape = event => {
+      if (event.key === 'Escape') { setClosedMenuOpen(false); closedMenuTriggerRef.current?.focus() }
+    }
     document.addEventListener('mousedown', closeOutside)
     document.addEventListener('keydown', closeEscape)
-    return () => { document.removeEventListener('mousedown', closeOutside); document.removeEventListener('keydown', closeEscape) }
-  }, [closedMenuOpen])
+    window.addEventListener('resize', positionClosedMenu)
+    window.addEventListener('scroll', positionClosedMenu, true)
+    return () => {
+      document.removeEventListener('mousedown', closeOutside)
+      document.removeEventListener('keydown', closeEscape)
+      window.removeEventListener('resize', positionClosedMenu)
+      window.removeEventListener('scroll', positionClosedMenu, true)
+    }
+  }, [closedMenuOpen, positionClosedMenu])
   const toggleShowClosed = () => setShowClosed(prev => {
     const next = !prev
     try { localStorage.setItem(SHOW_CLOSED_KEY, String(next)) } catch { /* optional */ }
@@ -296,18 +323,22 @@ export default function FileTree({
           <button type="button" onClick={() => onNewFile('')} data-tip="New file" aria-label="New file at top level"><FilePlus size={13} /></button>
           <button type="button" onClick={onNewFolder} data-tip="New folder" aria-label="New folder"><FolderPlus size={13} /></button>
           {closedList.length > 0 && (
-            <div className="file-tree-more-wrap" ref={closedMenuRef}>
-              <button type="button" onClick={() => setClosedMenuOpen(open => !open)} aria-expanded={closedMenuOpen}
+            <div className="file-tree-more-wrap">
+              <button type="button" ref={closedMenuTriggerRef} onClick={() => {
+                if (closedMenuOpen) setClosedMenuOpen(false)
+                else { positionClosedMenu(); setClosedMenuOpen(true) }
+              }} aria-expanded={closedMenuOpen}
                 aria-label="Closed file options" data-tip="Closed file options"><MoreHorizontal size={15} /></button>
-              {closedMenuOpen && (
-                <div className="file-tree-more-menu anim-pop-in" role="menu" aria-label="Closed file options">
+              {closedMenuOpen && closedMenuPosition && createPortal(
+                <div ref={closedMenuRef} className="file-tree-more-menu anim-pop-in" role="menu" aria-label="Closed file options"
+                  style={{ position: 'fixed', left: closedMenuPosition.left, top: closedMenuPosition.top, bottom: closedMenuPosition.bottom, width: closedMenuPosition.width, maxHeight: closedMenuPosition.maxHeight }}>
                   <button type="button" role="menuitem" onClick={() => { toggleShowClosed(); setClosedMenuOpen(false) }}>
                     <Eye size={16} /><span>{showClosed ? 'Hide closed files' : 'Show closed files'}</span>
                   </button>
                   <button type="button" role="menuitem" className="is-danger" onClick={() => { setClosedMenuOpen(false); (onDeleteClosed || onForget)(closedList.map(file => file.id)) }}>
                     <Trash2 size={16} /><span>Delete all closed files ({closedList.length})</span>
                   </button>
-                </div>
+                </div>, document.body,
               )}
             </div>
           )}

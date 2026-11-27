@@ -383,6 +383,8 @@ Rules learned the hard way:
 - The header is a three-column grid (`auto | minmax(0,1fr) | auto`) so items never overlap. At 1280, 1100 and 900px, check that header items don't overlap.
 - At phone width (390px), there must be **no horizontal page scroll**. Editor and Preview become tabs.
 - Dropdowns and dialogs must stay inside the viewport at every width.
+- Menus anchored inside a sidebar or overflow container must portal or clamp to the viewport; test the Files → Closed file options menu at the left edge and make sure it never opens off-screen.
+- Settings tabs should scroll through the parent `.settings-panel`, keeping the visible scrollbar at the modal's right edge; avoid nested content scrollbars that sit beside individual controls.
 - **Motion:** short (≤ 320ms), eased in-and-out or springy entrance animations (`fadeIn`, `slideUp`, `dropIn`, `popIn`). Slides move in the direction of travel.
   - **Everything respects `prefers-reduced-motion`.** That includes smooth scroll (`behavior: reduced ? 'auto' : 'smooth'`), view transitions and pulsing dots.
 - Printing: `no-print` on all chrome. Exports use dedicated renderers.
@@ -503,7 +505,7 @@ Keep reusable scripts in a scratch folder and run them against `vite preview` of
 
 1. **Visual / accessibility sweep:**
    - every view in Light and Dark, with no console errors, no icon problems and no horizontal scroll, plus a full axe run;
-   - every menu and dialog opens, stays on screen and closes with Escape;
+   - every menu and dialog opens, stays on screen and closes with Escape; explicitly test anchored menus near the left and right viewport edges and verify they are not clipped by sidebars or dialogs;
    - colour-contrast axe on 14 themes × with/without high contrast, in two views;
    - header overlap checks at 1280, 1100, 900 and 390px.
 2. **Functional walk-through** (around 35 steps): typing → preview, rendering (tables, math, mermaid, callouts, tasks, marks), persistence across reload, toolbar plus undo/redo, slash menu, outline, collapse, filter, bookmarks, find, find & replace, new/rename/duplicate/close, search across files, compare, palette, every export (check file name and size), share-link round trip, history, section focus, presentation, theme, settings toggles, shortcuts sheet, templates, empty state, mobile.
