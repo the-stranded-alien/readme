@@ -10,6 +10,7 @@ import { addTags, documentInfo, filterDocuments, inlineTags, readFrontMatter, so
 import { attachmentPath, attachmentSrc, attachmentsUsed, embeddedImages, imageReferences, renameAttachmentRefs, resolveImagePath, rewriteImageSources, setAltText } from '../attachments.js'
 import { DOC_STYLES, docStyleCss, documentStyleId } from '../docStyles.js'
 import { buildPdfDefinition } from '../pdfExport.js'
+import { compareVersions, releasesSince, startupNotice, takeTip, resetTipSession } from '../onboarding.js'
 import { describe, expect, it } from 'vitest'
 import { htmlToMarkdown, looksRich, parseDelimited, rowsToMarkdownTable, webPageToMarkdown } from '../htmlToMarkdown.js'
 
@@ -487,6 +488,35 @@ describe('document styles', () => {
     // Non-Latin text falls back to Roboto under Times.
     const greek = await buildPdfDefinition('Καλημέρα and hello', { look: academic })
     expect(JSON.stringify(greek.content)).toContain('"font":"Roboto"')
+  })
+})
+
+describe('guided start', () => {
+  const releases = [{ version: '2.10' }, { version: '2.9' }, { version: '2.8' }, { version: '2.7' }]
+  it('compares versions and finds what is new', () => {
+    expect(compareVersions('2.10', '2.9')).toBeGreaterThan(0)
+    expect(compareVersions('2.9', '2.9')).toBe(0)
+    expect(releasesSince(releases, '2.8').map(r => r.version)).toEqual(['2.10', '2.9'])
+    expect(releasesSince(releases, '1.0', 3)).toHaveLength(3)
+  })
+  it('welcomes first visits and shows what is new after an update', () => {
+    localStorage.clear()
+    expect(startupNotice({ storedKeys: [], appVersion: '2.10', releases })).toEqual({ kind: 'welcome' })
+    expect(startupNotice({ storedKeys: ['readme-theme'], appVersion: '2.10', releases }).releases.map(r => r.version)).toEqual(['2.10'])
+    localStorage.setItem('readme-last-version', '2.8')
+    expect(startupNotice({ storedKeys: ['readme-theme', 'readme-last-version'], appVersion: '2.10', releases }).releases.map(r => r.version)).toEqual(['2.10', '2.9'])
+    localStorage.setItem('readme-last-version', '2.10')
+    expect(startupNotice({ storedKeys: ['readme-last-version'], appVersion: '2.10', releases })).toBeNull()
+    localStorage.clear()
+  })
+  it('shows each tip once, and one tip per session', () => {
+    localStorage.clear(); resetTipSession()
+    expect(takeTip('wiki')).toBe(true)
+    expect(takeTip('tasks')).toBe(false)
+    resetTipSession()
+    expect(takeTip('wiki')).toBe(false)
+    expect(takeTip('tasks')).toBe(true)
+    localStorage.clear(); resetTipSession()
   })
 })
 

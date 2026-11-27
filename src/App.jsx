@@ -45,6 +45,10 @@ import PropertiesDialog from './components/PropertiesDialog'
 import ImagesDialog from './components/ImagesDialog'
 import { addTags, documentInfo } from './library'
 import { useAppInstall } from './appInstall'
+import { APP_VERSION, RELEASES } from './version'
+import { TIPS, TOUR_STEPS, markTourDone, markVersionSeen, startupNotice as computeStartupNotice, takeTip } from './onboarding'
+import GuidedTour from './components/GuidedTour'
+import StartupCard from './components/StartupCard'
 import { DOC_STYLES, docStyleById, docStyleCss, documentStyleId } from './docStyles'
 import { readFrontMatter, writeFrontMatter } from './library'
 
@@ -1158,7 +1162,7 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
   }, [view])
 
   return (
-    <div ref={containerRef} className="pill-track hidden sm:flex">
+    <div ref={containerRef} className="pill-track hidden sm:flex" data-tour="views">
       <div className="pill-indicator" style={pill} />
       {VIEW_MODES.map((mode, i) => {
         const { id, label } = mode
@@ -1722,7 +1726,7 @@ function NewFileButton({ onNew, onTemplate, templates = MD_TEMPLATES, onManageTe
   const close = useCallback(() => setOpen(false), [])
   return (
     <div className="split-download split-new">
-      <button type="button" onClick={onNew} data-tooltip="Create a new Markdown file" aria-label="New file" className="split-download-main">
+      <button type="button" onClick={onNew} data-tooltip="Create a new Markdown file" aria-label="New file" className="split-download-main" data-tour="new">
         <FilePlus size={14} /><span className="hidden sm:inline">New</span>
       </button>
       <button
@@ -1840,6 +1844,7 @@ function DownloadMenuButton({
         disabled={disabled && fileCount === 0}
         data-tooltip="Download and export options"
         aria-label="Download and export options"
+        data-tour="download"
         aria-haspopup="menu"
         aria-expanded={open}
         className="split-download-caret"
@@ -2729,6 +2734,19 @@ export default function App() {
     try { return { ...defaults, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return defaults }
   })
   const updateAppSetting = useCallback((key, value) => setAppSettings(current => ({ ...current, [key]: value })), [])
+
+  // ── Guided start: welcome + tour on a first visit, "What's new" after an update ──
+  const [startupNotice, setStartupNotice] = useState(() => {
+    try {
+      // Automated browsers (tests) skip it unless asked to show it.
+      if (navigator.webdriver && !localStorage.getItem('readme-show-onboarding')) return null
+      const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter(key => key && key !== 'readme-show-onboarding')
+      return computeStartupNotice({ storedKeys: keys, appVersion: APP_VERSION, releases: RELEASES })
+    } catch { return null }
+  })
+  useEffect(() => { markVersionSeen(APP_VERSION) }, [])
+  const [tourOpen, setTourOpen] = useState(false)
+  const startTour = useCallback(() => { setStartupNotice(null); setTourOpen(true) }, [])
   useEffect(() => {
     try { localStorage.setItem('readme-app-settings', JSON.stringify(appSettings)) } catch { /* storage is optional */ }
   }, [appSettings])
@@ -5738,6 +5756,26 @@ export default function App() {
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   // Share links + transient toast messages.
   const [toast, setToast] = useState(null)
+  // One-time tips (at most one per session; Settings → Features → Show tips turns them off).
+  const tipsQuiet = appSettings.showTips === false || presenting || tourOpen || Boolean(startupNotice)
+  const tipCountRef = useRef({ links: null })
+  useEffect(() => {
+    if (tipsQuiet || !activeFile) return undefined
+    const links = (content.match(/\[\[/g) || []).length
+    const previousLinks = tipCountRef.current.links
+    tipCountRef.current.links = links
+    let tip = null
+    if (previousLinks != null && links > previousLinks && document.activeElement?.matches?.('textarea.editor-textarea, .cm-content')) tip = 'wiki'
+    else if (/^\s*[-*+] \[ \]/m.test(content)) tip = 'tasks'
+    else if (files.length + closedFiles.length >= 6) tip = 'library'
+    else if (view === 'preview' && !previewEditOn && markdownBody.length > 200) tip = 'editPreview'
+    if (!tip) return undefined
+    const timer = setTimeout(() => {
+      if (!takeTip(tip)) return
+      setToast({ message: TIPS[tip], tone: 'success', duration: 9000, action: { label: 'Turn off tips', run: () => updateAppSetting('showTips', false) } })
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [tipsQuiet, activeFile, content, files.length, closedFiles.length, view, previewEditOn, markdownBody.length, updateAppSetting])
   // A newer ReadMe is out (or a file this older tab needs is gone): offer a reload. Shown after
   // any error message from the action that failed, so it isn't replaced by it.
   useEffect(() => {
@@ -6080,6 +6118,8 @@ ${fontCss}
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
     ...(activeFile ? [{ id: 'preview-edit', label: previewEditOn ? 'Stop editing in the preview' : 'Edit in preview', hint: 'View', icon: Pencil, run: () => { setPreviewEditOn(on => !on); if (view === 'editor') setView('preview') } }] : []),
     { id: 'library', label: 'Library: all documents', hint: 'View', icon: Library, run: () => setLibraryOpen(true) },
+    { id: 'tour', label: 'Take the tour', hint: 'Help', icon: Sparkles, run: startTour },
+    ...(activeFile ? [{ id: 'doc-style', label: 'Document style…', hint: 'Document', icon: Palette, run: () => { if (view === 'editor') setView('split'); setReaderOpen(true) } }] : []),
     { id: 'images', label: 'Images (attachments)', hint: 'View', icon: Images, run: () => setImagesOpen(true) },
     ...(activeFile ? [{ id: 'properties', label: 'Document properties (front matter)', hint: 'Document', icon: SlidersHorizontal, run: () => setPropertiesFor(activeFileId) }] : []),
     { id: 'graph', label: 'Graph of linked documents', hint: 'View', icon: Workflow, run: () => setGraphOpen(true) },
@@ -6132,7 +6172,7 @@ ${fontCss}
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
     ] : []),
   ], [
-    handleNewFile, appInstall.status, handleInstallApp, previewEditOn, activeFileId, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
+    handleNewFile, appInstall.status, handleInstallApp, previewEditOn, activeFileId, startTour, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, handleExportConfluence, handleCopyConfluence, handleExportSlides, openTableEditor, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
@@ -6297,7 +6337,7 @@ ${fontCss}
             <button type="button" onClick={() => setSettingsOpen('workspace')} className="btn-icon" data-tooltip="Settings" aria-label="Settings">
               <Settings size={15} />
             </button>
-            <button type="button" onClick={() => setHelpOpen(true)} className="btn-icon tooltip-end" data-tooltip="How to use ReadMe" aria-label="Help: how to use ReadMe">
+            <button type="button" onClick={() => setHelpOpen(true)} className="btn-icon tooltip-end" data-tooltip="How to use ReadMe" aria-label="Help: how to use ReadMe" data-tour="help">
               <CircleHelp size={15} />
             </button>
           </div>
@@ -6391,6 +6431,7 @@ ${fontCss}
             onRestore={() => restoreInputRef.current?.click()}
             onTemplate={handleCreateFromTemplate}
             onWriteReadme={() => setWriteReadmeOpen(true)}
+            onTour={startTour}
           />
         ) : (
           <>
@@ -6827,6 +6868,7 @@ ${fontCss}
                       onClick={() => setAiOpen(true)}
                       data-tooltip="On-device AI: summarize, translate, proofread"
                       aria-label="AI tools"
+                      data-tour="ai"
                       className="flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors"
                       style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-4)' }}
                     >
@@ -7408,7 +7450,18 @@ ${fontCss}
       )}
 
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
-      {helpOpen && <HelpDialog hideAi={hideAi} onShortcuts={() => { setHelpOpen(false); setShortcutsOpen(true) }} onClose={() => setHelpOpen(false)} />}
+      {helpOpen && <HelpDialog hideAi={hideAi} onTour={() => { setHelpOpen(false); startTour() }} onShortcuts={() => { setHelpOpen(false); setShortcutsOpen(true) }} onClose={() => setHelpOpen(false)} />}
+      {!presenting && !tourOpen && (
+        <StartupCard notice={startupNotice} onTour={startTour} onClose={() => setStartupNotice(null)}
+          onShow={id => { setStartupNotice(null); requestAnimationFrame(() => paletteActions.find(action => action.id === id)?.run()) }} />
+      )}
+      {tourOpen && (
+        <GuidedTour steps={TOUR_STEPS} onDone={completed => {
+          setTourOpen(false)
+          markTourDone()
+          if (completed) setToast({ message: 'You’re all set. Help (?) explains everything else, and the tour is there any time.', tone: 'success', duration: 5000 })
+        }} />
+      )}
 
       {aiOpen && activeFile && !hideAi && (
         <AiToolsDialog

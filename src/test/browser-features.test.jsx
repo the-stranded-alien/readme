@@ -1130,6 +1130,28 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(document.querySelector('.frontmatter-card')?.textContent).toContain('final'))
   })
 
+  it('welcomes first-time users with a tour, and shows what is new after an update', async () => {
+    installApp()
+    const welcome = await screen.findByRole('region', { name: 'Welcome to ReadMe' })
+    fireEvent.click(within(welcome).getByRole('button', { name: 'Take the tour' }))
+    // In jsdom nothing has a size, so the tour has no visible steps and ends at once; the card is gone.
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Welcome to ReadMe' })).toBeNull())
+    expect(localStorage.getItem('readme-tour-done')).toBe('1')
+    expect(localStorage.getItem('readme-last-version')).toBe(APP_VERSION)
+  })
+
+  it('shows What’s new once after an update, with Show me', async () => {
+    const { RELEASES } = await import('../version.js')
+    localStorage.setItem('readme-theme', 'light')
+    localStorage.setItem('readme-last-version', RELEASES[2].version)
+    installApp()
+    const card = await screen.findByRole('region', { name: new RegExp(`What’s new in ReadMe ${APP_VERSION.replace('.', '\\.')}`) })
+    expect(card).toHaveTextContent(RELEASES[0].notes[0])
+    expect(card).toHaveTextContent(`Version ${RELEASES[1].version}`)
+    fireEvent.click(within(card).getByRole('button', { name: 'Got it' }))
+    await waitFor(() => expect(screen.queryByRole('region', { name: /What’s new/ })).toBeNull())
+  })
+
   it('uses the CodeMirror editor (opt-in) with folds that mirror the preview', async () => {
     localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code', version: 2 }))
     const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body'].join('\n')

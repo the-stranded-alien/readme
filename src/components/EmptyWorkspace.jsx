@@ -29,7 +29,7 @@ function PagesIllustration() {
   )
 }
 
-export default function EmptyWorkspace({ templates, canReopen, onNew, onOpen, onImportUrl, onReopen, onRestore, onTemplate, onWriteReadme }) {
+export default function EmptyWorkspace({ templates, canReopen, onNew, onOpen, onImportUrl, onReopen, onRestore, onTemplate, onWriteReadme, onTour }) {
   const actions = [
     { id: 'new', icon: FilePlus, title: 'New blank file', text: 'Start writing from scratch', run: onNew, primary: true },
     { id: 'open', icon: FolderOpen, title: 'Open files', text: 'Markdown files or a whole folder', run: onOpen },
@@ -46,6 +46,7 @@ export default function EmptyWorkspace({ templates, canReopen, onNew, onOpen, on
         <PagesIllustration />
         <h1>Start something new</h1>
         <p>Write, preview and export Markdown — everything stays in your browser. Drop .md files anywhere to open them.</p>
+        {onTour && <button type="button" className="empty-tour" onClick={onTour}>New here? Take a one-minute tour</button>}
         <div className="empty-actions">
           {actions.map(action => (
             <button key={action.id} type="button" data-hue={action.id} className={`empty-card${action.primary ? ' is-primary' : ''}`} onClick={action.run}>

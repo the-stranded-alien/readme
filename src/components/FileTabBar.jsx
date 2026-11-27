@@ -287,7 +287,7 @@ export default function FileTabBar({
         </button>
       )}
       {onOpenLibrary && (
-        <button type="button" onClick={onOpenLibrary} className="file-tree-toggle" aria-label="Library: all documents" data-tooltip="Library: all documents">
+        <button type="button" onClick={onOpenLibrary} className="file-tree-toggle" data-tour="library" aria-label="Library: all documents" data-tooltip="Library: all documents">
           <Library size={14} />
         </button>
       )}
@@ -501,7 +501,7 @@ export default function FileTabBar({
           </button>
         )}
 
-        <label className="file-tabs-command-search">
+        <label className="file-tabs-command-search" data-tour="palette">
           <Search size={13} aria-hidden="true" />
           <input
             type="search"

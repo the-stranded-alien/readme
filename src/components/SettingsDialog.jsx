@@ -185,6 +185,12 @@ export default function SettingsDialog({
                   onChange={value => onChange('hideAi', value)}
                 />
                 <SettingsToggle
+                  label="Show tips"
+                  description="Now and then (never more than once per visit), a short tip points out a feature you haven’t used yet."
+                  checked={settings.showTips !== false}
+                  onChange={value => onChange('showTips', value)}
+                />
+                <SettingsToggle
                   label="Embed pasted images in the document"
                   description="Off (recommended): pasted and dropped images are kept as attachments (see Images in the command palette) and documents only hold a short reference, so they stay small and readable. On: images are written into the document itself."
                   checked={Boolean(settings.embedImages)}

@@ -12,6 +12,7 @@ const HELP_SECTIONS = [
       ['Open files', 'Click Upload, drop .md files anywhere on the window, or open a whole folder. The arrow next to Upload also imports Markdown or a web page from a URL. Files you open from your computer can be saved straight back to disk.'],
       ['Create a file', 'Click New for a blank file, or the arrow next to it to start from a template or write a README from a description.'],
       ['Views', `Switch between Editor, Split, Focus, Preview and Present with the switcher at the top. ${shortcut('K')} opens the command palette, where every action can be searched.`],
+      ['Tour and tips', 'New to ReadMe? “Take the tour” (here, on the start screen, or in the command palette) points out the main controls in about a minute — use the arrow keys or Next, and Esc to close. ReadMe also shows a few one-time tips (never more than one per visit); turn them off in Settings → Features → Show tips. After an update, a “What’s new” card lists what changed, with “Show me” buttons.'],
       ['Saving', `Everything is saved in your browser automatically. ${shortcut('S')} saves all files right away, including files opened from disk.`],
     ],
   },
@@ -105,7 +106,7 @@ const HELP_SECTIONS = [
   },
 ]
 
-export default function HelpDialog({ hideAi = false, onShortcuts, onClose }) {
+export default function HelpDialog({ hideAi = false, onTour, onShortcuts, onClose }) {
   // With AI features turned off, the AI section isn't shown either.
   const sections = useMemo(() => HELP_SECTIONS.filter(group => !(hideAi && group.id === 'ai')), [hideAi])
   const [section, setSection] = useState(HELP_SECTIONS[0].id)
@@ -130,7 +131,10 @@ export default function HelpDialog({ hideAi = false, onShortcuts, onClose }) {
             <h2 id="help-title" className="flex items-center gap-2"><CircleHelp size={16} style={{ color: 'var(--accent)' }} />How to use ReadMe</h2>
             <p>A quick guide to every feature.</p>
           </div>
-          <button type="button" className="btn-icon" onClick={onClose} aria-label="Close help"><X size={15} /></button>
+          <div className="flex items-center gap-2">
+            {onTour && <button type="button" className="reader-chip" onClick={onTour}>Take the tour</button>}
+            <button type="button" className="btn-icon" onClick={onClose} aria-label="Close help"><X size={15} /></button>
+          </div>
         </div>
         <div className="settings-body">
           <nav className="settings-nav" aria-label="Help sections">
