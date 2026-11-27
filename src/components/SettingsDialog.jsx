@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ArchiveRestore, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, History, Info, AppDownload, CircleCheck, Palette, Presentation, RefreshCw, Settings, Sparkles, X } from '../icons'
+import { ArchiveRestore, Cat, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, History, Info, AppDownload, CircleCheck, Palette, Presentation, RefreshCw, Settings, Sparkles, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
 import { THEMES, themeClasses } from '../themes'
@@ -11,6 +11,7 @@ export const REPO_URL = 'https://github.com/the-stranded-alien/readme'
 const SECTIONS = [
   { id: 'workspace', label: 'Workspace', icon: FolderOpen },
   { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'pet', label: 'Pet', icon: Cat },
   { id: 'presentation', label: 'Presentation', icon: Presentation },
   { id: 'features', label: 'Features', icon: Sparkles },
   { id: 'storage', label: 'Storage', icon: HardDrive },
@@ -63,7 +64,7 @@ export function ThemePicker({ themes, value, onChange, extraThemes, onExtraTheme
 }
 
 /** "Sync to a folder" controls (Settings → Workspace). */
-export function FolderSyncCard({ supported, state, onConnect, onReconnect, onSyncNow, onDisconnect }) {
+export function FolderSyncCard({ supported, state, disabled, onConnect, onReconnect, onSyncNow, onDisconnect, onToggleDisabled }) {
   return (
     <div className="folder-sync" role="group" aria-label="Sync to a folder">
       <div className="folder-sync-head">
@@ -73,10 +74,31 @@ export function FolderSyncCard({ supported, state, onConnect, onReconnect, onSyn
           <span>Keep a copy of every file in a folder on your computer. Changes are written automatically, and files changed in other apps are picked up when you come back.</span>
         </div>
       </div>
-      {!supported ? (
-        <p className="settings-muted">Your browser can’t save to folders. Use desktop Chrome or Edge, or back up the workspace instead.</p>
+      {disabled ? (
+        <>
+          <p className="settings-muted">Workspace folder sync is disabled. The status icon in the header is hidden.</p>
+          {onToggleDisabled && (
+            <div className="settings-actions">
+              <button type="button" className="reader-chip" onClick={() => onToggleDisabled(false)}>Enable workspace sync</button>
+            </div>
+          )}
+        </>
+      ) : !supported ? (
+        <>
+          <p className="settings-muted">Your browser can’t save to folders. Use desktop Chrome or Edge, or back up the workspace instead.</p>
+          {onToggleDisabled && (
+            <div className="settings-actions">
+              <button type="button" className="reader-chip" onClick={() => onToggleDisabled(true)}>Disable workspace sync</button>
+            </div>
+          )}
+        </>
       ) : !state ? (
-        <div className="settings-actions"><button type="button" className="pdf-dialog-primary" onClick={onConnect}><FolderOpen size={13} />Choose a folder…</button></div>
+        <div className="settings-actions">
+          <button type="button" className="pdf-dialog-primary" onClick={onConnect}><FolderOpen size={13} />Choose a folder…</button>
+          {onToggleDisabled && (
+            <button type="button" className="reader-chip" onClick={() => onToggleDisabled(true)}>Disable</button>
+          )}
+        </div>
       ) : (
         <>
           <p className={`folder-sync-status is-${state.status}`} role="status">
@@ -118,7 +140,7 @@ export function SettingsToggle({ label, description, checked, onChange, disabled
 export default function SettingsDialog({
   initialSection = 'workspace', settings, onChange, fileCount,
   onBackup, onRestore, onExportZip, appInstall, density, onDensity, highContrast, onHighContrast,
-  appearanceExtra, workspaceExtra, presentationExtra, onClose,
+  appearanceExtra, workspaceExtra, presentationExtra, petExtra, onClose,
 }) {
   const [section, setSection] = useState(SECTIONS.some(item => item.id === initialSection) ? initialSection : 'workspace')
   const closeRef = useRef(null)
@@ -173,6 +195,12 @@ export default function SettingsDialog({
                 </label>
                 <SettingsToggle label="High contrast" description="Stronger text and borders." checked={highContrast} onChange={onHighContrast} />
                 <SettingsToggle label="Compact layout" description="Tighter spacing in toolbars and lists." checked={density === 'compact'} onChange={value => onDensity(value ? 'compact' : 'comfortable')} />
+              </>
+            )}
+            {section === 'pet' && (
+              <>
+                <h3>Pet</h3>
+                {petExtra}
               </>
             )}
             {section === 'features' && (

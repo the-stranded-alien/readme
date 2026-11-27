@@ -719,22 +719,23 @@ function MarkdownRenderer({ content, dark, sourceRanges = false }) {
 
 // ── TOCSidebar ─────────────────────────────────────────────────
 // ── Header "View" menu: secondary display options in one place ─
-function HeaderViewMenu({ items }) {
+function HeaderViewMenu({ items, extra }) {
   const [position, setPosition] = useState(null)
   const buttonRef = useRef(null)
   const menuRef = useRef(null)
   const close = useCallback(() => setPosition(null), [])
   useEffect(() => {
     if (!position) return undefined
-    menuRef.current?.querySelector('button')?.focus()
+    menuRef.current?.querySelector('button, select')?.focus()
     const onDown = event => { if (!menuRef.current?.contains(event.target) && !buttonRef.current?.contains(event.target)) close() }
     const onKey = event => {
       if (event.key === 'Escape') { event.preventDefault(); close(); buttonRef.current?.focus() }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (document.activeElement?.tagName === 'SELECT') return
         event.preventDefault()
-        const buttons = [...(menuRef.current?.querySelectorAll('button') ?? [])]
-        const index = buttons.indexOf(document.activeElement)
-        buttons[(index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus()
+        const controls = [...(menuRef.current?.querySelectorAll('button, select') ?? [])]
+        const index = controls.indexOf(document.activeElement)
+        controls[(index + (event.key === 'ArrowDown' ? 1 : -1) + controls.length) % controls.length]?.focus()
       }
     }
     document.addEventListener('mousedown', onDown)
@@ -774,6 +775,7 @@ function HeaderViewMenu({ items }) {
               {item.checked !== undefined && <span className="view-menu-switch" aria-hidden="true" />}
             </button>
           ))}
+          {extra}
         </div>,
         document.body,
       )}
@@ -2202,22 +2204,99 @@ function loadReadingPetPrefs() {
   }
 }
 
-function ReadingPetFooter() {
+function ReadingPetSettings({ prefs, onChange, lite }) {
+  const updatePref = (key, value) => onChange(key, value)
+  return (
+    <div className="settings-pet-panel">
+      {lite && <p className="settings-muted">Lite mode is on in Features, so the reading cats are hidden until you turn Lite mode off.</p>}
+      <div className="reading-pet-options">
+        <section className="reading-pet-section" aria-label="Basic settings">
+          <label className="reading-pet-setting">
+            <span>Coat</span>
+            <ReadingPetCoatDropdown value={prefs.skin} onChange={skin => updatePref('skin', skin)} />
+          </label>
+          <div className="reading-pet-count-row">
+            <span>Number of cats</span>
+            <div className="reading-pet-count-control" aria-label="Number of cats">
+              <button type="button" onClick={() => updatePref('catCount', Math.max(1, prefs.catCount - 1))} disabled={prefs.catCount <= 1} aria-label="Remove a cat"><Minus size={13} /></button>
+              <output aria-live="polite" aria-label="Cat count">{prefs.catCount}</output>
+              <button type="button" onClick={() => updatePref('catCount', Math.min(10, prefs.catCount + 1))} disabled={prefs.catCount >= 10} aria-label="Add a cat"><Plus size={13} /></button>
+            </div>
+          </div>
+          <div className="reading-pet-popover-sliders">
+            <label className="reading-pet-setting reading-pet-range">
+              <span>Speed <b>{prefs.speed}</b></span>
+              <input type="range" min="4" max="18" step="1" value={prefs.speed} onChange={event => updatePref('speed', Number(event.target.value))} aria-label="Cat speed" />
+            </label>
+            <label className="reading-pet-setting reading-pet-range">
+              <span>Size <b>{prefs.scale.toFixed(2)}×</b></span>
+              <input type="range" min="0.75" max="1.75" step="0.25" value={prefs.scale} onChange={event => updatePref('scale', Number(event.target.value))} aria-label="Cat size" />
+            </label>
+          </div>
+          <div className="reading-pet-actions">
+            <button type="button" className="reading-pet-button reading-pet-roam" onClick={() => updatePref('roaming', !prefs.roaming)} aria-pressed={prefs.roaming}>
+              {prefs.roaming ? <PanelBottom size={13} /> : <Footprints size={13} />}
+              <span>{prefs.roaming ? 'Footer only' : 'Roam screen'}</span>
+            </button>
+            <button type="button" className={`reading-pet-button reading-pet-toggle${prefs.enabled ? '' : ' is-disabled'}`} onClick={() => updatePref('enabled', !prefs.enabled)} aria-pressed={prefs.enabled}>
+              {prefs.enabled ? <span className="reading-pet-status-dot" /> : <Cat size={13} />}
+              <span>{prefs.enabled ? 'Disable' : 'Enable'}</span>
+            </button>
+          </div>
+        </section>
+
+        <details className="reading-pet-advanced">
+          <summary>Advanced</summary>
+          <div className="reading-pet-advanced-options">
+            <section className="reading-pet-section" aria-label="Behavior">
+              <h3>Behavior</h3>
+              <ReadingPetToggle label="Sleep when idle" checked={prefs.sleepEnabled} onChange={value => updatePref('sleepEnabled', value)} />
+              <ReadingPetToggle label="Zoomies while roaming" checked={prefs.zoomies} onChange={value => updatePref('zoomies', value)} disabled={!prefs.roaming} />
+              {prefs.zoomies && prefs.roaming && <label className="reading-pet-setting reading-pet-range"><span>Zoomies chance <b>{Math.round(prefs.freerunChance * 100)}%</b></span><input type="range" min="0.01" max="0.2" step="0.01" value={prefs.freerunChance} onChange={event => updatePref('freerunChance', Number(event.target.value))} aria-label="Zoomies chance" /></label>}
+              <div className="reading-pet-popover-sliders">
+                <label className="reading-pet-setting reading-pet-range"><span>Idle after <b>{(prefs.idleThreshold / 1000).toFixed(1)}s</b></span><input type="range" min="400" max="5000" step="200" value={prefs.idleThreshold} onChange={event => updatePref('idleThreshold', Number(event.target.value))} aria-label="Idle animation delay" /></label>
+                <label className="reading-pet-setting reading-pet-range"><span>Animation <b>{prefs.animationSpeed.toFixed(1)}×</b></span><input type="range" min="0.5" max="2" step="0.1" value={prefs.animationSpeed} onChange={event => updatePref('animationSpeed', Number(event.target.value))} aria-label="Idle animation speed" /></label>
+              </div>
+            </section>
+
+            <section className="reading-pet-section" aria-label="Page reactions">
+              <h3>Page reactions</h3>
+              <ReadingPetToggle label="Nap while I type" checked={prefs.napWhileTyping} onChange={value => updatePref('napWhileTyping', value)} disabled={!prefs.roaming} />
+              <ReadingPetToggle label="Follow keyboard focus" checked={prefs.followFocus} onChange={value => updatePref('followFocus', value)} disabled={!prefs.roaming} />
+              <ReadingPetToggle label="Perch on hovered controls" checked={prefs.perchOnHover} onChange={value => updatePref('perchOnHover', value)} disabled={!prefs.roaming} />
+            </section>
+
+            <section className="reading-pet-section" aria-label="Play">
+              <h3>Play</h3>
+              <ReadingPetToggle label="Allow keyboard petting" checked={prefs.pettable} onChange={value => updatePref('pettable', value)} />
+              <ReadingPetToggle label="Drag and toss" checked={prefs.grabbable} onChange={value => updatePref('grabbable', value)} disabled={!prefs.roaming} />
+              <ReadingPetToggle label="Drop fish treats on double-click" checked={prefs.treats} onChange={value => updatePref('treats', value)} disabled={!prefs.roaming} />
+              <ReadingPetToggle label="Thought bubbles" checked={prefs.bubbleEnabled} onChange={value => updatePref('bubbleEnabled', value)} />
+              {prefs.bubbleEnabled && <label className="reading-pet-setting"><span>Thoughts (one per line)</span><textarea rows="2" value={prefs.bubbleText} maxLength={180} onChange={event => updatePref('bubbleText', event.target.value)} aria-label="Pet thought bubbles" /></label>}
+              <ReadingPetToggle label="Meow sounds" checked={prefs.meow} onChange={value => updatePref('meow', value)} />
+              {prefs.meow && <label className="reading-pet-setting reading-pet-range"><span>Volume <b>{Math.round(prefs.volume * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value={prefs.volume} onChange={event => updatePref('volume', Number(event.target.value))} aria-label="Pet sound volume" /></label>}
+            </section>
+
+            <section className="reading-pet-section" aria-label="Movement">
+              <h3>Movement</h3>
+              <ReadingPetToggle label="Cats follow one another" checked={prefs.parade} onChange={value => updatePref('parade', value)} disabled={prefs.catCount < 2} />
+              <ReadingPetToggle label="Remember roaming positions" checked={prefs.rememberPosition} onChange={value => updatePref('rememberPosition', value)} />
+              <ReadingPetToggle label="Avoid app toolbars" checked={prefs.avoidControls} onChange={value => updatePref('avoidControls', value)} disabled={!prefs.roaming} />
+              <ReadingPetToggle label="Visit document headings" checked={prefs.visitHeadings} onChange={value => updatePref('visitHeadings', value)} disabled={!prefs.roaming} />
+            </section>
+          </div>
+        </details>
+      </div>
+    </div>
+  )
+}
+
+function ReadingPetFooter({ prefs }) {
   const footerRef = useRef(null)
   const catRefs = useRef([])
-  const widgetRef = useRef(null)
   const speakingCatRef = useRef(0)
   const thoughtIndexRef = useRef(0)
-  const [prefs, setPrefs] = useState(loadReadingPetPrefs)
   const [footerBounds, setFooterBounds] = useState(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try { localStorage.setItem('readme-reading-pet', JSON.stringify({ ...prefs, version: 4 })) } catch { /* storage is optional */ }
-    }, 160)
-    return () => clearTimeout(timer)
-  }, [prefs])
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -2238,22 +2317,6 @@ function ReadingPetFooter() {
       document.removeEventListener('fullscreenchange', measure)
     }
   }, [])
-
-  useEffect(() => {
-    if (!settingsOpen) return undefined
-    const closeOutside = event => {
-      if (!widgetRef.current?.contains(event.target)) setSettingsOpen(false)
-    }
-    const closeOnEscape = event => {
-      if (event.key === 'Escape') setSettingsOpen(false)
-    }
-    document.addEventListener('mousedown', closeOutside)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('mousedown', closeOutside)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [settingsOpen])
 
   const bubbleMessages = useMemo(() => prefs.bubbleText
     .split('\n')
@@ -2332,116 +2395,12 @@ function ReadingPetFooter() {
     if (prefs.roaming && prefs.visitHeadings) {
       result.push({ id: 'document-headings', type: 'attract', selector: '.book-page h1, .book-page h2, .book-page h3' })
     }
-    result.push(
-      { id: 'pet-settings-trigger', type: 'avoid', selector: '.reading-pet-trigger', padding: 8 },
-      ...(settingsOpen ? [{ id: 'pet-settings-popover', type: 'avoid', selector: '.reading-pet-popover', padding: 8 }] : []),
-    )
     return result
-  }, [footerBounds, prefs.avoidControls, prefs.roaming, prefs.scale, prefs.visitHeadings, settingsOpen])
+  }, [footerBounds, prefs.avoidControls, prefs.roaming, prefs.scale, prefs.visitHeadings])
 
-  const updatePref = (key, value) => setPrefs(current => ({ ...current, [key]: value }))
   return (
     <>
       {createPortal(<footer ref={footerRef} className="reading-pet-footer no-print" aria-hidden="true" />, document.body)}
-      <div className="reading-pet-widget reading-pet-header-widget" ref={widgetRef}>
-          <button
-            type="button"
-            className="reading-pet-trigger"
-            onClick={() => setSettingsOpen(open => !open)}
-            aria-label="Reading pet settings"
-            aria-expanded={settingsOpen}
-            aria-controls="reading-pet-settings"
-            data-tooltip="Pet Settings"
-          >
-            <Cat size={15} aria-hidden="true" />
-          </button>
-          {settingsOpen && (
-            <div className="reading-pet-popover anim-drop-in" id="reading-pet-settings" role="dialog" aria-label="Reading pet settings">
-              <div className="reading-pet-popover-heading">
-                <span>Pet settings</span>
-                <button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close pet settings"><X size={14} /></button>
-              </div>
-              <div className="reading-pet-options">
-                <section className="reading-pet-section" aria-label="Basic settings">
-                  <label className="reading-pet-setting">
-                    <span>Coat</span>
-                    <ReadingPetCoatDropdown value={prefs.skin} onChange={skin => updatePref('skin', skin)} />
-                  </label>
-                  <div className="reading-pet-count-row">
-                    <span>Number of cats</span>
-                    <div className="reading-pet-count-control" aria-label="Number of cats">
-                      <button type="button" onClick={() => updatePref('catCount', Math.max(1, prefs.catCount - 1))} disabled={prefs.catCount <= 1} aria-label="Remove a cat"><Minus size={13} /></button>
-                      <output aria-live="polite" aria-label="Cat count">{prefs.catCount}</output>
-                      <button type="button" onClick={() => updatePref('catCount', Math.min(10, prefs.catCount + 1))} disabled={prefs.catCount >= 10} aria-label="Add a cat"><Plus size={13} /></button>
-                    </div>
-                  </div>
-                  <div className="reading-pet-popover-sliders">
-                    <label className="reading-pet-setting reading-pet-range">
-                      <span>Speed <b>{prefs.speed}</b></span>
-                      <input type="range" min="4" max="18" step="1" value={prefs.speed} onChange={event => updatePref('speed', Number(event.target.value))} aria-label="Cat speed" />
-                    </label>
-                    <label className="reading-pet-setting reading-pet-range">
-                      <span>Size <b>{prefs.scale.toFixed(2)}×</b></span>
-                      <input type="range" min="0.75" max="1.75" step="0.25" value={prefs.scale} onChange={event => updatePref('scale', Number(event.target.value))} aria-label="Cat size" />
-                    </label>
-                  </div>
-                  <div className="reading-pet-actions">
-                    <button type="button" className="reading-pet-button reading-pet-roam" onClick={() => updatePref('roaming', !prefs.roaming)} aria-pressed={prefs.roaming}>
-                      {prefs.roaming ? <PanelBottom size={13} /> : <Footprints size={13} />}
-                      <span>{prefs.roaming ? 'Footer only' : 'Roam screen'}</span>
-                    </button>
-                    <button type="button" className={`reading-pet-button reading-pet-toggle${prefs.enabled ? '' : ' is-disabled'}`} onClick={() => updatePref('enabled', !prefs.enabled)} aria-pressed={prefs.enabled}>
-                      {prefs.enabled ? <span className="reading-pet-status-dot" /> : <Cat size={13} />}
-                      <span>{prefs.enabled ? 'Disable' : 'Enable'}</span>
-                    </button>
-                  </div>
-                </section>
-
-                <details className="reading-pet-advanced">
-                  <summary>Advanced</summary>
-                  <div className="reading-pet-advanced-options">
-                    <section className="reading-pet-section" aria-label="Behavior">
-                  <h3>Behavior</h3>
-                  <ReadingPetToggle label="Sleep when idle" checked={prefs.sleepEnabled} onChange={value => updatePref('sleepEnabled', value)} />
-                  <ReadingPetToggle label="Zoomies while roaming" checked={prefs.zoomies} onChange={value => updatePref('zoomies', value)} disabled={!prefs.roaming} />
-                  {prefs.zoomies && prefs.roaming && <label className="reading-pet-setting reading-pet-range"><span>Zoomies chance <b>{Math.round(prefs.freerunChance * 100)}%</b></span><input type="range" min="0.01" max="0.2" step="0.01" value={prefs.freerunChance} onChange={event => updatePref('freerunChance', Number(event.target.value))} aria-label="Zoomies chance" /></label>}
-                  <div className="reading-pet-popover-sliders">
-                    <label className="reading-pet-setting reading-pet-range"><span>Idle after <b>{(prefs.idleThreshold / 1000).toFixed(1)}s</b></span><input type="range" min="400" max="5000" step="200" value={prefs.idleThreshold} onChange={event => updatePref('idleThreshold', Number(event.target.value))} aria-label="Idle animation delay" /></label>
-                    <label className="reading-pet-setting reading-pet-range"><span>Animation <b>{prefs.animationSpeed.toFixed(1)}×</b></span><input type="range" min="0.5" max="2" step="0.1" value={prefs.animationSpeed} onChange={event => updatePref('animationSpeed', Number(event.target.value))} aria-label="Idle animation speed" /></label>
-                  </div>
-                    </section>
-
-                    <section className="reading-pet-section" aria-label="Page reactions">
-                  <h3>Page reactions</h3>
-                  <ReadingPetToggle label="Nap while I type" checked={prefs.napWhileTyping} onChange={value => updatePref('napWhileTyping', value)} disabled={!prefs.roaming} />
-                  <ReadingPetToggle label="Follow keyboard focus" checked={prefs.followFocus} onChange={value => updatePref('followFocus', value)} disabled={!prefs.roaming} />
-                  <ReadingPetToggle label="Perch on hovered controls" checked={prefs.perchOnHover} onChange={value => updatePref('perchOnHover', value)} disabled={!prefs.roaming} />
-                    </section>
-
-                    <section className="reading-pet-section" aria-label="Play">
-                  <h3>Play</h3>
-                  <ReadingPetToggle label="Allow keyboard petting" checked={prefs.pettable} onChange={value => updatePref('pettable', value)} />
-                  <ReadingPetToggle label="Drag and toss" checked={prefs.grabbable} onChange={value => updatePref('grabbable', value)} disabled={!prefs.roaming} />
-                  <ReadingPetToggle label="Drop fish treats on double-click" checked={prefs.treats} onChange={value => updatePref('treats', value)} disabled={!prefs.roaming} />
-                  <ReadingPetToggle label="Thought bubbles" checked={prefs.bubbleEnabled} onChange={value => updatePref('bubbleEnabled', value)} />
-                  {prefs.bubbleEnabled && <label className="reading-pet-setting"><span>Thoughts (one per line)</span><textarea rows="2" value={prefs.bubbleText} maxLength={180} onChange={event => updatePref('bubbleText', event.target.value)} aria-label="Pet thought bubbles" /></label>}
-                  <ReadingPetToggle label="Meow sounds" checked={prefs.meow} onChange={value => updatePref('meow', value)} />
-                  {prefs.meow && <label className="reading-pet-setting reading-pet-range"><span>Volume <b>{Math.round(prefs.volume * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value={prefs.volume} onChange={event => updatePref('volume', Number(event.target.value))} aria-label="Pet sound volume" /></label>}
-                    </section>
-
-                    <section className="reading-pet-section" aria-label="Movement">
-                  <h3>Movement</h3>
-                  <ReadingPetToggle label="Cats follow one another" checked={prefs.parade} onChange={value => updatePref('parade', value)} disabled={prefs.catCount < 2} />
-                  <ReadingPetToggle label="Remember roaming positions" checked={prefs.rememberPosition} onChange={value => updatePref('rememberPosition', value)} />
-                  <ReadingPetToggle label="Avoid app toolbars" checked={prefs.avoidControls} onChange={value => updatePref('avoidControls', value)} disabled={!prefs.roaming} />
-                  <ReadingPetToggle label="Visit document headings" checked={prefs.visitHeadings} onChange={value => updatePref('visitHeadings', value)} disabled={!prefs.roaming} />
-                    </section>
-                  </div>
-                </details>
-              </div>
-            </div>
-          )}
-      </div>
       {prefs.enabled && Array.from({ length: prefs.catCount }, (_, index) => {
         const left = 40
         const right = Math.max(left, window.innerWidth - 80)
@@ -2744,17 +2703,24 @@ export default function App() {
   })
   const isDark = themeById(theme).dark
   const isSepia = ENABLE_SEPIA_THEME && theme === 'sepia'
-  const themeLabel = themeById(theme).label
   // Small icons: two-tone on light themes, filled on dark ones.
   const smallIconStyle = isDark ? 'filled' : 'two-tone'
   const [highContrast, setHighContrast] = useState(
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
   const [appSettings, setAppSettings] = useState(() => {
-    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '', embedImages: false, defaultDocStyle: 'readme' }
+    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '', embedImages: false, defaultDocStyle: 'readme', workspaceSyncDisabled: false }
     try { return { ...defaults, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return defaults }
   })
   const updateAppSetting = useCallback((key, value) => setAppSettings(current => ({ ...current, [key]: value })), [])
+  const [petPrefs, setPetPrefs] = useState(loadReadingPetPrefs)
+  const updatePetPref = useCallback((key, value) => setPetPrefs(current => ({ ...current, [key]: value })), [])
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try { localStorage.setItem('readme-reading-pet', JSON.stringify({ ...petPrefs, version: 4 })) } catch { /* storage is optional */ }
+    }, 160)
+    return () => clearTimeout(timer)
+  }, [petPrefs])
 
   // ── Guided start: welcome + tour on a first visit, "What's new" after an update ──
   const [startupNotice, setStartupNotice] = useState(() => {
@@ -2786,7 +2752,6 @@ export default function App() {
   const [tocVisible, setTocVisible] = useState(true)
   const [activeHeadingId, setActiveHeadingId] = useState(null)
   const [showScrollTop, setShowScrollTop]     = useState(false)
-  const [themeKey, setThemeKey]     = useState(0)
   const [copyAllDone, setCopyAllDone] = useState(false)
   const [copyConfluenceDone, setCopyConfluenceDone] = useState(false)
   const [readerPrefs, setReaderPrefs] = useState(loadReaderPrefs)
@@ -3108,11 +3073,10 @@ export default function App() {
   const toggleTheme = useCallback(() => {
     withThemeTransition(() => {
       setTheme(t => nextTheme(t, appSettings.extraThemes))
-      setThemeKey(k => k + 1)
     })
   }, [appSettings.extraThemes])
   const chooseTheme = useCallback(id => {
-    withThemeTransition(() => { setTheme(id); setThemeKey(k => k + 1) })
+    withThemeTransition(() => { setTheme(id) })
   }, [])
 
   // ── Presentation: settings, and its own theme (the app theme comes back on exit) ──
@@ -5219,17 +5183,18 @@ export default function App() {
     const disk = await readFolder(handle)
     const written = syncWrittenRef.current
     const byPath = new Map(filesRef.current.map(file => [syncPath(file.name), file]))
-    // Files closed from the tab bar are still in the folder: they stay closed (listed in the Files panel).
-    const closedPaths = new Set(closedFilesRef.current.map(entry => syncPath(entry.file.name)))
+    const closedByPath = new Map(closedFilesRef.current.map(entry => [syncPath(entry.file.name), entry.file]))
     const onDisk = new Set(disk.map(entry => entry.path))
     const imports = []
     const updates = new Map()
+    const closedUpdates = new Map()
     const conflicts = []
     for (const entry of disk) {
-      const local = byPath.get(entry.path)
+      const local = byPath.get(entry.path) ?? closedByPath.get(entry.path)
+      const isClosed = !byPath.has(entry.path) && closedByPath.has(entry.path)
       if (!local) {
         // New in the folder (or present before syncing started): open it.
-        if (!written.has(entry.path) && !closedPaths.has(entry.path)) imports.push({ name: entry.path, content: entry.content })
+        if (!written.has(entry.path)) imports.push({ name: entry.path, content: entry.content })
         written.set(entry.path, entry.content)
         continue
       }
@@ -5248,7 +5213,8 @@ export default function App() {
       if (entry.content === last) continue // only changed here: written below
       if (local.content === last) {
         // Changed in the folder by another app, unchanged here: take the folder's version.
-        updates.set(local.id, entry.content)
+        if (isClosed) closedUpdates.set(local.id, entry.content)
+        else updates.set(local.id, entry.content)
         written.set(entry.path, entry.content)
       } else {
         // Changed in both places: ask which to keep (nothing is written until then).
@@ -5265,7 +5231,16 @@ export default function App() {
       written.delete(path)
       syncPathsRef.current.delete(file.id)
     }
+    const removedClosedIds = []
+    for (const [path, file] of closedByPath) {
+      if (onDisk.has(path) || !written.has(path) || folderConflictIdsRef.current.has(file.id)) continue
+      if (await existsInFolder(handle, path)) continue
+      removedClosedIds.push(file.id)
+      written.delete(path)
+      syncPathsRef.current.delete(file.id)
+    }
     if (updates.size) setFiles(prev => prev.map(file => (updates.has(file.id) ? { ...file, content: updates.get(file.id) } : file)))
+    if (closedUpdates.size) setClosedFiles(prev => prev.map(entry => (closedUpdates.has(entry.file.id) ? { ...entry, file: { ...entry.file, content: closedUpdates.get(entry.file.id) } } : entry)))
     if (imports.length) setFiles(prev => [...prev, ...imports.map(item => ({ id: createFileId(), ...item }))])
     if (conflicts.length) {
       setDiskConflicts(current => {
@@ -5285,7 +5260,7 @@ export default function App() {
         tone: 'warning', duration: 8000,
       })
     }
-    return { imported: imports.length, updated: updates.size, removedIds: removed.map(file => file.id) }
+    return { imported: imports.length, updated: updates.size + closedUpdates.size, removedIds: removed.map(file => file.id), removedClosedIds }
   }, [takeSnapshot])
   // One sync at a time; a request while one runs queues a single follow-up.
   const syncRunRef = useRef({ running: null, queued: null })
@@ -5303,8 +5278,10 @@ export default function App() {
         const conflicted = folderConflictIdsRef.current
         // Removed files are closed by a state update that hasn't landed in filesRef yet: never write them back.
         for (const id of pulled.removedIds) removedFromFolderRef.current.add(id)
+        for (const id of pulled.removedClosedIds) removedFromFolderRef.current.add(id)
         const skip = id => conflicted.has(id) || removedFromFolderRef.current.has(id)
-        const pushed = await writeToFolder(handle, filesRef.current.filter(file => !skip(file.id)), syncWrittenRef.current, syncPathsRef.current)
+        const allSyncFiles = [...filesRef.current, ...closedFilesRef.current.map(entry => entry.file)].filter(file => !skip(file.id))
+        const pushed = await writeToFolder(handle, allSyncFiles, syncWrittenRef.current, syncPathsRef.current)
         await writeAttachmentsToFolder(handle, [...attachmentsRef.current.values()], syncWrittenRef.current).catch(() => {})
         writeSyncState({ name: handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
         setSyncFolder(current => current && { ...current, status: 'connected', error: '', lastSync: Date.now() })
@@ -5336,7 +5313,10 @@ export default function App() {
     const removedFolders = folder ? emptyFolders.filter(item => item === folder || item.startsWith(`${folder}/`)) : []
     if (!entries.length && !removedFolders.length) return
     const syncConnected = Boolean(syncFolder?.handle && syncFolder.status === 'connected')
-    const synced = syncConnected ? entries.filter(entry => syncWrittenRef.current.has(syncPath(entry.file.name))) : []
+    const synced = syncConnected ? entries.filter(entry => {
+      const path = syncPathsRef.current.get(entry.id) || syncPath(entry.file.name)
+      return syncWrittenRef.current.has(path)
+    }) : []
     const onDisk = entries.filter(entry => entry.file.diskHandle || diskHandlesRef.current.has(entry.id))
     const count = entries.length
     const details = [
@@ -5362,7 +5342,7 @@ export default function App() {
     markWorkspaceEdit()
     let keptInFolder = 0
     for (const entry of synced) {
-      const path = syncPath(entry.file.name)
+      const path = syncPathsRef.current.get(entry.id) || syncPath(entry.file.name)
       const removed = await removeFromFolder(syncFolder.handle, path, syncWrittenRef.current.get(path))
       if (!removed) keptInFolder += 1
       syncWrittenRef.current.delete(path)
@@ -5629,6 +5609,7 @@ export default function App() {
       const handle = await window.showDirectoryPicker({ id: 'readme-sync', mode: 'readwrite' })
       if (await folderPermission(handle, true) !== 'granted') throw new Error('Permission to edit the folder was not given.')
       resetSyncState()
+      updateAppSetting('workspaceSyncDisabled', false)
       await writeSyncFolder(handle).catch(() => {})
       setSyncFolder({ handle, name: handle.name, status: 'connected', error: '', lastSync: null })
       const result = await runFolderSync(handle, { first: true })
@@ -5636,7 +5617,7 @@ export default function App() {
     } catch (error) {
       if (error?.name !== 'AbortError') setToast({ message: error?.message || 'Could not use that folder.', tone: 'warning', duration: 5000 })
     }
-  }, [runFolderSync, resetSyncState])
+  }, [runFolderSync, resetSyncState, updateAppSetting])
   const reconnectSyncFolder = useCallback(async () => {
     if (!syncFolder?.handle) return
     if (await folderPermission(syncFolder.handle, true).catch(() => 'denied') === 'granted') {
@@ -5655,7 +5636,7 @@ export default function App() {
     if (!syncHandle) return
     const timer = setTimeout(() => runFolderSync(syncHandle), 1200)
     return () => clearTimeout(timer)
-  }, [files, syncHandle, runFolderSync, syncNudge])
+  }, [files, closedFiles, syncHandle, runFolderSync, syncNudge])
   useEffect(() => {
     if (!syncHandle) return
     const onFocus = () => runFolderSync(syncHandle)
@@ -5671,6 +5652,7 @@ export default function App() {
     } catch { /* quota — IndexedDB below still has it */ }
     let browserSaved = true
     try { await writeWorkspace({ files, activeId: activeFileId, closed: closedFiles }) } catch { browserSaved = false }
+    if (syncHandle) await runFolderSync(syncHandle)
     let diskSaved = 0
     const diskFailed = []
     for (const file of files) {
@@ -5698,7 +5680,7 @@ export default function App() {
     } else {
       setToast({ message: `Saved ${count} file${count === 1 ? '' : 's'}${diskSaved ? ` (${diskSaved} written to disk)` : ''}.`, tone: 'success' })
     }
-  }, [files, activeFileId, closedFiles, takeSnapshot])
+  }, [files, activeFileId, closedFiles, takeSnapshot, syncHandle, runFolderSync])
   useEffect(() => {
     const onKey = event => {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 's') {
@@ -6338,34 +6320,30 @@ ${fontCss}
                 { id: 'font', label: `Reading font: ${activeFont.label}`, hint: `${readerPrefs.fontIndex + 1}/${DOC_FONTS.length}`, icon: Type, run: cycleDocFont, keepOpen: true },
                 { id: 'contrast', label: 'High contrast', icon: Contrast, run: toggleHighContrast, checked: highContrast },
               ]}
+              extra={(
+                <div className="view-menu-select-row">
+                  <span className="view-menu-icon" aria-hidden="true"><Palette size={15} /></span>
+                  <label htmlFor="view-menu-theme">Theme</label>
+                  <select id="view-menu-theme" className="view-menu-select" value={theme} onChange={event => chooseTheme(event.target.value)} aria-label="Theme">
+                    {availableThemes(appSettings.extraThemes).map(item => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             />
-            <button onClick={toggleTheme} data-tooltip={`Color mode: ${themeLabel}`} aria-label={`Color mode ${theme}. Click to switch to ${nextTheme(theme, appSettings.extraThemes)} mode.`} className="btn-icon" key={themeKey}>
-              {theme.startsWith('neon') ? <Zap size={15} className="theme-icon-enter" style={{ color: themeById(theme).swatch[1].startsWith('#') ? themeById(theme).swatch[1] : '#ffe600' }} />
-                : theme === 'sun' ? <Sunrise size={15} className="theme-icon-enter" style={{ color: '#ea580c' }} />
-                : theme === 'monokai' ? <Palette size={15} className="theme-icon-enter" style={{ color: '#a6e22e' }} />
-                : theme === 'nord' ? <Snowflake size={15} className="theme-icon-enter" style={{ color: '#88c0d0' }} />
-                : theme === 'solarized' ? <SunDim size={15} className="theme-icon-enter" style={{ color: '#268bd2' }} />
-                : theme === 'marble' ? <Contrast size={15} className="theme-icon-enter" style={{ color: '#111111' }} />
-                : theme === 'ocean' ? <Waves size={15} className="theme-icon-enter" style={{ color: '#38bdf8' }} />
-                : theme === 'forest' ? <Leaf size={15} className="theme-icon-enter" style={{ color: '#2f7d4f' }} />
-                : ENABLE_SEPIA_THEME && theme === 'sepia'
-                ? <BookOpen size={15} className="theme-icon-enter" style={{ color: '#a16207' }} />
-                : isDark
-                  ? <Sun size={15} className="theme-icon-enter" style={{ color: '#f59e0b' }} />
-                  : <Moon size={15} className="theme-icon-enter" />
-              }
-            </button>
-            {!appSettings.lite && <ReadingPetFooter />}
-            {syncFolder && (() => {
+            {!appSettings.workspaceSyncDisabled && (() => {
               const conflictCount = Object.values(diskConflicts).filter(item => item.source === 'folder').length
-              const state = syncFolder.status !== 'connected' ? syncFolder.status : conflictCount ? 'conflict' : syncBusy ? 'syncing' : 'synced'
-              const label = {
-                synced: `Synced with “${syncFolder.name}”${syncFolder.lastSync ? ` at ${new Date(syncFolder.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`,
-                syncing: `Syncing with “${syncFolder.name}”…`,
-                conflict: `${conflictCount} file${conflictCount === 1 ? '' : 's'} changed in “${syncFolder.name}” and here — choose a version`,
-                'needs-permission': `Sync paused: allow access to “${syncFolder.name}” again`,
-                error: `Sync error: ${syncFolder.error || 'could not sync'}`,
-              }[state]
+              const state = !syncFolder ? 'unconnected' : syncFolder.status !== 'connected' ? syncFolder.status : conflictCount ? 'conflict' : syncBusy ? 'syncing' : 'synced'
+              const label = !syncFolder
+                ? 'No workspace folder connected — click to set up or disable'
+                : {
+                    synced: `Synced with “${syncFolder.name}”${syncFolder.lastSync ? ` at ${new Date(syncFolder.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`,
+                    syncing: `Syncing with “${syncFolder.name}”…`,
+                    conflict: `${conflictCount} file${conflictCount === 1 ? '' : 's'} changed in “${syncFolder.name}” and here — choose a version`,
+                    'needs-permission': `Sync paused: allow access to “${syncFolder.name}” again`,
+                    error: `Sync error: ${syncFolder.error || 'could not sync'}`,
+                  }[state]
               return (
                 <button type="button" onClick={() => setSettingsOpen('workspace')} className={`btn-icon sync-status is-${state}`} data-tooltip={label} aria-label={label}>
                   <FolderSync size={15} />
@@ -7568,8 +7546,13 @@ ${fontCss}
           highContrast={highContrast}
           onHighContrast={value => { if (value !== highContrast) toggleHighContrast() }}
           workspaceExtra={(
-            <FolderSyncCard supported={canSyncToFolder()} state={syncFolder} onConnect={connectSyncFolder}
-              onReconnect={reconnectSyncFolder} onSyncNow={() => syncFolder?.handle && runFolderSync(syncFolder.handle)} onDisconnect={disconnectSyncFolder} />
+            <FolderSyncCard supported={canSyncToFolder()} state={syncFolder} disabled={Boolean(appSettings.workspaceSyncDisabled)}
+              onConnect={connectSyncFolder} onReconnect={reconnectSyncFolder}
+              onSyncNow={() => syncFolder?.handle && runFolderSync(syncFolder.handle)} onDisconnect={disconnectSyncFolder}
+              onToggleDisabled={value => updateAppSetting('workspaceSyncDisabled', value)} />
+          )}
+          petExtra={(
+            <ReadingPetSettings prefs={petPrefs} onChange={updatePetPref} lite={appSettings.lite} />
           )}
           presentationExtra={(
             <PresentationSettings settings={presentationSettings} onChange={setPresentationSettings}
@@ -7689,6 +7672,7 @@ ${fontCss}
           onClose={() => setLightbox(null)}
         />
       )}
+      {!appSettings.lite && <ReadingPetFooter prefs={petPrefs} />}
     </div>
     </CodeThemeContext.Provider>
     </LiteContext.Provider>

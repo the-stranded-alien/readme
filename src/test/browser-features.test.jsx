@@ -129,13 +129,12 @@ describe('advanced browser features', () => {
   it('customizes, confines, and disables the reading companion', async () => {
     localStorage.setItem('readme-reading-pet', JSON.stringify({ skin: 'classic' }))
     installApp()
-    expect(screen.getByRole('button', { name: /Color mode/ }).getAttribute('data-tooltip')).not.toMatch(/click to change/i)
     const petFooter = document.querySelector('.reading-pet-footer')
     expect(petFooter).toBeInTheDocument()
     expect(petFooter.querySelector('button')).toBeNull()
-    const petSettingsButton = screen.getByRole('button', { name: 'Reading pet settings' })
-    expect(petSettingsButton.closest('.surface-header')).toBeInTheDocument()
-    fireEvent.click(petSettingsButton)
+    expect(screen.queryByRole('button', { name: 'Reading pet settings' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pet' }))
     expect(screen.getByRole('button', { name: 'Cat coat' })).toHaveTextContent('Lavender')
     await waitFor(() => expect(JSON.parse(localStorage.getItem('readme-reading-pet')).version).toBe(4))
     fireEvent.click(screen.getByRole('button', { name: 'Cat coat' }))
@@ -161,7 +160,8 @@ describe('advanced browser features', () => {
   it('exposes and persists the companion appearance, behavior, play, and roaming controls', async () => {
     localStorage.removeItem('readme-reading-pet')
     installApp()
-    fireEvent.click(screen.getByRole('button', { name: 'Reading pet settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pet' }))
     expect(screen.getByRole('button', { name: 'Cat coat' })).toHaveTextContent('Lavender')
     expect(screen.queryByRole('switch', { name: 'Customize each cat' })).not.toBeInTheDocument()
     const advanced = screen.getByText('Advanced').closest('details')
@@ -2227,11 +2227,62 @@ describe('advanced browser features', () => {
     expect(container.querySelector('.book-page').style.maxWidth).toBe('100%')
   })
 
-  it('cycles light, dark and sepia color modes', async () => {
+  it('changes light, dark and sepia color modes from View options', async () => {
     localStorage.setItem('readme-theme', 'dark')
     installApp()
-    fireEvent.click(screen.getByRole('button', { name: /Color mode dark/ }))
+    expect(screen.queryByRole('button', { name: /Color mode/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'View options' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Theme' }), { target: { value: 'sepia' } })
     await waitFor(() => expect(document.documentElement.classList.contains('theme-sepia')).toBe(true))
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('shows workspace sync status in the header and lets users disable it', async () => {
+    installApp()
+    const syncBtn = await screen.findByRole('button', { name: /No workspace folder connected/ })
+    expect(syncBtn).toHaveClass('is-unconnected')
+    fireEvent.click(syncBtn)
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disable workspace sync' }))
+    expect(screen.queryByRole('button', { name: /No workspace folder connected/ })).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enable workspace sync' }))
+    expect(screen.getByRole('button', { name: /No workspace folder connected/ })).toBeInTheDocument()
+  })
+
+  it('syncs closed files and updates the folder on Cmd/Ctrl+S', async () => {
+    await writeWorkspace({
+      activeId: 'a',
+      files: [{ id: 'a', name: 'open.md', content: '# Open' }],
+      closed: [{ index: 1, file: { id: 'c', name: 'closed.md', content: '# Closed' } }],
+    })
+    const written = new Map()
+    const makeFile = name => ({
+      kind: 'file', name,
+      getFile: async () => new File([written.get(name) ?? ''], name),
+      createWritable: async () => ({ write: async text => { written.set(name, text) }, close: async () => {} }),
+    })
+    const folder = {
+      kind: 'directory', name: 'Sync Root',
+      queryPermission: async () => 'granted', requestPermission: async () => 'granted',
+      async *entries() { for (const name of written.keys()) yield [name, makeFile(name)] },
+      getFileHandle: async (name, { create } = {}) => ((written.has(name) || create) ? makeFile(name) : Promise.reject(Object.assign(new Error('missing'), { name: 'NotFoundError' }))),
+      getDirectoryHandle: async () => folder,
+      removeEntry: async name => { written.delete(name) },
+    }
+    vi.stubGlobal('showDirectoryPicker', vi.fn(async () => folder))
+    installApp()
+    await screen.findByRole('tab', { name: 'open.md' })
+    fireEvent.click(document.querySelector('button[aria-label="Settings"]'))
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Choose a folder/ }))
+    await waitFor(() => {
+      expect(written.get('open.md')).toBe('# Open')
+      expect(written.get('closed.md')).toBe('# Closed')
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close settings' }))
+    const editor = document.querySelector('textarea')
+    fireEvent.change(editor, { target: { value: '# Open updated' } })
+    fireEvent.keyDown(window, { key: 's', metaKey: true })
+    await waitFor(() => expect(written.get('open.md')).toBe('# Open updated'))
   })
 })

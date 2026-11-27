@@ -5,9 +5,18 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '3.0'
+export const APP_VERSION = '3.1'
 
 export const RELEASES = [
+  {
+    version: '3.1',
+    date: '2026-11-27',
+    notes: [
+      'Folder sync now includes closed files, removes deleted files, and syncs on every save (⌘/Ctrl+S).',
+      'Workspace sync status icon in the header now shows when no folder is connected (with an option to disable it).',
+      'Pet settings moved into Settings → Pet, and Theme moved into View options.',
+    ],
+  },
   {
     version: '3.0',
     show: 'table-editor',

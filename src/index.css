@@ -3035,6 +3035,11 @@ button:hover > .ip svg { transition: transform .15s; }
 .view-menu-switch::after { width: 14px; height: 14px; }
 .view-menu-item.is-on .view-menu-switch::after { transform: translateX(14px); }
 .high-contrast .view-menu-icon { background: transparent; border: 1.5px solid var(--border); color: var(--text-1); }
+.view-menu-select-row { display: flex; align-items: center; gap: 12px; padding: 7px 10px; border-radius: 11px; color: var(--text-2); font-size: 13px; }
+.view-menu-select-row > label { flex: 1; min-width: 0; font-weight: 500; }
+.view-menu-select { max-width: 148px; height: 30px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-editor); color: var(--text-1); font: inherit; font-size: 12px; cursor: pointer; }
+.view-menu-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-pet-panel { display: grid; gap: 12px; }
 
 /* High contrast logo: theme accent tile with the icon in the page colour (strong contrast both ways). */
 html.high-contrast .logo-glow { --logo-bg: var(--accent); }
@@ -3180,7 +3185,7 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .sync-status { position: relative; }
 .sync-status-dot { position: absolute; right: 5px; bottom: 5px; width: 7px; height: 7px; border-radius: 999px; background: #1a7f37; box-shadow: 0 0 0 2px var(--bg-app, var(--bg-preview)); pointer-events: none; }
 .sync-status.is-syncing .sync-status-dot { background: var(--accent); animation: sync-pulse 1s ease-in-out infinite; }
-.sync-status.is-conflict .sync-status-dot, .sync-status.is-needs-permission .sync-status-dot { background: #d97706; }
+.sync-status.is-conflict .sync-status-dot, .sync-status.is-needs-permission .sync-status-dot, .sync-status.is-unconnected .sync-status-dot { background: #d97706; }
 .sync-status.is-error .sync-status-dot { background: #dc2626; }
 @keyframes sync-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .sync-status.is-syncing .sync-status-dot { animation: none; } }
