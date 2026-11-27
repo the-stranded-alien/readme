@@ -4,9 +4,18 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '2.6'
+export const APP_VERSION = '2.7'
 
 export const RELEASES = [
+  {
+    version: '2.7',
+    date: '2026-11-27',
+    notes: [
+      'Images as attachments: pasted images no longer bloat documents; they are kept separately and documents hold a short reference.',
+      'Images panel: see every image and where it is used; describe, rename, replace, rotate, compress or delete it, and move embedded images out of older documents.',
+      'Exports, backups, published websites and folder sync include your images.',
+    ],
+  },
   {
     version: '2.6',
     date: '2026-11-27',
@@ -37,13 +46,6 @@ export const RELEASES = [
       'Publish as a website: turn your documents (or one folder) into a small website with a sidebar, search, and links between pages, ready for GitHub Pages, Netlify or any web host.',
       'Download the ReadMe app from the Download menu or Settings → App, which also shows whether it is installed and its version.',
       'Diagrams draw at the right size when your system asks for reduced motion.',
-    ],
-  },
-  {
-    version: '2.2',
-    date: '2026-11-27',
-    notes: [
-      'Graph view: see how your documents link to each other, open them, and find ones without links.',
     ],
   },
 ]

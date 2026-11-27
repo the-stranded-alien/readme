@@ -3659,3 +3659,25 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .props-row .settings-select-wrap, .props-add .settings-select-wrap { width: 100%; min-width: 0; }
 .props-row .settings-select, .props-add .settings-select { width: 100%; min-width: 0; }
 .props-value { min-width: 0; }
+
+/* Images (attachments) */
+.library-head-actions { display: flex; align-items: center; gap: 8px; }
+.library-head-actions .reader-chip { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.images-convert { display: flex; align-items: center; gap: 14px; margin: 0 24px 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--accent-border); background: var(--accent-soft); font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.images-convert span { flex: 1; }
+.images-convert strong { color: var(--text-1); }
+.images-convert .pdf-dialog-primary { flex: none; }
+.images-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.images-tile { display: flex; flex-direction: column; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-editor); overflow: hidden; }
+.images-tile.is-busy { opacity: .6; pointer-events: none; }
+.images-thumb { display: grid; place-items: center; height: 140px; background: repeating-conic-gradient(var(--border-light) 0% 25%, transparent 0% 50%) 50% / 16px 16px; }
+.images-thumb img { max-width: 100%; max-height: 140px; object-fit: contain; }
+.images-info { display: grid; gap: 4px; padding: 10px 12px 4px; min-width: 0; }
+.images-info strong { font-size: 13px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.images-info > span { font-size: 11.5px; color: var(--text-3); }
+.images-used { display: flex; flex-wrap: wrap; gap: 4px; }
+.images-used .tasks-chip { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.images-actions { display: flex; justify-content: flex-end; gap: 2px; padding: 4px 8px 8px; margin-top: auto; }
+.images-actions .btn-icon:disabled { opacity: .35; cursor: default; }
+.images-delete:hover { color: #b42318; }
+.md-image-missing { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; border: 1px dashed var(--border-strong); color: var(--text-3); font-size: .85em; }

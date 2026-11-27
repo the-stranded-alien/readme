@@ -53,6 +53,10 @@ import {
   CheckOne as ParkCheckOne,
   Bookshelf as ParkBookshelf,
   GridFour as ParkGridFour,
+  ErrorPicture as ParkErrorPicture,
+  ImageFiles as ParkImageFiles,
+  RotateOne as ParkRotateOne,
+  Compression as ParkCompression,
   More as ParkMore,
   IndentLeft as ParkIndentLeft,
   IndentRight as ParkIndentRight,
@@ -297,6 +301,10 @@ export const AppDownload = make(ParkDownloadComputer, 'AppDownload')
 export const CircleCheck = make(ParkCheckOne, 'CircleCheck')
 export const Library = make(ParkBookshelf, 'Library')
 export const LayoutGrid = make(ParkGridFour, 'LayoutGrid')
+export const ImageOff = make(ParkErrorPicture, 'ImageOff')
+export const Images = make(ParkImageFiles, 'Images')
+export const RotateCw = make(ParkRotateOne, 'RotateCw')
+export const Shrink = make(ParkCompression, 'Shrink')
 export const MonitorUp = make(ParkTeaDrink, 'MonitorUp')
 export const Moon = make(ParkMoon, 'Moon')
 export const OctagonAlert = make(ParkError, 'OctagonAlert')

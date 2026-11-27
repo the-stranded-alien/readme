@@ -15,6 +15,9 @@ import { wikiLinksToMarkdown } from './wikiLinks'
 import { resolveFileLink, relativeFileLink } from './fileUtils'
 import { headingSlug } from './headingSections'
 import { CALLOUT_TYPES, rehypeCallouts } from './rehypeCallouts'
+import { resolveImagePath } from './attachments'
+
+const ROOT_TOKEN = '__READme_ROOT__/'
 
 const escapeHtml = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const stripExt = name => String(name).replace(/\.(md|markdown|mdx|txt)$/i, '')
@@ -29,7 +32,7 @@ const depthOf = path => path.split('/').length - 1
 const rootPrefix = path => '../'.repeat(depthOf(path))
 
 // rehype: heading ids, code colours, diagrams, callouts, links between pages.
-function rehypeSite({ fromName, pageNames, diagrams }) {
+function rehypeSite({ fromName, pageNames, diagrams, images }) {
   return tree => {
     const seen = new Map()
     const walk = node => {
@@ -67,6 +70,11 @@ function rehypeSite({ fromName, pageNames, diagrams }) {
           ...node.children,
         ]
       }
+      // Attachment images are copied into the site's assets folder.
+      if (node.tagName === 'img' && typeof node.properties?.src === 'string' && images) {
+        const path = resolveImagePath(node.properties.src, fromName)
+        if (path && images.has(path)) { node.properties.src = `${ROOT_TOKEN}assets/${path}`; images.get(path).used = true }
+      }
       // Links: other documents → their page (.html); documents not in the site → plain text.
       if (node.tagName === 'a' && typeof node.properties?.href === 'string') {
         const href = node.properties.href
@@ -86,7 +94,7 @@ function rehypeSite({ fromName, pageNames, diagrams }) {
 }
 
 /** One document → { title, html, headings, text, diagrams }. */
-export async function renderDocument(content, { fromName, files, pageNames, renderDiagrams }) {
+export async function renderDocument(content, { fromName, files, pageNames, renderDiagrams, images }) {
   const { body } = parseFrontmatter(content)
   const markdown = wikiLinksToMarkdown(body, fromName, files)
   const diagrams = []
@@ -95,7 +103,7 @@ export async function renderDocument(content, { fromName, files, pageNames, rend
     .use(remarkRehype)
     .use(rehypeKatex, { throwOnError: false })
     .use(rehypeCallouts)
-    .use(rehypeSite, { fromName, pageNames, diagrams })
+    .use(rehypeSite, { fromName, pageNames, diagrams, images })
     .use(rehypeStringify)
     .process(markdown)
   let html = String(file)
@@ -170,7 +178,7 @@ ${page.math ? `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@$
 <div class="layout">
   <nav class="sidebar" aria-label="Pages">${navTree(pages, page.path)}</nav>
   <main id="content">
-    <article class="doc">${page.html}</article>
+    <article class="doc">${page.html.split(ROOT_TOKEN).join(prefix)}</article>
     <nav class="pager" aria-label="Previous and next page">
       ${prev ? `<a class="prev" href="${prefix}${encodeURI(prev.path)}"><span>Previous</span>${escapeHtml(prev.title)}</a>` : '<span></span>'}
       ${next ? `<a class="next" href="${prefix}${encodeURI(next.path)}"><span>Next</span>${escapeHtml(next.title)}</a>` : '<span></span>'}
@@ -247,10 +255,12 @@ export async function publishSite(files, options = {}) {
   const chosen = files.filter(file => !folder || file.name.startsWith(`${folder}/`))
   if (!chosen.length) throw new Error('No documents to publish.')
   const pageNames = new Set(chosen.map(file => file.name))
+  // options.attachments: Map(path → Blob) of image attachments.
+  const images = options.attachments ? new Map([...options.attachments].map(([path, blob]) => [path, { blob, used: false }])) : null
   const pages = []
   for (const [index, file] of chosen.entries()) {
     options.onProgress?.(index / chosen.length, file.name)
-    const rendered = await renderDocument(file.content, { fromName: file.name, files, pageNames, renderDiagrams: options.renderDiagrams })
+    const rendered = await renderDocument(file.content, { fromName: file.name, files, pageNames, renderDiagrams: options.renderDiagrams, images })
     pages.push({ ...rendered, id: file.id, name: file.name, path: pagePath(file.name, folder) })
   }
   // Sidebar / reading order: home first, then by folder and name.
@@ -271,6 +281,7 @@ export async function publishSite(files, options = {}) {
     zip.file('assets/search-index.js', `window.SITE_INDEX=${JSON.stringify(pages.map(page => ({ title: page.title, path: page.path, text: page.text.slice(0, 20000) })))};`)
     zip.file('assets/search.js', SEARCH_JS)
   }
+  for (const [path, item] of images ?? []) if (item.used) zip.file(`assets/${path}`, item.blob)
   zip.file('.nojekyll', '')
   options.onProgress?.(1, '')
   const blob = await zip.generateAsync({ type: 'blob' })

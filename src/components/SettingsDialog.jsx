@@ -173,6 +173,12 @@ export default function SettingsDialog({
                   onChange={value => onChange('hideAi', value)}
                 />
                 <SettingsToggle
+                  label="Embed pasted images in the document"
+                  description="Off (recommended): pasted and dropped images are kept as attachments (see Images in the command palette) and documents only hold a short reference, so they stay small and readable. On: images are written into the document itself."
+                  checked={Boolean(settings.embedImages)}
+                  onChange={value => onChange('embedImages', value)}
+                />
+                <SettingsToggle
                   label="Lite mode"
                   description="Uses less memory: turns off syntax colours, diagram rendering, link previews, the reading cats and animations."
                   checked={settings.lite}

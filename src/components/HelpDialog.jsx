@@ -45,7 +45,7 @@ const HELP_SECTIONS = [
       ['Reorganise the outline', 'In the Contents bar, drag a heading to move its whole section (with its sub-sections). Each heading’s ⋯ menu can move it up or down, promote or demote it, move it to another file, or copy it. With a heading focused: Alt+↑ / Alt+↓ move it, Alt+← / Alt+→ promote or demote it. Every change can be undone.'],
       ['Templates', 'Use Templates in the editor toolbar or the New menu. Manage templates to save your own. The Markdown Guide template shows every Markdown feature ReadMe supports, with the text to type for each — a handy tutorial.'],
       ['Write a README', 'Describe a project and a README is written into a new file — with on-device AI in supported Chrome, or the built-in generator everywhere else.'],
-      ['Images', 'Paste or drop an image into the editor to embed it in the document.'],
+      ['Images', 'Paste or drop an image into the editor: it is kept as an attachment and the document gets a short reference like ![Chart](/attachments/chart.png), so documents stay small. The toast after pasting lets you add a description (alt text). Open Images (command palette, or the Library) to see every image and where it is used, describe, rename, replace, rotate, compress or delete it, find unused images, and move images embedded in older documents out into attachments. Exports, backups, published websites and folder sync all include them. Prefer images inside the document? Settings → Features → Embed pasted images.'],
     ],
   },
   {

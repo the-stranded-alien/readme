@@ -7,6 +7,7 @@ import remarkParseForTest from 'remark-parse'
 import remarkGfmForTest from 'remark-gfm'
 import remarkRehypeForTest from 'remark-rehype'
 import { addTags, documentInfo, filterDocuments, inlineTags, readFrontMatter, sortDocuments, writeFrontMatter } from '../library.js'
+import { attachmentPath, attachmentSrc, attachmentsUsed, embeddedImages, imageReferences, renameAttachmentRefs, resolveImagePath, rewriteImageSources, setAltText } from '../attachments.js'
 import { describe, expect, it } from 'vitest'
 import { htmlToMarkdown, looksRich, parseDelimited, rowsToMarkdownTable, webPageToMarkdown } from '../htmlToMarkdown.js'
 
@@ -428,6 +429,31 @@ describe('library and properties', () => {
     expect(addTags('---\ntags: [a]\n---\nx', ['b', '#a'])).toBe('---\ntags: [a, b]\n---\nx')
     expect(addTags('# T', ['new'])).toBe('---\ntags: [new]\n---\n\n# T')
     expect(addTags('---\ntags: a, b\n---\nx', ['c'])).toBe('---\ntags: [a, b, c]\n---\nx')
+  })
+})
+
+describe('image attachments', () => {
+  const doc = '# Doc\n\n![Chart](/attachments/chart.png) and ![Logo](../attachments/logo%20one.png "Our logo")\n\n`![not](/attachments/code.png)`\n\n![Web](https://x.y/a.png)\n\n![Ref][img-a]\n\n[img-a]: data:image/png;base64,AAAA\n'
+  it('finds image references and resolves them against the document', () => {
+    const refs = imageReferences(doc)
+    expect(refs.map(ref => [ref.kind, ref.src])).toEqual([
+      ['inline', '/attachments/chart.png'], ['inline', '../attachments/logo%20one.png'], ['inline', 'https://x.y/a.png'], ['definition', 'data:image/png;base64,AAAA'],
+    ])
+    for (const ref of refs) expect(doc.slice(ref.from, ref.to)).toBe(ref.src)
+    expect(resolveImagePath('/attachments/chart.png', 'notes/a.md')).toBe('attachments/chart.png')
+    expect(resolveImagePath('../attachments/logo%20one.png', 'notes/a.md')).toBe('attachments/logo one.png')
+    expect(resolveImagePath('https://x.y/a.png', 'a.md')).toBeNull()
+    expect(attachmentsUsed(doc, 'notes/a.md')).toEqual(['attachments/chart.png', 'attachments/logo one.png'])
+    expect(embeddedImages(doc).map(ref => ref.type)).toEqual(['image/png'])
+  })
+  it('names, renames and re-describes attachments', () => {
+    expect(attachmentPath('Screen Shot 2026.PNG', 'image/png', ['attachments/screen-shot-2026.png'])).toBe('attachments/screen-shot-2026-2.png')
+    expect(attachmentSrc('attachments/logo one.png')).toBe('/attachments/logo%20one.png')
+    const renamed = renameAttachmentRefs(doc, 'notes/a.md', 'attachments/logo one.png', 'attachments/brand.png')
+    expect(renamed).toContain('![Logo](/attachments/brand.png "Our logo")')
+    expect(renamed).toContain('`![not](/attachments/code.png)`')
+    expect(setAltText(doc, 'notes/a.md', 'attachments/chart.png', 'Sales by month')).toContain('![Sales by month](/attachments/chart.png)')
+    expect(rewriteImageSources('![a](/attachments/x.png)', 'a.md', (_ref, path) => (path === 'attachments/x.png' ? 'blob:abc' : null))).toBe('![a](blob:abc)')
   })
 })
 

@@ -1,6 +1,6 @@
 // Workspace backup / restore: one .zip with every file (as plain .md), file
 // metadata, app settings and version history.
-import { readAllHistory, writeAllHistory, writeWorkspace } from './workspaceDb'
+import { putAttachment, readAllAttachments, readAllHistory, writeAllHistory, writeWorkspace } from './workspaceDb'
 
 const MANIFEST = 'readme-backup.json'
 // Workspace data is stored separately; everything else prefixed "readme-" is a setting.
@@ -17,7 +17,7 @@ function settingsSnapshot() {
 
 const safeName = name => name.replace(/[\\:*?"<>|]+/g, '-').replace(/^\/+/, '') || 'document.md'
 
-export async function createBackup({ files, activeId, closed = [] }) {
+export async function createBackup({ files, activeId, closed = [], attachments = null }) {
   const { default: JSZip } = await import('jszip')
   const zip = new JSZip()
   const used = new Set()
@@ -35,7 +35,14 @@ export async function createBackup({ files, activeId, closed = [] }) {
   const closedEntries = closed.filter(entry => entry?.file).map(entry => ({ ...toEntry(entry.file, 'closed'), index: entry.index ?? 0 }))
   let history = {}
   try { history = await readAllHistory() } catch { /* history is optional */ }
-  zip.file(MANIFEST, JSON.stringify({ app: 'ReadMe', version: 1, createdAt: new Date().toISOString(), activeId, files: entries, closed: closedEntries, settings: settingsSnapshot(), history }, null, 2))
+  // Image attachments go in as real image files.
+  let images = attachments
+  if (!images) { try { images = await readAllAttachments() } catch { images = [] } }
+  const imageEntries = (images ?? []).filter(item => item?.path && item.blob).map(item => {
+    zip.file(item.path, item.blob)
+    return { path: item.path, type: item.type || item.blob.type, createdAt: item.createdAt ?? 0 }
+  })
+  zip.file(MANIFEST, JSON.stringify({ app: 'ReadMe', version: 1, createdAt: new Date().toISOString(), activeId, files: entries, closed: closedEntries, attachments: imageEntries, settings: settingsSnapshot(), history }, null, 2))
   return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
 }
 
@@ -61,7 +68,16 @@ export async function readBackup(blob) {
   const closed = (await readEntries(manifest.closed))
     .filter(item => !files.some(file => file.id === item.file.id))
     .map(item => ({ index: Number(item.entry.index) || 0, file: item.file }))
+  const attachments = []
+  for (const entry of Array.isArray(manifest.attachments) ? manifest.attachments : []) {
+    const file = typeof entry?.path === 'string' && entry.path.startsWith('attachments/') && zip.file(entry.path)
+    if (!file) continue
+    const data = await file.async('uint8array')
+    const blob = new Blob([data], { type: entry.type || 'image/png' })
+    attachments.push({ path: entry.path, blob, type: blob.type, size: blob.size, createdAt: Number(entry.createdAt) || Date.now() })
+  }
   return {
+    attachments,
     createdAt: manifest.createdAt,
     activeId: files.some(file => file.id === manifest.activeId) ? manifest.activeId : files[0]?.id ?? null,
     files,
@@ -82,4 +98,5 @@ export async function applyBackup(backup) {
   if (backup.activeId) localStorage.setItem('readme-active-file', backup.activeId)
   await writeWorkspace({ files: backup.files, activeId: backup.activeId, closed: backup.closed ?? [] })
   await writeAllHistory(backup.history)
+  for (const record of backup.attachments ?? []) await putAttachment(record)
 }

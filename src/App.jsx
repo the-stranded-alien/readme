@@ -24,13 +24,13 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, Workflow, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, AppDownload, Library, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, Workflow, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, AppDownload, Library, ImageOff, Images, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
   FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
 import { addSnapshot, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
-import { canSyncToFolder, existsInFolder, folderPermission, readFolder, removeFromFolder, syncPath, writeToFolder } from './folderSync'
+import { canSyncToFolder, existsInFolder, folderPermission, readFolder, removeFromFolder, syncPath, writeAttachmentsToFolder, writeToFolder } from './folderSync'
 import { analyzeDocument, applyQualityFix, extractHeadings } from './documentAnalysis'
 import { FILE_DRAG_TYPE, fileLinkTitle, fuzzyScore, makeDuplicateFileName, relativeFileLink, resolveFileLink, MAX_FOLDER_DEPTH, cleanFileStem, folderDepth, splitFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
@@ -42,8 +42,11 @@ import PublishSiteDialog from './components/PublishSiteDialog'
 import PreviewEditTools from './components/PreviewEditTools'
 import LibraryView from './components/LibraryView'
 import PropertiesDialog from './components/PropertiesDialog'
+import ImagesDialog from './components/ImagesDialog'
 import { addTags, documentInfo } from './library'
 import { useAppInstall } from './appInstall'
+import { ATTACHMENT_DIR, attachmentPath, attachmentsUsed, embeddedImages, extensionFor, renameAttachmentRefs, setAltText, attachmentSrc, blobToDataUrl, dataUrlToBlob, imageReferences, isAttachmentPath, resolveImagePath, rewriteImageSources } from './attachments'
+import { deleteAttachment, putAttachment, readAllAttachments } from './workspaceDb'
 import EmptyWorkspace from './components/EmptyWorkspace'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import GlobalSearch from './components/GlobalSearch'
@@ -549,8 +552,16 @@ function SectionHeading({ as, iconSize, node, children, ...rest }) {
 }
 
 // Images get a caption from their alt text (rendered inline-safe inside paragraphs).
-function MarkdownImage({ node, src, alt, title }) {
+// Image attachments ("/attachments/…") resolve to the stored image for the current document.
+const AttachmentContext = createContext({ urls: new Map(), docName: '', ready: false })
+function MarkdownImage({ node, src: rawSrc, alt, title }) {
+  const { urls, docName, ready } = useContext(AttachmentContext)
+  const path = resolveImagePath(rawSrc, docName)
+  const src = (path && urls.get(path)) || rawSrc
   const caption = (alt || '').trim()
+  if (ready && isAttachmentPath(path) && !urls.has(path)) {
+    return <span className="md-image-missing" role="img" aria-label={`Missing image: ${alt || path}`}><ImageOff size={14} aria-hidden="true" />Image not found: {path.slice(ATTACHMENT_DIR.length + 1)}</span>
+  }
   if (!node?.properties?.dataStandalone) return <img src={src} alt={alt || ''} title={title} loading="lazy" decoding="async" />
   return (
     <span className={`md-figure${caption ? ' has-caption' : ''}`}>
@@ -2684,7 +2695,7 @@ export default function App() {
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
   const [appSettings, setAppSettings] = useState(() => {
-    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '' }
+    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '', embedImages: false }
     try { return { ...defaults, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return defaults }
   })
   const updateAppSetting = useCallback((key, value) => setAppSettings(current => ({ ...current, [key]: value })), [])
@@ -2759,6 +2770,8 @@ export default function App() {
     setRecentIds([activeFileId, ...recentIds.filter(id => id !== activeFileId)].slice(0, 30))
   }
   const fileName = activeFile?.name ?? null
+  const fileNameRef = useRef(fileName)
+  useEffect(() => { fileNameRef.current = fileName }, [fileName])
   const { meta: frontmatterMeta, body: markdownBody } = useMemo(
     () => parseFrontmatter(content),
     [content]
@@ -2839,7 +2852,53 @@ export default function App() {
   const linkableFiles = useMemo(() => [...files, ...closedFiles.map(entry => entry.file)], [files, closedFiles])
   // Exports get [[wiki links]] as ordinary relative links (Markdown, PDF, Word, Confluence, slides).
   const exportContent = useMemo(() => wikiLinksToMarkdown(content, fileName ?? '', linkableFiles), [content, fileName, linkableFiles])
-  const exportBody = useMemo(() => wikiLinksToMarkdown(markdownBody, fileName ?? '', linkableFiles), [markdownBody, fileName, linkableFiles])
+  // ── Image attachments ───────────────────────────────────────
+  const [attachments, setAttachments] = useState(() => new Map()) // path → { path, blob, type, size, createdAt, url }
+  const [attachmentsReady, setAttachmentsReady] = useState(false)
+  const attachmentsRef = useRef(attachments)
+  useEffect(() => { attachmentsRef.current = attachments }, [attachments])
+  useEffect(() => {
+    let cancelled = false
+    readAllAttachments().then(list => {
+      if (cancelled) return
+      setAttachments(new Map(list.map(record => [record.path, { ...record, url: URL.createObjectURL(record.blob) }])))
+    }).catch(() => {}).finally(() => { if (!cancelled) setAttachmentsReady(true) })
+    return () => { cancelled = true }
+  }, [])
+  const attachmentUrls = useMemo(() => new Map([...attachments].map(([path, record]) => [path, record.url])), [attachments])
+  /** Stores an image and returns its path ("attachments/name.png"). */
+  const addAttachment = useCallback(async (blob, name, path = null) => {
+    const target = path ?? attachmentPath(name, blob.type, attachmentsRef.current.keys())
+    const record = { path: target, blob, type: blob.type, size: blob.size, createdAt: Date.now() }
+    await putAttachment(record)
+    const url = URL.createObjectURL(blob)
+    attachmentsRef.current = new Map(attachmentsRef.current).set(target, { ...record, url })
+    setAttachments(prev => { const old = prev.get(target); if (old?.url) URL.revokeObjectURL(old.url); return new Map(prev).set(target, { ...record, url }) })
+    return target
+  }, [])
+  const removeAttachment = useCallback(async path => {
+    await deleteAttachment(path)
+    setAttachments(prev => { const next = new Map(prev); const old = next.get(path); if (old?.url) URL.revokeObjectURL(old.url); next.delete(path); return next })
+  }, [])
+  /** The document with its attachments embedded as data (for share links, which carry everything). */
+  const inlineAttachments = useCallback(async (markdown, docName) => {
+    const data = new Map()
+    for (const ref of imageReferences(markdown)) {
+      const path = resolveImagePath(ref.src, docName)
+      const record = path && attachmentsRef.current.get(path)
+      if (record && !data.has(path)) data.set(path, await blobToDataUrl(record.blob))
+    }
+    return data.size ? rewriteImageSources(markdown, docName, (_ref, path) => data.get(path) ?? null) : markdown
+  }, [])
+  /** Adds the attachments these documents use to a ZIP (as "attachments/…" files). */
+  const zipAttachments = useCallback((zip, docs) => {
+    const paths = new Set(docs.flatMap(doc => attachmentsUsed(doc.content, doc.name)))
+    for (const path of paths) { const record = attachmentsRef.current.get(path); if (record) zip.file(path, record.blob) }
+    return paths.size
+  }, [])
+  const attachmentContext = useMemo(() => ({ urls: attachmentUrls, docName: fileName ?? '', ready: attachmentsReady }), [attachmentUrls, fileName, attachmentsReady])
+  // Exports read images by URL: attachments become in-memory URLs for them.
+  const exportBody = useMemo(() => rewriteImageSources(wikiLinksToMarkdown(markdownBody, fileName ?? '', linkableFiles), fileName ?? '', (_ref, path) => attachmentUrls.get(path) ?? null), [markdownBody, fileName, linkableFiles, attachmentUrls])
   const backlinks = useMemo(() => (activeFile ? findBacklinks(activeFile, linkableFiles) : []), [activeFile, linkableFiles])
   // Tasks across every document (a file is parsed again only when its text changes).
   const taskCacheRef = useRef(new Map())
@@ -3764,6 +3823,42 @@ export default function App() {
   // with the definitions appended at the end so the text stays readable).
   const insertImages = useCallback(async (imageFiles, textarea) => {
     if (!imageFiles.length || !textarea) return
+    if (!appSettings.embedImages) {
+      // Stored as attachments: the document only gets a short reference.
+      let paths
+      try {
+        paths = []
+        for (const file of imageFiles) {
+          const dataUrl = await imageFileToDataUrl(file)
+          paths.push(await addAttachment(dataUrlToBlob(dataUrl), file.name || 'pasted-image.png'))
+        }
+      } catch (error) {
+        setToast({ message: `Could not store the image: ${error?.message || 'storage is full or unavailable'}.`, tone: 'warning', duration: 6000 })
+        return
+      }
+      const alts = imageFiles.map(file => (file.name || 'Image').replace(/\.[^.]+$/, '').replace(/[[\]]/g, '').replace(/[-_]+/g, ' ').trim() || 'Image')
+      const inline = paths.map((path, index) => `![${alts[index]}](${attachmentSrc(path)})`).join('\n\n')
+      const at = textarea.selectionStart
+      const before = textarea.value.slice(0, at)
+      const after = textarea.value.slice(textarea.selectionEnd)
+      const lead = !before ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'
+      const trail = !after ? '\n' : after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n'
+      const insertText = `${lead}${inline}${trail}`
+      applyTextareaEdit(textarea, { from: at, to: textarea.selectionEnd, text: insertText, cursor: at + insertText.length })
+      const last = paths[paths.length - 1]
+      setToast({
+        message: paths.length === 1 ? 'Image added. A short description helps screen-reader users.' : `${paths.length} images added.`,
+        tone: 'success', duration: 7000,
+        action: paths.length === 1 ? { label: 'Describe', run: async () => {
+          const alt = await askText({ title: 'Describe the image', label: 'Description (alt text)', initialValue: alts[0], placeholder: 'e.g. Sales grew 20% in March', confirmLabel: 'Save' })
+          const ta = textareaRef.current
+          if (alt == null || !ta) return
+          const ref = imageReferences(ta.value).find(item => item.kind === 'inline' && resolveImagePath(item.src, fileNameRef.current) === last)
+          if (ref) applyTextareaEdit(ta, { from: ref.altFrom, to: ref.altTo, text: alt.replace(/[[\]\n]/g, ' ').trim(), cursor: ta.selectionStart })
+        } } : undefined,
+      })
+      return
+    }
     const entries = await Promise.all(imageFiles.map(async file => ({ name: file.name || 'pasted-image.png', dataUrl: await imageFileToDataUrl(file) })))
     const { inline, definitions } = imageReferenceMarkdown(entries, textarea.value)
     const at = textarea.selectionStart
@@ -3777,7 +3872,7 @@ export default function App() {
     const end = textarea.value.length
     const tail = textarea.value.endsWith('\n') ? '\n' : '\n\n'
     applyTextareaEdit(textarea, { from: end, to: end, text: `${tail}${definitions}\n`, cursor: caret })
-  }, [])
+  }, [appSettings.embedImages, addAttachment, askText])
   // Paste: images are embedded; rich text (Word, Google Docs, Confluence, web pages) and
   // spreadsheet cells become Markdown. The plain text goes in first and the Markdown replaces
   // it as a second edit, so one Cmd/Ctrl+Z gives the plain text back. Cmd/Ctrl+Shift+V = plain.
@@ -4753,7 +4848,8 @@ export default function App() {
       const { publishSite, renderSiteDiagrams } = await import('./sitePublisher')
       const pool = includeClosed ? [...files, ...closedFileList] : files
       const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6d28d9'
-      const { blob, pages } = await publishSite(pool, { ...options, accent, renderDiagrams: renderSiteDiagrams, onProgress: setPublishProgress })
+      const attachments = new Map([...attachmentsRef.current].map(([path, record]) => [path, record.blob]))
+      const { blob, pages } = await publishSite(pool, { ...options, accent, attachments, renderDiagrams: renderSiteDiagrams, onProgress: setPublishProgress })
       const slug = (options.title || 'site').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'site'
       const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${slug}-website.zip` })
       a.click()
@@ -5119,6 +5215,7 @@ export default function App() {
         for (const id of pulled.removedIds) removedFromFolderRef.current.add(id)
         const skip = id => conflicted.has(id) || removedFromFolderRef.current.has(id)
         const pushed = await writeToFolder(handle, filesRef.current.filter(file => !skip(file.id)), syncWrittenRef.current, syncPathsRef.current)
+        await writeAttachmentsToFolder(handle, [...attachmentsRef.current.values()], syncWrittenRef.current).catch(() => {})
         writeSyncState({ name: handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
         setSyncFolder(current => current && { ...current, status: 'connected', error: '', lastSync: Date.now() })
         return { ...pulled, pushed }
@@ -5266,12 +5363,14 @@ export default function App() {
   const libraryExport = useCallback(async ids => {
     const { default: JSZip } = await import('jszip')
     const zip = new JSZip()
-    for (const file of [...files, ...closedFileList].filter(item => ids.includes(item.id))) zip.file(file.name, file.content)
+    const chosen = [...files, ...closedFileList].filter(item => ids.includes(item.id))
+    for (const file of chosen) zip.file(file.name, file.content)
+    zipAttachments(zip, chosen)
     const blob = await zip.generateAsync({ type: 'blob' })
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'readme-documents.zip' })
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 1000)
-  }, [files, closedFileList])
+  }, [files, closedFileList, zipAttachments])
   const saveProperties = useCallback(async (id, next) => {
     const file = files.find(item => item.id === id)
     if (!file) return
@@ -5290,6 +5389,108 @@ export default function App() {
     }
     changeDocuments(new Map([[id, next]]), 'Properties saved.')
   }, [files, activeFileId, view, changeDocuments])
+
+  // ── Images panel ────────────────────────────────────────────
+  const [imagesOpen, setImagesOpen] = useState(false)
+  const allDocuments = useMemo(() => [...files, ...closedFileList], [files, closedFileList])
+  const embeddedSummary = useMemo(() => {
+    if (!imagesOpen) return { count: 0, docs: 0, bytes: 0 }
+    let count = 0, docs = 0, bytes = 0
+    for (const doc of allDocuments) {
+      const found = embeddedImages(doc.content)
+      if (found.length) { docs += 1; count += found.length; bytes += found.reduce((sum, ref) => sum + ref.src.length, 0) }
+    }
+    return { count, docs, bytes }
+  }, [imagesOpen, allDocuments])
+  /** Rewrites every document that uses `path` with fn(content, name). */
+  const rewriteUsers = useCallback((path, fn, message, undo = true) => {
+    const changes = new Map()
+    for (const doc of allDocuments) {
+      if (!attachmentsUsed(doc.content, doc.name).includes(path)) continue
+      const next = fn(doc.content, doc.name)
+      if (next !== doc.content) changes.set(doc.id, next)
+    }
+    if (undo) changeDocuments(changes, message)
+    else if (changes.size) {
+      setFiles(prev => prev.map(file => (changes.has(file.id) ? { ...file, content: changes.get(file.id), updatedAt: Date.now() } : file)))
+      setClosedFiles(prev => prev.map(entry => (changes.has(entry.file.id) ? { ...entry, file: { ...entry.file, content: changes.get(entry.file.id) } } : entry)))
+      markWorkspaceEdit()
+      setToast({ message, tone: 'success' })
+    }
+    return changes.size
+  }, [allDocuments, changeDocuments, markWorkspaceEdit])
+  const imageActions = useMemo(() => ({
+    onConvert: async () => {
+      // Embedded data URIs → attachments (identical images are stored once).
+      const stored = new Map()
+      const changes = new Map()
+      let count = 0
+      for (const doc of allDocuments) {
+        const found = embeddedImages(doc.content)
+        if (!found.length) continue
+        for (const ref of found) {
+          if (stored.has(ref.src)) continue
+          const name = (ref.alt || ref.id || 'image').replace(/^img-/, '')
+          stored.set(ref.src, await addAttachment(dataUrlToBlob(ref.src), `${name}.${extensionFor(ref.type)}`))
+          count += 1
+        }
+        changes.set(doc.id, rewriteImageSources(doc.content, doc.name, ref => (stored.has(ref.src) ? attachmentSrc(stored.get(ref.src)) : null)))
+      }
+      changeDocuments(changes, `Moved ${count} ${count === 1 ? 'image' : 'images'} out of ${changes.size} ${changes.size === 1 ? 'document' : 'documents'}.`)
+    },
+    onDescribe: async path => {
+      const alt = await askText({ title: 'Describe the image', label: 'Description (alt text), used everywhere this image appears', placeholder: 'e.g. Sales grew 20% in March', confirmLabel: 'Save' })
+      if (alt == null) return
+      rewriteUsers(path, (content, name) => setAltText(content, name, path, alt), 'Description saved.')
+    },
+    onRename: async path => {
+      const ext = path.split('.').pop()
+      const current = path.slice(ATTACHMENT_DIR.length + 1).replace(/\.[^.]+$/, '')
+      const raw = await askText({ title: 'Rename image', label: 'Name', initialValue: current, suffix: `.${ext}`, confirmLabel: 'Rename' })
+      if (raw == null || !raw.trim() || raw.trim() === current) return
+      const record = attachmentsRef.current.get(path)
+      if (!record) return
+      const target = attachmentPath(`${raw.trim()}.${ext}`, record.type, [...attachmentsRef.current.keys()].filter(item => item !== path))
+      await addAttachment(record.blob, '', target)
+      await removeAttachment(path)
+      rewriteUsers(path, (content, name) => renameAttachmentRefs(content, name, path, target), `Renamed to ${target.slice(ATTACHMENT_DIR.length + 1)}.`, false)
+    },
+    onReplace: async (path, file) => {
+      const blob = dataUrlToBlob(await imageFileToDataUrl(file))
+      await addAttachment(blob, '', path)
+      setToast({ message: 'Image replaced everywhere it is used.', tone: 'success' })
+    },
+    onRotate: async path => {
+      const record = attachmentsRef.current.get(path)
+      if (!record) return
+      const bitmap = await createImageBitmap(record.blob)
+      const canvas = document.createElement('canvas')
+      canvas.width = bitmap.height; canvas.height = bitmap.width
+      const context = canvas.getContext('2d')
+      context.translate(canvas.width, 0); context.rotate(Math.PI / 2); context.drawImage(bitmap, 0, 0)
+      bitmap.close?.()
+      const type = /png|webp/.test(record.type) ? record.type : 'image/jpeg'
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, type, 0.9))
+      if (blob) await addAttachment(blob, '', path)
+    },
+    onCompress: async path => {
+      const record = attachmentsRef.current.get(path)
+      if (!record) return
+      const smaller = dataUrlToBlob(await imageFileToDataUrl(new File([record.blob], path, { type: record.type }), { maxSide: 1600, quality: 0.8 }))
+      if (smaller.size < record.size * 0.95) {
+        await addAttachment(smaller, '', path)
+        setToast({ message: `Image made smaller: ${Math.round(record.size / 1024)} KB → ${Math.round(smaller.size / 1024)} KB.`, tone: 'success' })
+      } else setToast({ message: 'This image is already about as small as it can be.', tone: 'success' })
+    },
+    onDelete: async (path, usedCount) => {
+      const ok = await askConfirm({
+        title: 'Delete image?', danger: true, icon: Trash2, confirmLabel: 'Delete',
+        message: `Delete “${path.slice(ATTACHMENT_DIR.length + 1)}” permanently?`,
+        details: usedCount ? [`${usedCount} ${usedCount === 1 ? 'document uses' : 'documents use'} it; ${usedCount === 1 ? 'it' : 'they'} will show “Image not found” instead.`] : [],
+      })
+      if (ok) await removeAttachment(path)
+    },
+  }), [allDocuments, addAttachment, removeAttachment, changeDocuments, rewriteUsers, askText, askConfirm])
   // Rename from the Files panel: only the name is editable; the folder and the extension stay.
   const renameFileFromTree = useCallback(async id => {
     const file = files.find(item => item.id === id)
@@ -5525,7 +5726,7 @@ export default function App() {
   const handleCopyShareLink = useCallback(async () => {
     if (!activeFile || !content.trim()) return
     try {
-      const url = await buildShareUrl(content, fileName)
+      const url = await buildShareUrl(await inlineAttachments(content, fileName ?? ''), fileName)
       await navigator.clipboard.writeText(url)
       const kb = (url.length / 1024).toFixed(1)
       setToast(url.length > 64_000
@@ -5535,7 +5736,7 @@ export default function App() {
       console.error('Share link failed', error)
       setToast({ message: 'Could not create a share link in this browser.', tone: 'warning' })
     }
-  }, [activeFile, content, fileName])
+  }, [activeFile, content, fileName, inlineAttachments])
   const [sharedDoc, setSharedDoc] = useState(null)
   useEffect(() => {
     const load = () => {
@@ -5714,6 +5915,10 @@ export default function App() {
     clone.querySelectorAll('.heading-anchor, .section-toggle, .heading-tools, .section-summary, .code-actions, .book-folio-footer, .focus-section-bar, .summary-card, .table-edit').forEach(el => el.remove())
     // Collapsed / focus-hidden sections are part of the document: export everything.
     clone.querySelectorAll('[data-collapsed]').forEach(el => el.removeAttribute('data-collapsed'))
+    // Attachment images are in-memory URLs here: embed them so the file stands on its own.
+    await Promise.all([...clone.querySelectorAll('img[src^="blob:"]')].map(async img => {
+      try { img.src = await blobToDataUrl(await (await fetch(img.src)).blob()) } catch { /* leave it */ }
+    }))
     const fontCss = await embeddedFontCss(activeFont.family)
 
     const html = `<!doctype html>
@@ -5770,6 +5975,7 @@ ${fontCss}
       used.add(name.toLowerCase())
       zip.file(name, f.content)
     }
+    zipAttachments(zip, files)
     const blob = await zip.generateAsync({ type: 'blob' })
     const a = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(blob),
@@ -5777,7 +5983,7 @@ ${fontCss}
     })
     a.click()
     URL.revokeObjectURL(a.href)
-  }, [files])
+  }, [files, zipAttachments])
 
   const handleSyncEditorScroll = useCallback(() => {
     if (!syncScroll || syncLockRef.current === 'preview') return
@@ -5835,6 +6041,7 @@ ${fontCss}
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
     ...(activeFile ? [{ id: 'preview-edit', label: previewEditOn ? 'Stop editing in the preview' : 'Edit in preview', hint: 'View', icon: Pencil, run: () => { setPreviewEditOn(on => !on); if (view === 'editor') setView('preview') } }] : []),
     { id: 'library', label: 'Library: all documents', hint: 'View', icon: Library, run: () => setLibraryOpen(true) },
+    { id: 'images', label: 'Images (attachments)', hint: 'View', icon: Images, run: () => setImagesOpen(true) },
     ...(activeFile ? [{ id: 'properties', label: 'Document properties (front matter)', hint: 'Document', icon: SlidersHorizontal, run: () => setPropertiesFor(activeFileId) }] : []),
     { id: 'graph', label: 'Graph of linked documents', hint: 'View', icon: Workflow, run: () => setGraphOpen(true) },
     { id: 'publish-site', label: 'Publish as a website', hint: 'Export', icon: Globe, run: () => setPublishOpen(true) },
@@ -5933,6 +6140,7 @@ ${fontCss}
   useEffect(() => { setTocVisible(view === 'preview' || view === 'focus') }, [view])
 
   return (
+    <AttachmentContext.Provider value={attachmentContext}>
     <IconStyleContext.Provider value={smallIconStyle}>
     <LiteContext.Provider value={appSettings.lite}>
     <CodeThemeContext.Provider value={highContrast ? null : theme}>
@@ -7106,10 +7314,15 @@ ${fontCss}
           onCreate={name => { createLinkedDocument(name).then(created => { if (created) setGraphOpen(false) }) }}
           onClose={() => setGraphOpen(false)} />
       )}
+      {imagesOpen && (
+        <ImagesDialog attachments={[...attachments.values()]} documents={allDocuments} embedded={embeddedSummary}
+          {...imageActions} onOpenDocument={openDocument} onClose={() => setImagesOpen(false)} />
+      )}
       {libraryOpen && (
         <LibraryView documents={libraryDocs} activeId={activeFileId} askText={askText}
           onOpen={openDocument} onProperties={id => setPropertiesFor(id)}
           onMove={libraryMove} onAddTag={libraryAddTag} onExport={libraryExport} onDelete={ids => deleteEntries(ids)}
+          onOpenImages={() => { setLibraryOpen(false); setImagesOpen(true) }} imageCount={attachments.size}
           onClose={() => setLibraryOpen(false)} />
       )}
       {propertiesFor && files.some(file => file.id === propertiesFor) && (
@@ -7336,5 +7549,6 @@ ${fontCss}
     </CodeThemeContext.Provider>
     </LiteContext.Provider>
     </IconStyleContext.Provider>
+    </AttachmentContext.Provider>
   )
 }

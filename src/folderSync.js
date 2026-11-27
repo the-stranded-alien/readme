@@ -55,6 +55,22 @@ export async function writeToFolder(root, files, written, paths = new Map()) {
   return count
 }
 
+/** Writes image attachments as real files ("attachments/chart.png") when new or replaced. */
+export async function writeAttachmentsToFolder(root, records, written) {
+  let count = 0
+  for (const record of records) {
+    const marker = `attachment:${record.size}:${record.createdAt}`
+    if (written.get(record.path) === marker) continue
+    const handle = await fileHandleFor(root, record.path, true)
+    const writable = await handle.createWritable()
+    await writable.write(record.blob)
+    await writable.close()
+    written.set(record.path, marker)
+    count += 1
+  }
+  return count
+}
+
 /** True when the folder still has a file at this path (false only when it is really gone). */
 export async function existsInFolder(root, path) {
   try {

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Download, FileText, FolderOpen, LayoutGrid, Library, List, Pin, Search, SlidersHorizontal, Tag, Trash2, X } from '../icons'
+import { Download, FileText, FolderOpen, Images, LayoutGrid, Library, List, Pin, Search, SlidersHorizontal, Tag, Trash2, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { LIBRARY_SORTS, filterDocuments, sortDocuments } from '../library'
 import EmptyState from './EmptyState'
@@ -30,7 +30,7 @@ function editedLabel(time) {
  * Every document (open and closed) as cards or a table, with search, filters, saved views and
  * bulk actions. `documents`: documentInfo() items. Actions get arrays of ids.
  */
-export default function LibraryView({ documents, activeId, onOpen, onProperties, onMove, onAddTag, onExport, onDelete, askText, onClose }) {
+export default function LibraryView({ documents, activeId, onOpen, onProperties, onMove, onAddTag, onExport, onDelete, onOpenImages, imageCount = 0, askText, onClose }) {
   const prefs = useMemo(() => load(PREFS_KEY, {}), [])
   const [layout, setLayout] = useState(prefs.layout === 'table' ? 'table' : 'cards')
   const [sort, setSort] = useState(prefs.sort || 'updated')
@@ -92,7 +92,10 @@ export default function LibraryView({ documents, activeId, onOpen, onProperties,
             <h2 id="library-title" className="flex items-center gap-2"><Library size={16} style={{ color: 'var(--accent)' }} />Library</h2>
             <p>{documents.length} {documents.length === 1 ? 'document' : 'documents'}. Click one to open it; tick several to move, tag, export or delete them together.</p>
           </div>
-          <button type="button" className="btn-icon" onClick={onClose} aria-label="Close library" data-tooltip="Close (Esc)"><X size={15} /></button>
+          <div className="library-head-actions">
+            {onOpenImages && <button type="button" className="reader-chip" onClick={onOpenImages}><Images size={12} />Images{imageCount ? ` (${imageCount})` : ''}</button>}
+            <button type="button" className="btn-icon" onClick={onClose} aria-label="Close library" data-tooltip="Close (Esc)"><X size={15} /></button>
+          </div>
         </div>
 
         <div className="library-views" role="tablist" aria-label="Saved views">
