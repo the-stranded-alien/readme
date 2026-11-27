@@ -2345,10 +2345,12 @@ describe('advanced browser features', () => {
 
     // Reorder files via drag and drop in Files panel and verify in Library
     const data = new Map()
-    const dataTransfer = { setData: (k, v) => data.set(k, v), getData: k => data.get(k) || '', get types() { return [...data.keys()] }, effectAllowed: '', dropEffect: '' }
+    const dataTransfer = { dragImage: null, setDragImage(node) { this.dragImage = node }, setData: (k, v) => data.set(k, v), getData: k => data.get(k) || '', get types() { return [...data.keys()] }, effectAllowed: '', dropEffect: '' }
     const alphaItem = within(tree).getByRole('treeitem', { name: 'Alpha.md' })
     const betaItem = within(tree).getByRole('treeitem', { name: 'Beta.md' })
     fireEvent.dragStart(within(betaItem).getByRole('button', { name: 'Beta.md' }), { dataTransfer })
+    expect(dataTransfer.dragImage).toBe(betaItem.querySelector('.file-tree-row'))
+    expect(betaItem.querySelector('.file-tree-row')).toHaveClass('is-dragging')
     fireEvent.dragOver(betaItem.previousElementSibling.querySelector('.file-tree-row'), { dataTransfer, clientY: 0 })
     fireEvent.drop(alphaItem.querySelector('.file-tree-row'), { dataTransfer, clientY: 0 })
 
@@ -2362,9 +2364,11 @@ describe('advanced browser features', () => {
     // Dragging from the full-card open button must also start a reorder.
     const betaCard = within(library).getByRole('button', { name: 'Open Beta' })
     const alphaCard = within(library).getByRole('button', { name: 'Open Alpha' })
-    const libraryTransfer = { setData: (k, v) => data.set(k, v), getData: k => data.get(k) || '', get types() { return [...data.keys()] }, effectAllowed: '', dropEffect: '' }
+    const libraryTransfer = { dragImage: null, setDragImage(node) { this.dragImage = node }, setData: (k, v) => data.set(k, v), getData: k => data.get(k) || '', get types() { return [...data.keys()] }, effectAllowed: '', dropEffect: '' }
     const betaCardItem = betaCard.closest('li')
     fireEvent.dragStart(alphaCard, { dataTransfer: libraryTransfer })
+    expect(libraryTransfer.dragImage).toBe(alphaCard.closest('li'))
+    expect(alphaCard.closest('li')).toHaveClass('is-dragging')
     fireEvent.dragOver(betaCardItem, { dataTransfer: libraryTransfer })
     expect(betaCardItem).toHaveClass('is-drop-before')
     fireEvent.drop(betaCardItem, { dataTransfer: libraryTransfer })

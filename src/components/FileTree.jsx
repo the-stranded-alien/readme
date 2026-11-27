@@ -61,6 +61,7 @@ export default function FileTree({
   const tree = useMemo(() => buildFileTree(files, visibleClosed, emptyFolders), [files, visibleClosed, emptyFolders])
   const [dropTarget, setDropTarget] = useState(null)
   const [reorderTarget, setReorderTarget] = useState(null) // { kind: 'file'|'folder', key, after }
+  const [dragSource, setDragSource] = useState(null)
   const folderOrderMap = useMemo(() => new Map(folderOrder.map((path, index) => [path, index])), [folderOrder])
   const fileOrderMap = useMemo(() => new Map(fileOrder.map((id, index) => [id, index])), [fileOrder])
   const orderedFolders = folders => [...folders.values()].sort((a, b) => {
@@ -112,6 +113,7 @@ export default function FileTree({
         const rect = event.currentTarget.getBoundingClientRect()
         const after = event.clientY > rect.top + rect.height / 2
         setReorderTarget(null)
+        setDragSource(null)
         // Folders reorder among their siblings (same parent folder), in the order shown.
         const parent = path => path.split('/').slice(0, -1).join('/')
         if (sourcePath && sourcePath !== folderPath && parent(sourcePath) === parent(folderPath)) {
@@ -123,6 +125,7 @@ export default function FileTree({
       event.preventDefault()
       event.stopPropagation()
       setDropTarget(null)
+      setDragSource(null)
       const id = event.dataTransfer.getData(FILE_DRAG_TYPE)
       if (id) onMoveFile(id, folderPath)
     },
@@ -151,6 +154,7 @@ export default function FileTree({
       const rect = event.currentTarget.getBoundingClientRect()
       const after = event.clientY > rect.top + rect.height / 2
       setReorderTarget(null)
+      setDragSource(null)
       if (!sourceId || sourceId === fileId) return
       // Dropped on a file in another folder: it moves into that folder, next to the file.
       const source = [...files, ...closedList].find(item => item.id === sourceId)
@@ -168,15 +172,18 @@ export default function FileTree({
     return (
       <li key={`folder:${node.path}`} role="treeitem" aria-expanded={open} aria-label={`Folder ${node.name}`}>
         <div
-          className={`file-tree-row is-folder${dropTarget === node.path ? ' is-drop-target' : ''}${reorderClass}`}
+          className={`file-tree-row is-folder${dropTarget === node.path ? ' is-drop-target' : ''}${reorderClass}${dragSource?.kind === 'folder' && dragSource.key === node.path ? ' is-dragging' : ''}`}
           style={{ '--depth': depth }}
           draggable
           onDragStart={event => {
             event.stopPropagation()
             event.dataTransfer.setData(FOLDER_DRAG_TYPE, node.path)
             event.dataTransfer.effectAllowed = 'move'
+            setDragSource({ kind: 'folder', key: node.path })
+            const row = event.currentTarget.closest('.file-tree-row')
+            if (row) event.dataTransfer.setDragImage?.(row, Math.round(row.clientWidth / 2), Math.round(row.clientHeight / 2))
           }}
-          onDragEnd={() => { setDropTarget(null); setReorderTarget(null) }}
+          onDragEnd={() => { setDropTarget(null); setReorderTarget(null); setDragSource(null) }}
           {...dropProps(node.path)}
         >
           <button type="button" className="file-tree-main" onClick={() => onToggleFolder(node.path)} aria-label={`${open ? 'Collapse' : 'Expand'} folder ${node.name}`}>
@@ -214,10 +221,15 @@ export default function FileTree({
       : ''
     if (closed) return (
       <li key={`closed:${file.id}`} role="treeitem" aria-selected={false} aria-label={`${file.name} (closed)`}>
-        <div className={`file-tree-row is-closed${reorderClass}`} style={{ '--depth': depth }} {...fileDropProps(file.id, siblingIds, folderPath)}>
+        <div className={`file-tree-row is-closed${reorderClass}${dragSource?.kind === 'file' && dragSource.key === file.id ? ' is-dragging' : ''}`} style={{ '--depth': depth }} {...fileDropProps(file.id, siblingIds, folderPath)}>
           <button type="button" className="file-tree-main" onClick={() => onReopen(file.id)} data-tip={`Reopen ${file.name}`}
-            draggable onDragStart={event => { event.dataTransfer.setData(FILE_DRAG_TYPE, file.id); event.dataTransfer.setData('text/plain', file.name); event.dataTransfer.effectAllowed = 'copyMove' }}
-            onDragEnd={() => setReorderTarget(null)}>
+            draggable onDragStart={event => {
+              event.dataTransfer.setData(FILE_DRAG_TYPE, file.id); event.dataTransfer.setData('text/plain', file.name); event.dataTransfer.effectAllowed = 'copyMove'
+              setDragSource({ kind: 'file', key: file.id })
+              const row = event.currentTarget.closest('.file-tree-row')
+              if (row) event.dataTransfer.setDragImage?.(row, Math.round(row.clientWidth / 2), Math.round(row.clientHeight / 2))
+            }}
+            onDragEnd={() => { setReorderTarget(null); setDragSource(null) }}>
             <span className="file-tree-chevron-spacer" aria-hidden="true" />
             <FileText size={13} aria-hidden="true" />
             <span className="file-tree-name">{base}</span>
@@ -235,7 +247,7 @@ export default function FileTree({
     const color = labelColor(file.color)
     return (
       <li key={file.id} role="treeitem" aria-selected={active} aria-label={file.name}>
-        <div className={`file-tree-row${active ? ' is-active' : ''}${reorderClass}`} style={{ '--depth': depth }} {...fileDropProps(file.id, siblingIds, folderPath)}>
+        <div className={`file-tree-row${active ? ' is-active' : ''}${reorderClass}${dragSource?.kind === 'file' && dragSource.key === file.id ? ' is-dragging' : ''}`} style={{ '--depth': depth }} {...fileDropProps(file.id, siblingIds, folderPath)}>
           <button
             type="button"
             className="file-tree-main"
@@ -244,8 +256,11 @@ export default function FileTree({
               event.dataTransfer.setData(FILE_DRAG_TYPE, file.id)
               event.dataTransfer.setData('text/plain', file.name)
               event.dataTransfer.effectAllowed = 'copyMove'
+              setDragSource({ kind: 'file', key: file.id })
+              const row = event.currentTarget.closest('.file-tree-row')
+              if (row) event.dataTransfer.setDragImage?.(row, Math.round(row.clientWidth / 2), Math.round(row.clientHeight / 2))
             }}
-            onDragEnd={() => setReorderTarget(null)}
+            onDragEnd={() => { setReorderTarget(null); setDragSource(null) }}
             onClick={() => onSelect(file.id)}
             data-tip={file.name}
           >
