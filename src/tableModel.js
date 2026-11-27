@@ -101,3 +101,38 @@ export function pasteCells(table, row, column, cells) {
   }))
   return t
 }
+
+export const duplicateRow = (table, at) => { if (at < 1) return table; const t = clone(table); t.rows.splice(at + 1, 0, [...t.rows[at]]); return t }
+export const duplicateColumn = (table, at) => {
+  const t = clone(table)
+  t.align.splice(at + 1, 0, t.align[at])
+  t.rows.forEach((row, r) => row.splice(at + 1, 0, r === 0 ? `${row[at] || 'Column'} (copy)` : row[at]))
+  return t
+}
+export const clearRow = (table, at) => { const t = clone(table); t.rows[at] = t.rows[at].map(() => ''); return t }
+export const clearColumn = (table, at) => { const t = clone(table); t.rows.forEach((row, r) => { if (r > 0) row[at] = '' }); return t }
+/** Empties every body cell (headers stay). */
+export const clearBody = table => { const t = clone(table); t.rows = t.rows.map((row, r) => (r === 0 ? row : row.map(() => ''))); return t }
+/** Rows become columns and columns become rows (the first column becomes the header). */
+export function transpose(table) {
+  const columns = table.align.length
+  const rows = Array.from({ length: columns }, (_, c) => table.rows.map(row => row[c] ?? ''))
+  return { align: Array(rows[0].length).fill('none'), rows }
+}
+/** Grows or shrinks to `bodyRows` × `columns` (keeps what fits). */
+export function resizeTable(table, bodyRows, columns) {
+  let t = clone(table)
+  const wantRows = Math.max(1, bodyRows), wantColumns = Math.max(1, columns)
+  while (t.align.length < wantColumns) t = insertColumn(t, t.align.length)
+  while (t.align.length > wantColumns) t = deleteColumn(t, t.align.length - 1)
+  while (t.rows.length - 1 < wantRows) t.rows.push(Array(t.align.length).fill(''))
+  while (t.rows.length - 1 > wantRows) t.rows.pop()
+  return t
+}
+/** Wraps the selected text of a cell in Markdown (bold, italic, code, link). */
+export function wrapCellText(value, start, end, kind, url = '') {
+  const selected = value.slice(start, end) || ({ bold: 'bold text', italic: 'italic text', code: 'code', link: 'link text' })[kind]
+  const [before, after] = { bold: ['**', '**'], italic: ['*', '*'], code: ['`', '`'], link: ['[', `](${url || 'https://'})`] }[kind]
+  const text = `${value.slice(0, start)}${before}${selected}${after}${value.slice(end)}`
+  return { text, start: start + before.length, end: start + before.length + selected.length }
+}

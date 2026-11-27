@@ -3867,6 +3867,17 @@ export default function App() {
     else updateActiveContent(content.slice(0, from) + text + content.slice(to))
     setToast({ message: mode === 'insert' ? 'Table inserted.' : 'Table updated.', tone: 'success' })
   }, [tableEdit, content, view, updateActiveContent])
+  // Removes the table being edited (one undoable edit, like any other change).
+  const deleteTable = useCallback(() => {
+    if (!tableEdit || tableEdit.mode !== 'edit') return
+    const { from, to } = tableEdit
+    const end = to + (/^\n{1,2}/.exec(content.slice(to))?.[0].length ?? 0)
+    setTableEdit(null)
+    const ta = textareaRef.current
+    if (ta && view !== 'preview') applyTextareaEdit(ta, { from, to: end, text: '', cursor: from })
+    else updateActiveContent(content.slice(0, from) + content.slice(end))
+    setToast({ message: `Table deleted. Undo with ${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'}Z.`, tone: 'success' })
+  }, [tableEdit, content, view, updateActiveContent])
 
   useEffect(() => {
     const root = previewScrollRef.current
@@ -7454,7 +7465,7 @@ ${fontCss}
       {tasksOpen && <TasksPanel tasks={allTasks} onToggle={toggleTask} onOpen={openTask} onClose={() => setTasksOpen(false)} />}
       {tableEdit && (
         <TableEditorDialog key={`${tableEdit.mode}-${tableEdit.from}`} initial={tableEdit.table} mode={tableEdit.mode}
-          onSave={saveTable} onCancel={() => setTableEdit(null)} />
+          onSave={saveTable} onCancel={() => setTableEdit(null)} onDelete={tableEdit.mode === 'edit' ? deleteTable : undefined} />
       )}
       {appDialog?.kind === 'confirm' && (
         <ConfirmDialog {...appDialog.options} onConfirm={() => settleAppDialog(true)} onCancel={() => settleAppDialog(false)} />

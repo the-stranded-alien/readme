@@ -54,6 +54,9 @@ import {
   Bookshelf as ParkBookshelf,
   GridFour as ParkGridFour,
   ErrorPicture as ParkErrorPicture,
+  Undo as ParkUndo,
+  Redo as ParkRedo,
+  Transfer as ParkTransfer,
   ImageFiles as ParkImageFiles,
   RotateOne as ParkRotateOne,
   Compression as ParkCompression,
@@ -154,7 +157,6 @@ import {
   Translate as ParkTranslate,
   TreeDiagram as ParkTreeDiagram,
   TreeList as ParkTreeList,
-  Undo as ParkUndo,
   Up as ParkUp,
   UpAndDown as ParkUpAndDown,
   Upload as ParkUpload,
@@ -302,6 +304,9 @@ export const CircleCheck = make(ParkCheckOne, 'CircleCheck')
 export const Library = make(ParkBookshelf, 'Library')
 export const LayoutGrid = make(ParkGridFour, 'LayoutGrid')
 export const ImageOff = make(ParkErrorPicture, 'ImageOff')
+export const Undo2 = make(ParkUndo, 'Undo2')
+export const Redo2 = make(ParkRedo, 'Redo2')
+export const Transpose = make(ParkTransfer, 'Transpose')
 export const Images = make(ParkImageFiles, 'Images')
 export const RotateCw = make(ParkRotateOne, 'RotateCw')
 export const Shrink = make(ParkCompression, 'Shrink')

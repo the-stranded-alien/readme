@@ -5,9 +5,19 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '2.9'
+export const APP_VERSION = '3.0'
 
 export const RELEASES = [
+  {
+    version: '3.0',
+    show: 'table-editor',
+    date: '2026-11-27',
+    notes: [
+      'A much better table editor: column and row menus, duplicate, clear and delete rows or columns, swap rows and columns, and delete the whole table.',
+      'Bold, italic, code and links inside table cells, a size stepper, undo / redo, and ⌘/Ctrl+Enter to save.',
+      'Hover labels in the table editor no longer get cut off.',
+    ],
+  },
   {
     version: '2.9',
     show: 'tour',
