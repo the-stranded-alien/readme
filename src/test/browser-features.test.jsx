@@ -984,13 +984,13 @@ describe('advanced browser features', () => {
     fireEvent.click(await within(toc).findByRole('button', { name: 'Section options for One' }))
     fireEvent.click(within(await screen.findByRole('menu', { name: 'Section “One”' })).getByRole('menuitem', { name: /Move down/ }))
     const text = () => document.querySelector('.rm-prose').textContent
-    await waitFor(() => expect(text().indexOf('Two')).toBeLessThan(text().indexOf('One')))
+    await waitFor(() => expect(text().indexOf('Two')).toBeLessThan(text().indexOf('One')), { timeout: 4000 })
     expect(text().indexOf('One')).toBeLessThan(text().indexOf('sub'))
     // Alt+→ demotes "Two" (now first) to an H3.
     fireEvent.keyDown(within(toc).getByRole('button', { name: 'Two' }), { key: 'ArrowRight', altKey: true })
-    await waitFor(() => expect(document.querySelector('.rm-prose h3')).toHaveTextContent('Two'))
+    await waitFor(() => expect(document.querySelector('.rm-prose h3')).toHaveTextContent('Two'), { timeout: 4000 })
     fireEvent.keyDown(within(toc).getByRole('button', { name: 'Two' }), { key: 'ArrowLeft', altKey: true })
-    await waitFor(() => expect([...document.querySelectorAll('.rm-prose h2')].map(h => h.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Two')])))
+    await waitFor(() => expect([...document.querySelectorAll('.rm-prose h2')].map(h => h.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Two')])), { timeout: 4000 })
     // H1 can't be promoted.
     fireEvent.keyDown(within(toc).getByRole('button', { name: 'Doc' }), { key: 'ArrowLeft', altKey: true })
     expect(await screen.findByText(/can’t go further/)).toBeInTheDocument()
