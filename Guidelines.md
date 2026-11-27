@@ -36,6 +36,8 @@ There is also a [release checklist](#release-checklist) at the end.
 
 ## 2. Stack and project setup
 
+Project architecture and the release checklist are summarized in [ARCHITECTURE.md](ARCHITECTURE.md). Keep this file as the detailed engineering reference; README is the contributor entry point, and in-app Help is the user-facing guide.
+
 | Concern | Choice |
 |---|---|
 | UI | React 19 (functional components and hooks) |
@@ -501,7 +503,7 @@ Target: **zero axe violations** in every view, in every theme, with and without 
 
 ### Real-browser checks (Playwright + real Chrome, headless)
 
-Keep reusable scripts in a scratch folder and run them against `vite preview` of the production build:
+Keep reusable browser checks in `scripts/` and run `npm run test:browser` against real Chrome. The smoke script starts a local Vite server and covers app boot, saved searches, Files drawer reordering, viewport-clamped closed-file options, and Library overflow at 390px. Expand it alongside the product's functional surface; keep the broader manual checklist below:
 
 1. **Visual / accessibility sweep:**
    - every view in Light and Dark, with no console errors, no icon problems and no horizontal scroll, plus a full axe run;
@@ -527,6 +529,7 @@ Techniques that made this possible:
   This exercises the actual sync code; only the native pickers stay untested and need a manual check.
 - Seed state with `addInitScript`, guarded by a `sessionStorage` flag so reloads keep their state.
 - Collect `pageerror` and console errors during every run and treat them as failures.
+- Open every anchored menu near both horizontal viewport edges and confirm the whole menu remains visible; check long menus against the bottom edge too.
 - Take screenshots of anything visual and **look at them**. The squeezed presenter notes and a mid-row "CLOSED" tag were only caught that way.
 
 Pitfalls:

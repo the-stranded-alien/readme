@@ -1,20 +1,39 @@
-# React + Vite
+# ReadMe
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ReadMe is a private, browser-based Markdown editor and reader. Open, edit, preview, organize, and export documents locally. Your workspace stays in this browser unless you explicitly export it or connect a folder for sync.
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Requirements: Node.js 22.12+ and npm.
 
-## React Compiler
+```sh
+npm install
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The app runs at the local URL printed by Vite. For a production build use `npm run build`; `npm run preview` serves that build locally.
 
-## Expanding the ESLint configuration
+## Features
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Markdown editing and live preview, with themes, document properties, history, and file organization.
+- Workspace backups, exports, optional local folder sync, and installable offline PWA support.
+- No account or application server is required. Documents and settings are stored in browser storage.
 
-## Run checks
+## Browser support
 
-Run `npm test` to execute the browser feature and PDF export regression tests. Run `npm run lint` and `npm run build` for static checks and a production build.
+Current Chrome and other Chromium browsers are the reference environment. Firefox and Safari support core editing and preview features; file-system access, install prompts, and on-device AI depend on browser support and may be unavailable. The app reports optional capabilities in context and continues to work without them.
+
+## Checks
+
+```sh
+npm test
+npm run lint
+npm run build
+npm run test:browser # real Chrome smoke checks (Chrome must be installed)
+```
+
+See [Guidelines.md](Guidelines.md) for architecture, interaction standards, testing, and release steps. The in-app Help describes user-facing features.
+
+## Contributing
+
+Keep changes local-first, preserve user data, follow the design tokens and accessibility patterns in `Guidelines.md`, and update Help when user workflows change. Before submitting, run the checks above and manually verify relevant workflows in Chrome at desktop and 390px mobile widths. Do not commit generated build output or workspace data.

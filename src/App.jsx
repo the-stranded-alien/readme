@@ -44,14 +44,13 @@ import PickerDropdown from './components/PickerDropdown'
 import LibraryView from './components/LibraryView'
 import PropertiesDialog from './components/PropertiesDialog'
 import ImagesDialog from './components/ImagesDialog'
-import { addTags, documentInfo } from './library'
+import { addTags, documentInfo, readFrontMatter, writeFrontMatter } from './library'
 import { useAppInstall } from './appInstall'
 import { APP_VERSION, RELEASES } from './version'
 import { TIPS, TOUR_STEPS, markTourDone, markVersionSeen, startupNotice as computeStartupNotice, takeTip } from './onboarding'
 import GuidedTour from './components/GuidedTour'
 import StartupCard from './components/StartupCard'
 import { DOC_STYLES, docStyleById, docStyleCss, documentStyleId } from './docStyles'
-import { readFrontMatter, writeFrontMatter } from './library'
 
 // Document style rules (shared with HTML / website exports), added once.
 if (typeof document !== 'undefined' && !document.getElementById('doc-style-rules')) {
@@ -4837,10 +4836,17 @@ export default function App() {
     try {
       const backup = await readBackup(file)
       const when = backup.createdAt ? new Date(backup.createdAt).toLocaleString() : 'an unknown date'
+      const existing = [...files, ...closedFiles.map(entry => entry.file)]
+      const incoming = [...backup.files, ...backup.closed.map(entry => entry.file)]
+      const currentNames = new Set(existing.map(item => item.name.toLowerCase()))
+      const backupNames = new Set(incoming.map(item => item.name.toLowerCase()))
+      const replaced = incoming.filter(item => currentNames.has(item.name.toLowerCase())).length
+      const added = incoming.filter(item => !currentNames.has(item.name.toLowerCase())).length
+      const removed = existing.filter(item => !backupNames.has(item.name.toLowerCase())).length
       const ok = await askConfirm({
         title: 'Restore this backup?', danger: true, confirmLabel: 'Replace and restore', icon: ArchiveRestore,
-        message: `The backup is from ${when}. Your current open files and settings will be replaced.`,
-        details: [`${backup.files.length} file${backup.files.length === 1 ? '' : 's'}${backup.closed.length ? ` and ${backup.closed.length} closed file${backup.closed.length === 1 ? '' : 's'}` : ''}`],
+        message: `The backup is from ${when}. Restoring replaces the current workspace and settings.`,
+        details: [`${added} file${added === 1 ? '' : 's'} will be added`, `${replaced} file${replaced === 1 ? '' : 's'} will be replaced`, `${removed} current file${removed === 1 ? '' : 's'} will be removed`, `${backup.closed.length} backup file${backup.closed.length === 1 ? '' : 's'} are closed`],
       })
       if (!ok) return
       await applyBackup(backup)
@@ -4848,7 +4854,7 @@ export default function App() {
     } catch (error) {
       setToast({ message: error?.message || 'Could not restore this backup.', tone: 'warning', duration: 6000 })
     }
-  }, [askConfirm])
+  }, [askConfirm, files, closedFiles])
 
   // Cmd/Ctrl+Shift+T (installed app) or Alt+Shift+T (anywhere) reopens the last closed tab.
   useEffect(() => {
@@ -5198,6 +5204,7 @@ export default function App() {
 
   // ── Sync to a folder on this computer ───────────────────────
   const [syncFolder, setSyncFolder] = useState(null) // { handle, name, status, error, lastSync }
+  const [syncActivity, setSyncActivity] = useState(() => { try { return JSON.parse(localStorage.getItem('readme-sync-activity') || '[]') } catch { return [] } })
   const syncWrittenRef = useRef(new Map()) // path → content last written to / read from the folder
   const syncPathsRef = useRef(new Map()) // file id → path it was last written to (so renames move the file)
   const closedFilesRef = useRef(closedFiles)
@@ -5314,10 +5321,16 @@ export default function App() {
         for (const id of pulled.removedClosedIds) removedFromFolderRef.current.add(id)
         const skip = id => conflicted.has(id) || removedFromFolderRef.current.has(id)
         const allSyncFiles = [...filesRef.current, ...closedFilesRef.current.map(entry => entry.file)].filter(file => !skip(file.id))
+        const beforeWritten = new Map(syncWrittenRef.current)
         const pushed = await writeToFolder(handle, allSyncFiles, syncWrittenRef.current, syncPathsRef.current)
         await writeAttachmentsToFolder(handle, [...attachmentsRef.current.values()], syncWrittenRef.current).catch(() => {})
         writeSyncState({ name: handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
-        setSyncFolder(current => current && { ...current, status: 'connected', error: '', lastSync: Date.now() })
+        const changedPaths = [...syncWrittenRef.current].filter(([path, value]) => beforeWritten.get(path) !== value).map(([path]) => path)
+        const removedNames = [...filesRef.current, ...closedFilesRef.current.map(entry => entry.file)].filter(item => [...pulled.removedIds, ...pulled.removedClosedIds].includes(item.id)).map(item => item.name)
+        const skippedFiles = [...filesRef.current, ...closedFilesRef.current.map(entry => entry.file)].filter(item => conflicted.has(item.id)).map(item => item.name)
+        const record = { at: Date.now(), name: handle.name, changed: pulled.imported + pulled.updated + pushed, changedFiles: [...new Set([...changedPaths, ...removedNames])], added: pulled.imported, updated: pulled.updated + pushed, removed: pulled.removedIds.length + pulled.removedClosedIds.length, skipped: skippedFiles.length, skippedFiles, conflicts: skippedFiles.length }
+        setSyncActivity(previous => { const next = [record, ...previous].slice(0, 30); try { localStorage.setItem('readme-sync-activity', JSON.stringify(next)) } catch { /* optional */ } return next })
+        setSyncFolder(current => current && { ...current, status: 'connected', error: '', lastSync: record.at })
         return { ...pulled, pushed }
       } catch (error) {
         const permission = await folderPermission(handle).catch(() => 'denied')
@@ -5486,6 +5499,38 @@ export default function App() {
       if (next !== file.content) changes.set(id, next)
     }
     changeDocuments(changes, `Tagged ${changes.size === 1 ? '1 document' : `${changes.size} documents`} with ${tags.map(tag => `#${tag}`).join(', ')}.`)
+  }, [askText, files, closedFileList, changeDocuments])
+  const libraryBulkStatus = useCallback(async ids => {
+    const status = (await askText({ title: 'Set status', label: 'Status (leave empty to remove)', placeholder: 'draft, review, published…', confirmLabel: 'Apply', allowEmpty: true }))
+    if (status == null) return
+    const changes = new Map()
+    for (const file of [...files, ...closedFileList]) if (ids.includes(file.id)) {
+      const { entries } = readFrontMatter(file.content)
+      const props = entries.filter(entry => entry.key).map(entry => ({ key: entry.key, type: entry.type, value: entry.value, style: entry.style }))
+      const current = props.find(prop => prop.key.toLowerCase() === 'status')
+      const next = props.filter(prop => prop.key.toLowerCase() !== 'status')
+      if (status.trim()) next.push({ key: current?.key || 'status', type: 'text', value: status.trim() })
+      const content = writeFrontMatter(file.content, next)
+      if (content !== file.content) changes.set(file.id, content)
+    }
+    changeDocuments(changes, `Updated status on ${changes.size} document${changes.size === 1 ? '' : 's'}.`)
+  }, [askText, files, closedFileList, changeDocuments])
+  const libraryBulkProperty = useCallback(async ids => {
+    const key = (await askText({ title: 'Set front matter', label: 'Property name', placeholder: 'owner', confirmLabel: 'Next' }))?.trim()
+    if (!key) return
+    const value = await askText({ title: `Set “${key}”`, label: 'Value (leave empty to remove)', placeholder: 'Value', confirmLabel: 'Apply', allowEmpty: true })
+    if (value == null) return
+    const changes = new Map()
+    for (const file of [...files, ...closedFileList]) if (ids.includes(file.id)) {
+      const { entries } = readFrontMatter(file.content)
+      const props = entries.filter(entry => entry.key).map(entry => ({ key: entry.key, type: entry.type, value: entry.value, style: entry.style }))
+      const existing = props.find(prop => prop.key.toLowerCase() === key.toLowerCase())
+      const next = props.filter(prop => prop.key.toLowerCase() !== key.toLowerCase())
+      if (value.trim()) next.push({ key: existing?.key || key, type: 'text', value: value.trim() })
+      const content = writeFrontMatter(file.content, next)
+      if (content !== file.content) changes.set(file.id, content)
+    }
+    changeDocuments(changes, `Updated “${key}” on ${changes.size} document${changes.size === 1 ? '' : 's'}.`)
   }, [askText, files, closedFileList, changeDocuments])
   const libraryExport = useCallback(async ids => {
     const { default: JSZip } = await import('jszip')
@@ -7426,6 +7471,7 @@ ${fontCss}
           onSelectFile={handleSelectFile}
           onNavigateHeading={navigateToHeading}
           onCreateFromTemplate={handleCreateFromTemplate}
+          onRunSavedSearch={query => { setCmdQuery(query); setCmdOpen(true) }}
         />
       )}
 
@@ -7500,7 +7546,7 @@ ${fontCss}
           fileOrder={itemOrder.files} folderOrder={itemOrder.folders}
           onReorderFile={reorderFileItem} onReorderFolder={reorderFolderItem}
           onOpen={openDocument} onProperties={id => setPropertiesFor(id)}
-          onMove={libraryMove} onAddTag={libraryAddTag} onExport={libraryExport} onDelete={ids => deleteEntries(ids)}
+          onMove={libraryMove} onAddTag={libraryAddTag} onBulkStatus={libraryBulkStatus} onBulkProperty={libraryBulkProperty} onExport={libraryExport} onDelete={ids => deleteEntries(ids)}
           onOpenImages={() => { setLibraryOpen(false); setImagesOpen(true) }} imageCount={attachments.size}
           onClose={() => setLibraryOpen(false)} />
       )}
@@ -7617,6 +7663,7 @@ ${fontCss}
           onHighContrast={value => { if (value !== highContrast) toggleHighContrast() }}
           workspaceExtra={(
             <FolderSyncCard supported={canSyncToFolder()} state={syncFolder} disabled={Boolean(appSettings.workspaceSyncDisabled)}
+              activity={syncActivity}
               onConnect={connectSyncFolder} onReconnect={reconnectSyncFolder}
               onSyncNow={() => syncFolder?.handle && runFolderSync(syncFolder.handle)} onDisconnect={disconnectSyncFolder}
               onToggleDisabled={value => updateAppSetting('workspaceSyncDisabled', value)} />

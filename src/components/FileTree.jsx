@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronRight, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, MoreHorizontal, Pencil, Pin, PinOff, RotateCcw, Trash2, X } from '../icons'
+import { ChevronRight, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, MoreHorizontal, Pencil, Pin, PinOff, RotateCcw, Trash2, X, ArrowUp, ArrowDown } from '../icons'
 import { FILE_DRAG_TYPE, MAX_FOLDER_DEPTH, folderDepth, isModifiedFromDisk, labelColor } from '../fileUtils'
 
 const FOLDER_DRAG_TYPE = 'application/x-readme-folder'
@@ -220,6 +220,7 @@ export default function FileTree({
             <span className="file-tree-count">{countFiles(node)}</span>
           </button>
           <span className="file-tree-actions">
+            {onReorderFolder && <><button type="button" onClick={() => { const siblings = siblingFolders(node.path.slice(0, node.path.lastIndexOf('/'))); const i = siblings.indexOf(node.path); if (i > 0) onReorderFolder(node.path, siblings[i - 1], false, siblings) }} aria-label={`Move folder ${node.name} up`}><ArrowUp size={12} /></button><button type="button" onClick={() => { const siblings = siblingFolders(node.path.slice(0, node.path.lastIndexOf('/'))); const i = siblings.indexOf(node.path); if (i >= 0 && i < siblings.length - 1) onReorderFolder(node.path, siblings[i + 1], true, siblings) }} aria-label={`Move folder ${node.name} down`}><ArrowDown size={12} /></button></>}
             <button type="button" onClick={() => onNewFile(node.path)} data-tip={`New file in ${node.name}`} aria-label={`New file in ${node.name}`}><FilePlus size={12} /></button>
             {onNewSubfolder && folderDepth(node.path) < MAX_FOLDER_DEPTH && (
               <button type="button" onClick={() => onNewSubfolder(node.path)} data-tip={`New folder inside ${node.name}`} aria-label={`New folder inside ${node.name}`}><FolderPlus size={12} /></button>
@@ -264,6 +265,7 @@ export default function FileTree({
           </button>
           <span className="file-tree-actions">
             <button type="button" onClick={() => onReopen(file.id)} data-tip="Reopen" aria-label={`Reopen ${file.name}`}><RotateCcw size={12} /></button>
+            {onReorderFile && <><button type="button" onClick={() => { const i = siblingIds.indexOf(file.id); if (i > 0) onReorderFile(file.id, siblingIds[i - 1], false, siblingIds) }} aria-label={`Move ${file.name} up`}><ArrowUp size={12} /></button><button type="button" onClick={() => { const i = siblingIds.indexOf(file.id); if (i >= 0 && i < siblingIds.length - 1) onReorderFile(file.id, siblingIds[i + 1], true, siblingIds) }} aria-label={`Move ${file.name} down`}><ArrowDown size={12} /></button></>}
             {onDelete && <button type="button" onClick={() => onDelete(file.id)} data-tip="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>}
             <button type="button" onClick={() => onForget([file.id])} data-tip="Remove from list" aria-label={`Remove ${file.name} from the list`}><X size={12} /></button>
           </span>
@@ -306,6 +308,7 @@ export default function FileTree({
                   {file.pinned ? <PinOff size={12} /> : <Pin size={12} />}
                 </button>
               )}
+              {onReorderFile && <><button type="button" onClick={() => { const i = siblingIds.indexOf(file.id); if (i > 0) onReorderFile(file.id, siblingIds[i - 1], false, siblingIds) }} aria-label={`Move ${file.name} up`}><ArrowUp size={12} /></button><button type="button" onClick={() => { const i = siblingIds.indexOf(file.id); if (i >= 0 && i < siblingIds.length - 1) onReorderFile(file.id, siblingIds[i + 1], true, siblingIds) }} aria-label={`Move ${file.name} down`}><ArrowDown size={12} /></button></>}
               {onRenameFile && <button type="button" onClick={() => onRenameFile(file.id)} data-tip="Rename file" aria-label={`Rename ${file.name}`}><Pencil size={12} /></button>}
               {onDelete && <button type="button" onClick={() => onDelete(file.id)} data-tip="Delete permanently" aria-label={`Delete ${file.name} permanently`}><Trash2 size={12} /></button>}
             </span>

@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:browser": "node scripts/browser-smoke.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -67,6 +68,7 @@
     "fake-indexeddb": "^6.2.8",
     "globals": "^17.4.0",
     "jsdom": "^29.1.1",
+    "playwright-core": "^1.65.1",
     "tailwindcss": "^4.2.2",
     "vite": "^8.0.1",
     "vitest": "^5.1.1"

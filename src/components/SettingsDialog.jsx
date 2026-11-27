@@ -64,7 +64,7 @@ export function ThemePicker({ themes, value, onChange, extraThemes, onExtraTheme
 }
 
 /** "Sync to a folder" controls (Settings → Workspace). */
-export function FolderSyncCard({ supported, state, disabled, onConnect, onReconnect, onSyncNow, onDisconnect, onToggleDisabled }) {
+export function FolderSyncCard({ supported, state, disabled, onConnect, onReconnect, onSyncNow, onDisconnect, onToggleDisabled, activity = [] }) {
   return (
     <div className="folder-sync" role="group" aria-label="Sync to a folder">
       <div className="folder-sync-head">
@@ -115,6 +115,15 @@ export function FolderSyncCard({ supported, state, disabled, onConnect, onReconn
           </div>
         </>
       )}
+      <details className="folder-sync-activity">
+        <summary>Sync activity {activity.length ? `(${activity.length})` : ''}</summary>
+        {activity.length ? <ol>{activity.slice(0, 10).map((item, index) => <li key={`${item.at}-${index}`}>
+          <strong>{new Date(item.at).toLocaleString()}</strong><span>{item.name}: {item.changed} changed · {item.removed} removed · {item.skipped} skipped</span>
+          {item.changedFiles?.length > 0 && <span>Changed: {item.changedFiles.join(', ')}</span>}
+          {item.skippedFiles?.length > 0 && <span className="folder-sync-conflict-count">Skipped: {item.skippedFiles.join(', ')}</span>}
+          {item.conflicts > 0 && <span className="folder-sync-conflict-count">{item.conflicts} unresolved conflict{item.conflicts === 1 ? '' : 's'}</span>}
+        </li>)}</ol> : <p className="settings-muted">No sync activity yet.</p>}
+      </details>
     </div>
   )
 }

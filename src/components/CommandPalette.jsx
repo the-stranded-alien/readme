@@ -17,6 +17,7 @@ export default function CommandPalette({
   onSelectFile,
   onNavigateHeading,
   onCreateFromTemplate,
+  onRunSavedSearch,
 }) {
   const [query, setQuery] = useState(initialQuery)
   const [activeIdx, setActiveIdx] = useState(0)
@@ -60,6 +61,12 @@ export default function CommandPalette({
       })
     }
 
+    if (q && onRunSavedSearch) {
+      let saved = []
+      try { saved = JSON.parse(localStorage.getItem('readme-saved-searches') || '[]') } catch { /* optional */ }
+      for (const savedQuery of saved) list.push({ id: `saved-search-${savedQuery}`, group: 'Saved searches', label: savedQuery, hint: 'Reopen search', icon: Search, run: () => { setQuery(savedQuery); onQueryChange?.(savedQuery); onRunSavedSearch(savedQuery) } })
+    }
+
     for (const action of actions) {
       list.push({
         id: `action-${action.id}`,
@@ -88,7 +95,7 @@ export default function CommandPalette({
       item.group.toLowerCase().includes(q) ||
       item.hint.toLowerCase().includes(q)
     )
-  }, [query, files, closedFiles, onReopenFile, activeFileId, headings, actions, templates, onSelectFile, onNavigateHeading, onCreateFromTemplate])
+  }, [query, files, closedFiles, onReopenFile, activeFileId, headings, actions, templates, onSelectFile, onNavigateHeading, onCreateFromTemplate, onRunSavedSearch, onQueryChange])
 
   if (!open) return null
 
@@ -154,6 +161,12 @@ export default function CommandPalette({
         </div>
 
         <div className="max-h-[52vh] overflow-y-auto p-2" id="command-palette-results" role="listbox" aria-label="Results">
+          {query.trim() && onRunSavedSearch && <button type="button" className="reader-chip" onClick={() => {
+            const value = query.trim(); let saved = []
+            try { saved = JSON.parse(localStorage.getItem('readme-saved-searches') || '[]') } catch { /* optional */ }
+            if (!saved.includes(value)) { try { localStorage.setItem('readme-saved-searches', JSON.stringify([value, ...saved].slice(0, 20))) } catch { /* optional */ } }
+            onRunSavedSearch(value)
+          }}>Save “{query.trim()}” as a workspace search</button>}
           {items.length === 0 ? (
             <EmptyState icon={Search} title="No matches" text="No files, headings or commands match. Try fewer words." />
           ) : (

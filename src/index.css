@@ -2100,7 +2100,12 @@ button[data-tooltip]:not(:focus-visible)::after {
   width: 250px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
   background: var(--bg-toc); border-right: 1px solid var(--border);
 }
-@media (max-width: 760px) { .file-tree { display: none; } }
+@media (max-width: 760px) {
+  .file-tree { display: flex; position: fixed; z-index: 80; top: 108px; bottom: 0; left: 0; width: min(320px, calc(100vw - 32px)); box-shadow: var(--shadow-xl); border-right: 1px solid var(--border-strong); }
+  .file-tree-row { min-height: 38px; }
+  .file-tree-main { height: 38px; }
+  .file-tree-actions { display: inline-flex; }
+}
 .file-tree-header {
   display: flex; align-items: center; justify-content: space-between; padding: 9px 10px 7px 14px;
   font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--text-4);
@@ -2147,6 +2152,11 @@ button[data-tooltip]:not(:focus-visible)::after {
 .file-tree-row:hover .file-tree-count { display: none; }
 .file-tree-empty { padding: 12px; font-size: 12px; color: var(--text-4); }
 .file-tree-hint { margin: 0; padding: 8px 14px 12px; font-size: 10.5px; line-height: 1.45; color: var(--text-4); border-top: 1px solid var(--border-light); }
+.folder-sync-activity { margin-top: 10px; border-top: 1px solid var(--border-light); padding-top: 8px; color: var(--text-2); font-size: 12px; }
+.folder-sync-activity summary { cursor: pointer; font-weight: 600; }
+.folder-sync-activity ol { display: grid; gap: 8px; margin: 8px 0 0; padding-left: 20px; }
+.folder-sync-activity li { display: grid; gap: 2px; }
+.folder-sync-conflict-count { color: #b45309; }
 .file-tree-hint code { font-size: 10px; padding: 0 3px; border-radius: 4px; background: var(--bg-editor); }
 
 /* ── Disk change conflict banner ──────────────────────────── */
@@ -3659,6 +3669,7 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .library-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--text-3); }
 .library-card-foot .btn-icon { margin: -4px -6px -4px 0; }
 .library-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.library-body { min-width: 0; max-width: 100%; overflow-x: auto; }
 .library-table th { position: sticky; top: -16px; z-index: 1; padding: 8px 10px; background: var(--bg-preview); border-bottom: 1px solid var(--border); text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); }
 .library-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-light); vertical-align: middle; color: var(--text-2); }
 .library-table tr.is-selected td { background: var(--accent-soft); }
@@ -3670,6 +3681,22 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .library-row-open:hover strong { color: var(--accent); }
 .library-table-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 @media (max-width: 720px) { .library-table th:nth-child(3), .library-table td:nth-child(3), .library-table th:nth-child(5), .library-table td:nth-child(5) { display: none; } }
+@media (max-width: 430px) {
+  .library-panel { width: calc(100vw - 16px); max-width: none; }
+  .library-cards { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .library-card { min-height: 138px; padding: 11px 12px 10px; }
+  .library-controls { flex-wrap: wrap; gap: 6px; }
+  .library-search { flex: 1 1 100%; min-width: 0; }
+  .library-controls .settings-select-wrap { flex: 1 1 calc(50% - 6px); min-width: 0; }
+  .library-controls .settings-select { max-width: 100%; }
+  .library-body.is-table { overflow-x: hidden; }
+  .library-table { table-layout: fixed; font-size: 11px; }
+  .library-table th, .library-table td { padding: 6px 4px; }
+  .library-table th:nth-child(6), .library-table td:nth-child(6),
+  .library-table th:nth-child(7), .library-table td:nth-child(7) { display: none; }
+  .library-table td:nth-child(2) { max-width: 0; }
+  .library-row-open { max-width: 100%; }
+}
 
 /* Properties */
 .props-dialog { width: min(640px, calc(100vw - 32px)); }

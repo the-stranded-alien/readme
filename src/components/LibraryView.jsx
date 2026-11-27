@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Download, FileText, Folder, FolderOpen, Images, LayoutGrid, Library, List, Pin, Search, SlidersHorizontal, Tag, Trash2, X } from '../icons'
+import { Download, FileText, Folder, FolderOpen, Images, LayoutGrid, Library, List, Pin, Search, SlidersHorizontal, Tag, Trash2, X, Check } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { LIBRARY_SORTS, filterDocuments, sortDocuments } from '../library'
 import EmptyState from './EmptyState'
@@ -34,7 +34,7 @@ function editedLabel(time) {
  */
 export default function LibraryView({
   documents, emptyFolders = [], activeId, fileOrder = [], folderOrder = [],
-  onOpen, onProperties, onMove, onAddTag, onExport, onDelete, onReorderFile, onReorderFolder, onOpenImages, imageCount = 0, askText, onClose,
+  onOpen, onProperties, onMove, onAddTag, onBulkStatus, onBulkProperty, onExport, onDelete, onReorderFile, onReorderFolder, onOpenImages, imageCount = 0, askText, onClose,
 }) {
   const prefs = useMemo(() => load(PREFS_KEY, {}), [])
   const [layout, setLayout] = useState(prefs.layout === 'table' ? 'table' : 'cards')
@@ -269,6 +269,8 @@ export default function LibraryView({
             <>
               <button type="button" className="reader-chip" onClick={() => onMove(chosen)}><FolderOpen size={12} />Move to folder…</button>
               <button type="button" className="reader-chip" onClick={() => onAddTag(chosen)}><Tag size={12} />Add tag…</button>
+              {onBulkStatus && <button type="button" className="reader-chip" onClick={() => onBulkStatus(chosen)}><Check size={12} />Set status…</button>}
+              {onBulkProperty && <button type="button" className="reader-chip" onClick={() => onBulkProperty(chosen)}><SlidersHorizontal size={12} />Set front matter…</button>}
               <button type="button" className="reader-chip" onClick={() => onExport(chosen)}><Download size={12} />Export .zip</button>
               <button type="button" className="reader-chip is-danger" onClick={async () => { if (await onDelete(chosen)) setSelected(new Set()) }}><Trash2 size={12} />Delete</button>
               <button type="button" className="reader-chip" onClick={() => setSelected(new Set())}>Clear</button>
