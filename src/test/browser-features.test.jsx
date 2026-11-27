@@ -1123,6 +1123,13 @@ describe('advanced browser features', () => {
     installApp()
     fireEvent.click(await screen.findByRole('button', { name: 'Library: all documents' }))
     const library = await screen.findByRole('dialog', { name: 'Library' })
+    // Folder view is default when folders exist; opening notes shows Idea.
+    expect(within(library).getByRole('button', { name: 'Open folder notes' })).toBeInTheDocument()
+    expect(within(library).getByRole('button', { name: 'Open Plan' })).toBeInTheDocument()
+    fireEvent.click(within(library).getByRole('button', { name: 'Open folder notes' }))
+    expect(within(library).getByRole('button', { name: 'Open Idea' })).toBeInTheDocument()
+    // Switching to Files view shows all files across folders.
+    fireEvent.click(within(library).getByRole('radio', { name: 'Files' }))
     expect(within(library).getAllByRole('button', { name: /^Open / }).map(button => button.getAttribute('aria-label'))).toEqual(expect.arrayContaining(['Open Plan', 'Open Idea']))
     fireEvent.change(within(library).getByRole('combobox', { name: 'Tag' }), { target: { value: 'home' } })
     expect(within(library).getAllByRole('button', { name: /^Open / })).toHaveLength(1)
@@ -2304,5 +2311,55 @@ describe('advanced browser features', () => {
     // FileTree has no bottom hint
     fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
     expect(document.querySelector('.file-tree-hint')).toBeNull()
+  })
+
+  it('supports deleting all closed files with confirmation, hiding closed files, and reordering across Files and Library', async () => {
+    await writeWorkspace({
+      activeId: 'a',
+      files: [
+        { id: 'a', name: 'Alpha.md', content: '# Alpha' },
+        { id: 'b', name: 'Beta.md', content: '# Beta' },
+      ],
+      closed: [
+        { index: 2, file: { id: 'c1', name: 'One.md', content: '# One' } },
+        { index: 3, file: { id: 'c2', name: 'Two.md', content: '# Two' } },
+      ],
+    })
+    installApp()
+    await screen.findByRole('tab', { name: 'Alpha.md' })
+    fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
+    const tree = await screen.findByRole('tree', { name: 'Files' })
+
+    // Hide / Show closed files toggle
+    expect(within(tree).getByRole('treeitem', { name: 'One.md (closed)' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Hide closed files' }))
+    expect(within(tree).queryByRole('treeitem', { name: 'One.md (closed)' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show closed files' }))
+    expect(within(tree).getByRole('treeitem', { name: 'One.md (closed)' })).toBeInTheDocument()
+
+    // Reorder files via drag and drop in Files panel and verify in Library
+    const data = new Map()
+    const dataTransfer = { setData: (k, v) => data.set(k, v), getData: k => data.get(k) || '', get types() { return [...data.keys()] }, effectAllowed: '', dropEffect: '' }
+    const alphaItem = within(tree).getByRole('treeitem', { name: 'Alpha.md' })
+    const betaItem = within(tree).getByRole('treeitem', { name: 'Beta.md' })
+    fireEvent.dragStart(within(betaItem).getByRole('button', { name: 'Beta.md' }), { dataTransfer })
+    fireEvent.dragOver(betaItem.previousElementSibling.querySelector('.file-tree-row'), { dataTransfer, clientY: 0 })
+    fireEvent.drop(alphaItem.querySelector('.file-tree-row'), { dataTransfer, clientY: 0 })
+
+    // Open Library, switch sort to Manual order, verify Beta comes before Alpha
+    fireEvent.click(screen.getByRole('button', { name: 'Library: all documents' }))
+    const library = await screen.findByRole('dialog', { name: 'Library' })
+    fireEvent.change(within(library).getByRole('combobox', { name: 'Sort by' }), { target: { value: 'custom' } })
+    const orderedTitles = within(library).getAllByRole('button', { name: /^Open / }).map(b => b.getAttribute('aria-label'))
+    expect(orderedTitles.indexOf('Open Beta')).toBeLessThan(orderedTitles.indexOf('Open Alpha'))
+    fireEvent.click(within(library).getByRole('button', { name: 'Close library' }))
+
+    // Delete all closed files shows confirmation with count and file names
+    fireEvent.click(screen.getByRole('button', { name: 'Delete all closed files' }))
+    const confirm = await screen.findByRole('alertdialog', { name: 'Delete 2 files?' })
+    expect(confirm).toHaveTextContent('One.md')
+    expect(confirm).toHaveTextContent('Two.md')
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(within(tree).queryByRole('treeitem', { name: 'One.md (closed)' })).not.toBeInTheDocument())
   })
 })

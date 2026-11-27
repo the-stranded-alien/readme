@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from 'react'
-import { Download, FileText, FolderOpen, Images, LayoutGrid, Library, List, Pin, Search, SlidersHorizontal, Tag, Trash2, X } from '../icons'
+import { Download, FileText, Folder, FolderOpen, Images, LayoutGrid, Library, List, Pin, Search, SlidersHorizontal, Tag, Trash2, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
 import { LIBRARY_SORTS, filterDocuments, sortDocuments } from '../library'
 import EmptyState from './EmptyState'
 
 const VIEWS_KEY = 'readme-library-views'
 const PREFS_KEY = 'readme-library-prefs'
+const LIB_FILE_DRAG = 'application/x-readme-library-file'
+const LIB_FOLDER_DRAG = 'application/x-readme-library-folder'
 const DAY = 24 * 60 * 60 * 1000
 const BUILT_IN_VIEWS = [
   { id: 'all', name: 'All documents', filter: {} },
@@ -30,7 +32,10 @@ function editedLabel(time) {
  * Every document (open and closed) as cards or a table, with search, filters, saved views and
  * bulk actions. `documents`: documentInfo() items. Actions get arrays of ids.
  */
-export default function LibraryView({ documents, activeId, onOpen, onProperties, onMove, onAddTag, onExport, onDelete, onOpenImages, imageCount = 0, askText, onClose }) {
+export default function LibraryView({
+  documents, emptyFolders = [], activeId, fileOrder = [], folderOrder = [],
+  onOpen, onProperties, onMove, onAddTag, onExport, onDelete, onReorderFile, onReorderFolder, onOpenImages, imageCount = 0, askText, onClose,
+}) {
   const prefs = useMemo(() => load(PREFS_KEY, {}), [])
   const [layout, setLayout] = useState(prefs.layout === 'table' ? 'table' : 'cards')
   const [sort, setSort] = useState(prefs.sort || 'updated')
@@ -47,7 +52,16 @@ export default function LibraryView({ documents, activeId, onOpen, onProperties,
   useDialogKeys(onClose, { focus: () => searchRef.current?.focus() })
   const remember = next => save(PREFS_KEY, { layout, sort, showClosed, ...next })
 
-  const folders = useMemo(() => [...new Set(documents.flatMap(doc => doc.folder.split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/')).filter(Boolean)))].sort(), [documents])
+  const folders = useMemo(() => [...new Set([
+    ...emptyFolders.flatMap(f => f.split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/')).filter(Boolean)),
+    ...documents.flatMap(doc => doc.folder.split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/')).filter(Boolean)),
+  ])].sort(), [documents, emptyFolders])
+  const hasFolders = folders.length > 0
+  const [browseModeOverride, setBrowseModeOverride] = useState(null)
+  const browseMode = browseModeOverride ?? (hasFolders ? 'folders' : 'files')
+  const setBrowseMode = mode => setBrowseModeOverride(mode)
+  const [currentPath, setCurrentPath] = useState('')
+  const [dropIndicator, setDropIndicator] = useState(null) // { kind: 'file'|'folder', key, after }
   const tags = useMemo(() => [...new Set(documents.flatMap(doc => doc.tags))].sort(), [documents])
   const statuses = useMemo(() => [...new Set(documents.map(doc => doc.status).filter(Boolean))].sort(), [documents])
   const views = [...BUILT_IN_VIEWS, ...customViews]
@@ -62,14 +76,44 @@ export default function LibraryView({ documents, activeId, onOpen, onProperties,
       ...base, query, closed: showClosed,
       ...(folder ? { folder } : {}), ...(tag ? { tag } : {}), ...(status ? { status } : {}),
     }).filter(doc => !recent || (doc.updatedAt && openedAt - doc.updatedAt < recent * DAY))
-    return sortDocuments(filtered, sort)
-  }, [documents, viewId, customViews, query, folder, tag, status, showClosed, sort, openedAt])
+    return sortDocuments(filtered, sort, fileOrder)
+  }, [documents, viewId, customViews, query, folder, tag, status, showClosed, sort, openedAt, fileOrder])
+
+  const filtersActive = query || folder || tag || status || viewId !== 'all'
+  const effectiveMode = hasFolders && browseMode === 'folders' && !filtersActive ? 'folders' : 'files'
+
+  const childFolders = useMemo(() => {
+    if (effectiveMode !== 'folders') return []
+    const prefix = currentPath ? `${currentPath}/` : ''
+    const names = new Set()
+    for (const f of folders) {
+      if (!f.startsWith(prefix)) continue
+      const rest = f.slice(prefix.length)
+      if (!rest) continue
+      names.add(rest.split('/')[0])
+    }
+    const orderMap = new Map(folderOrder.map((p, i) => [p, i]))
+    return [...names].map(name => {
+      const path = prefix + name
+      const count = visible.filter(doc => doc.folder === path || doc.folder.startsWith(`${path}/`)).length
+      return { name, path, count }
+    }).sort((a, b) => {
+      const ia = orderMap.has(a.path) ? orderMap.get(a.path) : Number.MAX_SAFE_INTEGER
+      const ib = orderMap.has(b.path) ? orderMap.get(b.path) : Number.MAX_SAFE_INTEGER
+      return (ia - ib) || a.name.localeCompare(b.name, undefined, { numeric: true })
+    })
+  }, [effectiveMode, currentPath, folders, folderOrder, visible])
+
+  const shownDocs = useMemo(
+    () => (effectiveMode === 'folders' ? visible.filter(doc => doc.folder === currentPath) : visible),
+    [effectiveMode, visible, currentPath],
+  )
 
   const chosen = [...selected].filter(id => documents.some(doc => doc.id === id))
   const toggle = id => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
-  const allVisibleSelected = visible.length > 0 && visible.every(doc => selected.has(doc.id))
-  const selectAll = () => setSelected(allVisibleSelected ? new Set() : new Set(visible.map(doc => doc.id)))
-  const clearFilters = () => { setQuery(''); setFolder(''); setTag(''); setStatus(''); setViewId('all') }
+  const allVisibleSelected = shownDocs.length > 0 && shownDocs.every(doc => selected.has(doc.id))
+  const selectAll = () => setSelected(allVisibleSelected ? new Set() : new Set(shownDocs.map(doc => doc.id)))
+  const clearFilters = () => { setQuery(''); setFolder(''); setTag(''); setStatus(''); setViewId('all'); setCurrentPath('') }
   const saveView = async () => {
     const name = (await askText?.({ title: 'Save this view', label: 'Name', placeholder: 'e.g. Work drafts', confirmLabel: 'Save view' }))?.trim()
     if (!name) return
@@ -79,10 +123,69 @@ export default function LibraryView({ documents, activeId, onOpen, onProperties,
     setQuery(''); setFolder(''); setTag(''); setStatus('')
   }
   const removeView = id => { const next = customViews.filter(item => item.id !== id); setCustomViews(next); save(VIEWS_KEY, next); if (viewId === id) setViewId('all') }
-  const filtersActive = query || folder || tag || status || viewId !== 'all'
 
   const open = doc => { onOpen(doc.id); onClose() }
   const Chip = ({ children, className = '' }) => <span className={`library-chip ${className}`}>{children}</span>
+
+  const fileDragProps = docId => ({
+    draggable: Boolean(onReorderFile),
+    onDragStart: event => {
+      event.dataTransfer.setData(LIB_FILE_DRAG, docId)
+      event.dataTransfer.effectAllowed = 'move'
+    },
+    onDragEnd: () => setDropIndicator(null),
+    onDragOver: event => {
+      if (!onReorderFile || !Array.from(event.dataTransfer?.types || []).includes(LIB_FILE_DRAG)) return
+      event.preventDefault()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const after = event.clientY > rect.top + rect.height / 2
+      setDropIndicator({ kind: 'file', key: docId, after })
+    },
+    onDrop: event => {
+      if (!onReorderFile || !Array.from(event.dataTransfer?.types || []).includes(LIB_FILE_DRAG)) return
+      event.preventDefault()
+      const sourceId = event.dataTransfer.getData(LIB_FILE_DRAG)
+      const rect = event.currentTarget.getBoundingClientRect()
+      const after = event.clientY > rect.top + rect.height / 2
+      setDropIndicator(null)
+      if (sourceId && sourceId !== docId) {
+        setSort('custom')
+        remember({ sort: 'custom' })
+        onReorderFile(sourceId, docId, after)
+      }
+    },
+  })
+
+  const folderDragProps = folderPath => ({
+    draggable: Boolean(onReorderFolder),
+    onDragStart: event => {
+      event.dataTransfer.setData(LIB_FOLDER_DRAG, folderPath)
+      event.dataTransfer.effectAllowed = 'move'
+    },
+    onDragEnd: () => setDropIndicator(null),
+    onDragOver: event => {
+      if (!onReorderFolder || !Array.from(event.dataTransfer?.types || []).includes(LIB_FOLDER_DRAG)) return
+      event.preventDefault()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const after = event.clientY > rect.top + rect.height / 2
+      setDropIndicator({ kind: 'folder', key: folderPath, after })
+    },
+    onDrop: event => {
+      if (!onReorderFolder || !Array.from(event.dataTransfer?.types || []).includes(LIB_FOLDER_DRAG)) return
+      event.preventDefault()
+      const sourcePath = event.dataTransfer.getData(LIB_FOLDER_DRAG)
+      const rect = event.currentTarget.getBoundingClientRect()
+      const after = event.clientY > rect.top + rect.height / 2
+      setDropIndicator(null)
+      if (sourcePath && sourcePath !== folderPath) onReorderFolder(sourcePath, folderPath, after)
+    },
+  })
+
+  const dropClass = (kind, key) => (
+    dropIndicator?.kind === kind && dropIndicator.key === key
+      ? (dropIndicator.after ? ' is-drop-after' : ' is-drop-before')
+      : ''
+  )
 
   return (
     <div className="pdf-dialog-backdrop anim-fade-in no-print" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
@@ -126,6 +229,12 @@ export default function LibraryView({ documents, activeId, onOpen, onProperties,
             {LIBRARY_SORTS.map(([id, label]) => <option key={id} value={id}>Sort: {label}</option>)}
           </select></span>
           <label className="graph-check"><input type="checkbox" checked={showClosed} onChange={event => { setShowClosed(event.target.checked); remember({ showClosed: event.target.checked }) }} />Closed files</label>
+          {hasFolders && (
+            <div className="pdf-segmented library-layout" role="radiogroup" aria-label="Browse mode">
+              <button type="button" role="radio" aria-checked={browseMode === 'folders'} className={browseMode === 'folders' ? 'is-active' : ''} onClick={() => setBrowseMode('folders')}>Folders</button>
+              <button type="button" role="radio" aria-checked={browseMode === 'files'} className={browseMode === 'files' ? 'is-active' : ''} onClick={() => setBrowseMode('files')}>Files</button>
+            </div>
+          )}
           <div className="pdf-segmented library-layout" role="radiogroup" aria-label="Layout">
             <button type="button" role="radio" aria-checked={layout === 'cards'} className={layout === 'cards' ? 'is-active' : ''} onClick={() => { setLayout('cards'); remember({ layout: 'cards' }) }} aria-label="Cards" data-tip="Cards"><LayoutGrid size={13} /></button>
             <button type="button" role="radio" aria-checked={layout === 'table'} className={layout === 'table' ? 'is-active' : ''} onClick={() => { setLayout('table'); remember({ layout: 'table' }) }} aria-label="Table" data-tip="Table"><List size={13} /></button>
@@ -133,7 +242,7 @@ export default function LibraryView({ documents, activeId, onOpen, onProperties,
         </div>
 
         <div className={`library-bulk${chosen.length ? ' is-active' : ''}`} role="region" aria-label="Selected documents">
-          <label className="graph-check"><input type="checkbox" checked={allVisibleSelected} onChange={selectAll} aria-label="Select all shown" />{chosen.length ? `${chosen.length} selected` : `${visible.length} shown`}</label>
+          <label className="graph-check"><input type="checkbox" checked={allVisibleSelected} onChange={selectAll} aria-label="Select all shown" />{chosen.length ? `${chosen.length} selected` : `${shownDocs.length} shown`}</label>
           {chosen.length > 0 && (
             <>
               <button type="button" className="reader-chip" onClick={() => onMove(chosen)}><FolderOpen size={12} />Move to folder…</button>
@@ -146,7 +255,22 @@ export default function LibraryView({ documents, activeId, onOpen, onProperties,
         </div>
 
         <div className={`library-body is-${layout}`}>
-          {visible.length === 0 ? (
+          {effectiveMode === 'folders' && currentPath && (
+            <nav className="library-breadcrumbs" aria-label="Folder path">
+              <button type="button" onClick={() => setCurrentPath('')}>All folders</button>
+              {currentPath.split('/').map((part, idx, parts) => {
+                const path = parts.slice(0, idx + 1).join('/')
+                const isLast = idx === parts.length - 1
+                return (
+                  <span key={path} className="inline-flex items-center gap-1">
+                    <span aria-hidden="true">/</span>
+                    {isLast ? <span aria-current="page">{part}</span> : <button type="button" onClick={() => setCurrentPath(path)}>{part}</button>}
+                  </span>
+                )
+              })}
+            </nav>
+          )}
+          {childFolders.length === 0 && shownDocs.length === 0 ? (
             <div className="library-empty">
               <EmptyState compact icon={Library} title={documents.length ? 'No documents match' : 'No documents yet'}
                 text={documents.length ? 'Try another search, folder or view.' : 'Create or open a document to see it here.'} />
@@ -154,8 +278,21 @@ export default function LibraryView({ documents, activeId, onOpen, onProperties,
             </div>
           ) : layout === 'cards' ? (
             <ul className="library-cards" aria-label="Documents">
-              {visible.map(doc => (
-                <li key={doc.id} className={`library-card${doc.id === activeId ? ' is-current' : ''}${selected.has(doc.id) ? ' is-selected' : ''}`}>
+              {childFolders.map(item => (
+                <li key={`folder:${item.path}`} className={`library-card is-folder-card${dropClass('folder', item.path)}`} {...folderDragProps(item.path)}>
+                  <button type="button" className="library-card-open" onClick={() => setCurrentPath(item.path)} aria-label={`Open folder ${item.name}`} />
+                  <div className="library-card-head">
+                    <Folder size={14} aria-hidden="true" />
+                    <strong>{item.name}</strong>
+                  </div>
+                  <div className="library-card-foot">
+                    <span>{item.count} {item.count === 1 ? 'document' : 'documents'}</span>
+                    <Chip>Folder</Chip>
+                  </div>
+                </li>
+              ))}
+              {shownDocs.map(doc => (
+                <li key={doc.id} className={`library-card${doc.id === activeId ? ' is-current' : ''}${selected.has(doc.id) ? ' is-selected' : ''}${dropClass('file', doc.id)}`} {...fileDragProps(doc.id)}>
                   <input type="checkbox" className="library-select" checked={selected.has(doc.id)} onChange={() => toggle(doc.id)} aria-label={`Select ${doc.title}`} />
                   <button type="button" className="library-card-open" onClick={() => open(doc)} aria-label={`Open ${doc.title}`} />
                   <div className="library-card-head">
@@ -181,8 +318,19 @@ export default function LibraryView({ documents, activeId, onOpen, onProperties,
             <table className="library-table">
               <thead><tr><th scope="col"><span className="sr-only">Select</span></th><th scope="col">Title</th><th scope="col">Folder</th><th scope="col">Status</th><th scope="col">Tags</th><th scope="col" className="is-num">Words</th><th scope="col">Edited</th></tr></thead>
               <tbody>
-                {visible.map(doc => (
-                  <tr key={doc.id} className={`${doc.id === activeId ? 'is-current' : ''}${selected.has(doc.id) ? ' is-selected' : ''}`}>
+                {childFolders.map(item => (
+                  <tr key={`folder:${item.path}`} className={dropClass('folder', item.path)} {...folderDragProps(item.path)}>
+                    <td />
+                    <td><button type="button" className="library-row-open" onClick={() => setCurrentPath(item.path)}><strong className="inline-flex items-center gap-1.5"><Folder size={13} aria-hidden="true" />{item.name}</strong><span>Folder</span></button></td>
+                    <td>{item.path}</td>
+                    <td>—</td>
+                    <td />
+                    <td className="is-num">{item.count}</td>
+                    <td>—</td>
+                  </tr>
+                ))}
+                {shownDocs.map(doc => (
+                  <tr key={doc.id} className={`${doc.id === activeId ? 'is-current' : ''}${selected.has(doc.id) ? ' is-selected' : ''}${dropClass('file', doc.id)}`} {...fileDragProps(doc.id)}>
                     <td><input type="checkbox" checked={selected.has(doc.id)} onChange={() => toggle(doc.id)} aria-label={`Select ${doc.title}`} /></td>
                     <td><button type="button" className="library-row-open" onClick={() => open(doc)}><strong>{doc.title}</strong><span>{doc.name}{doc.closed ? ' · closed' : ''}</span></button></td>
                     <td>{doc.folder || '—'}</td>

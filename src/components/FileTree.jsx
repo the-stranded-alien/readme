@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, Pin, PinOff, RotateCcw, Trash2, X } from '../icons'
+import { ChevronRight, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, Pin, PinOff, RotateCcw, Trash2, X } from '../icons'
 import { FILE_DRAG_TYPE, MAX_FOLDER_DEPTH, folderDepth, isModifiedFromDisk, labelColor } from '../fileUtils'
+
+const FOLDER_DRAG_TYPE = 'application/x-readme-folder'
+const SHOW_CLOSED_KEY = 'readme-show-closed-files'
 
 
 /** Builds a folder tree from "folder/sub/file.md" style names. */
@@ -30,30 +33,76 @@ function buildFileTree(files, closedFiles = [], emptyFolders = []) {
   return root
 }
 
-const sortFolders = folders => [...folders.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-// Open files first, then the ones closed from the tab bar (each group by name).
-const sortFiles = entries => [...entries].sort((a, b) => (Boolean(a.closed) - Boolean(b.closed)) || a.base.localeCompare(b.base, undefined, { numeric: true }))
 const countFiles = node => node.files.length + [...node.folders.values()].reduce((sum, child) => sum + countFiles(child), 0)
 
 export default function FileTree({
-  files, closedFiles = [], emptyFolders = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onDeleteFolder, onNewSubfolder, onRenameFile, onTogglePin, canPin = true, onClose,
+  files, closedFiles = [], emptyFolders = [], activeFileId, collapsed, onToggleFolder, onSelect, onReopen, onForget, onDelete, onDeleteClosed, onMoveFile, onNewFile, onNewFolder, onRenameFolder, onCloseFolder, onDeleteFolder, onNewSubfolder, onRenameFile, onTogglePin, canPin = true, fileOrder = [], folderOrder = [], onReorderFile, onReorderFolder, onClose,
 }) {
+  const [showClosed, setShowClosed] = useState(() => {
+    try { return localStorage.getItem(SHOW_CLOSED_KEY) !== 'false' } catch { return true }
+  })
+  const toggleShowClosed = () => setShowClosed(prev => {
+    const next = !prev
+    try { localStorage.setItem(SHOW_CLOSED_KEY, String(next)) } catch { /* optional */ }
+    return next
+  })
   const closedList = useMemo(() => closedFiles.map(entry => entry.file), [closedFiles])
-  const tree = useMemo(() => buildFileTree(files, closedList, emptyFolders), [files, closedList, emptyFolders])
+  const visibleClosed = useMemo(() => (showClosed ? closedList : []), [showClosed, closedList])
+  const tree = useMemo(() => buildFileTree(files, visibleClosed, emptyFolders), [files, visibleClosed, emptyFolders])
   const [dropTarget, setDropTarget] = useState(null)
-  const hasDrag = event => Array.from(event.dataTransfer?.types || []).includes(FILE_DRAG_TYPE)
+  const [reorderTarget, setReorderTarget] = useState(null) // { kind: 'file'|'folder', key, after }
+  const folderOrderMap = useMemo(() => new Map(folderOrder.map((path, index) => [path, index])), [folderOrder])
+  const fileOrderMap = useMemo(() => new Map(fileOrder.map((id, index) => [id, index])), [fileOrder])
+  const orderedFolders = folders => [...folders.values()].sort((a, b) => {
+    const ia = folderOrderMap.has(a.path) ? folderOrderMap.get(a.path) : Number.MAX_SAFE_INTEGER
+    const ib = folderOrderMap.has(b.path) ? folderOrderMap.get(b.path) : Number.MAX_SAFE_INTEGER
+    return (ia - ib) || a.name.localeCompare(b.name, undefined, { numeric: true })
+  })
+  const orderedFiles = entries => [...entries].sort((a, b) => {
+    const closedDiff = Boolean(a.closed) - Boolean(b.closed)
+    if (closedDiff) return closedDiff
+    const ia = fileOrderMap.has(a.file.id) ? fileOrderMap.get(a.file.id) : Number.MAX_SAFE_INTEGER
+    const ib = fileOrderMap.has(b.file.id) ? fileOrderMap.get(b.file.id) : Number.MAX_SAFE_INTEGER
+    return (ia - ib) || a.base.localeCompare(b.base, undefined, { numeric: true })
+  })
+  const hasFileDrag = event => Array.from(event.dataTransfer?.types || []).includes(FILE_DRAG_TYPE)
+  const hasFolderDrag = event => Array.from(event.dataTransfer?.types || []).includes(FOLDER_DRAG_TYPE)
 
   const dropProps = folderPath => ({
     onDragOver: event => {
-      if (!hasDrag(event)) return
+      if (hasFolderDrag(event) && folderPath && onReorderFolder) {
+        event.preventDefault()
+        event.stopPropagation()
+        const rect = event.currentTarget.getBoundingClientRect()
+        const after = event.clientY > rect.top + rect.height / 2
+        event.dataTransfer.dropEffect = 'move'
+        setReorderTarget({ kind: 'folder', key: folderPath, after })
+        return
+      }
+      if (!hasFileDrag(event)) return
       event.preventDefault()
       event.stopPropagation()
       event.dataTransfer.dropEffect = 'move'
       if (dropTarget !== folderPath) setDropTarget(folderPath)
     },
-    onDragLeave: event => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTarget(current => (current === folderPath ? null : current)) },
+    onDragLeave: event => {
+      if (!event.currentTarget.contains(event.relatedTarget)) {
+        setDropTarget(current => (current === folderPath ? null : current))
+        setReorderTarget(current => (current?.kind === 'folder' && current.key === folderPath ? null : current))
+      }
+    },
     onDrop: event => {
-      if (!hasDrag(event)) return
+      if (hasFolderDrag(event) && folderPath && onReorderFolder) {
+        event.preventDefault()
+        event.stopPropagation()
+        const sourcePath = event.dataTransfer.getData(FOLDER_DRAG_TYPE)
+        const rect = event.currentTarget.getBoundingClientRect()
+        const after = event.clientY > rect.top + rect.height / 2
+        setReorderTarget(null)
+        if (sourcePath && sourcePath !== folderPath) onReorderFolder(sourcePath, folderPath, after)
+        return
+      }
+      if (!hasFileDrag(event)) return
       event.preventDefault()
       event.stopPropagation()
       setDropTarget(null)
@@ -62,13 +111,50 @@ export default function FileTree({
     },
   })
 
+  const fileDropProps = fileId => ({
+    onDragOver: event => {
+      if (!hasFileDrag(event) || !onReorderFile) return
+      event.preventDefault()
+      event.stopPropagation()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const after = event.clientY > rect.top + rect.height / 2
+      event.dataTransfer.dropEffect = 'move'
+      setReorderTarget({ kind: 'file', key: fileId, after })
+    },
+    onDragLeave: event => {
+      if (!event.currentTarget.contains(event.relatedTarget)) {
+        setReorderTarget(current => (current?.kind === 'file' && current.key === fileId ? null : current))
+      }
+    },
+    onDrop: event => {
+      if (!hasFileDrag(event) || !onReorderFile) return
+      event.preventDefault()
+      event.stopPropagation()
+      const sourceId = event.dataTransfer.getData(FILE_DRAG_TYPE)
+      const rect = event.currentTarget.getBoundingClientRect()
+      const after = event.clientY > rect.top + rect.height / 2
+      setReorderTarget(null)
+      if (sourceId && sourceId !== fileId) onReorderFile(sourceId, fileId, after)
+    },
+  })
+
   const renderFolder = (node, depth) => {
     const open = !collapsed.includes(node.path)
+    const reorderClass = reorderTarget?.kind === 'folder' && reorderTarget.key === node.path
+      ? (reorderTarget.after ? ' is-drop-after' : ' is-drop-before')
+      : ''
     return (
       <li key={`folder:${node.path}`} role="treeitem" aria-expanded={open} aria-label={`Folder ${node.name}`}>
         <div
-          className={`file-tree-row is-folder${dropTarget === node.path ? ' is-drop-target' : ''}`}
+          className={`file-tree-row is-folder${dropTarget === node.path ? ' is-drop-target' : ''}${reorderClass}`}
           style={{ '--depth': depth }}
+          draggable
+          onDragStart={event => {
+            event.stopPropagation()
+            event.dataTransfer.setData(FOLDER_DRAG_TYPE, node.path)
+            event.dataTransfer.effectAllowed = 'move'
+          }}
+          onDragEnd={() => { setDropTarget(null); setReorderTarget(null) }}
           {...dropProps(node.path)}
         >
           <button type="button" className="file-tree-main" onClick={() => onToggleFolder(node.path)} aria-label={`${open ? 'Collapse' : 'Expand'} folder ${node.name}`}>
@@ -89,8 +175,8 @@ export default function FileTree({
         </div>
         {open && (
           <ul role="group">
-            {sortFolders(node.folders).map(child => renderFolder(child, depth + 1))}
-            {sortFiles(node.files).map(entry => renderFile(entry, depth + 1))}
+            {orderedFolders(node.folders).map(child => renderFolder(child, depth + 1))}
+            {orderedFiles(node.files).map(entry => renderFile(entry, depth + 1))}
             {node.folders.size === 0 && node.files.length === 0 && (
               <li className="file-tree-empty-folder" style={{ '--depth': depth }}>Empty. Use + or drag a file here.</li>
             )}
@@ -101,11 +187,15 @@ export default function FileTree({
   }
 
   const renderFile = ({ file, base, closed }, depth) => {
+    const reorderClass = reorderTarget?.kind === 'file' && reorderTarget.key === file.id
+      ? (reorderTarget.after ? ' is-drop-after' : ' is-drop-before')
+      : ''
     if (closed) return (
       <li key={`closed:${file.id}`} role="treeitem" aria-selected={false} aria-label={`${file.name} (closed)`}>
-        <div className="file-tree-row is-closed" style={{ '--depth': depth }}>
+        <div className={`file-tree-row is-closed${reorderClass}`} style={{ '--depth': depth }} {...fileDropProps(file.id)}>
           <button type="button" className="file-tree-main" onClick={() => onReopen(file.id)} data-tip={`Reopen ${file.name}`}
-            draggable onDragStart={event => { event.dataTransfer.setData(FILE_DRAG_TYPE, file.id); event.dataTransfer.setData('text/plain', file.name); event.dataTransfer.effectAllowed = 'copyMove' }}>
+            draggable onDragStart={event => { event.dataTransfer.setData(FILE_DRAG_TYPE, file.id); event.dataTransfer.setData('text/plain', file.name); event.dataTransfer.effectAllowed = 'copyMove' }}
+            onDragEnd={() => setReorderTarget(null)}>
             <span className="file-tree-chevron-spacer" aria-hidden="true" />
             <FileText size={13} aria-hidden="true" />
             <span className="file-tree-name">{base}</span>
@@ -123,7 +213,7 @@ export default function FileTree({
     const color = labelColor(file.color)
     return (
       <li key={file.id} role="treeitem" aria-selected={active} aria-label={file.name}>
-        <div className={`file-tree-row${active ? ' is-active' : ''}`} style={{ '--depth': depth }}>
+        <div className={`file-tree-row${active ? ' is-active' : ''}${reorderClass}`} style={{ '--depth': depth }} {...fileDropProps(file.id)}>
           <button
             type="button"
             className="file-tree-main"
@@ -133,6 +223,7 @@ export default function FileTree({
               event.dataTransfer.setData('text/plain', file.name)
               event.dataTransfer.effectAllowed = 'copyMove'
             }}
+            onDragEnd={() => setReorderTarget(null)}
             onClick={() => onSelect(file.id)}
             data-tip={file.name}
           >
@@ -165,19 +256,30 @@ export default function FileTree({
       <div className="file-tree-header">
         <span>Files</span>
         <span className="file-tree-header-actions">
+          {closedList.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleShowClosed}
+              aria-pressed={!showClosed}
+              data-tip={showClosed ? 'Hide closed files' : 'Show closed files'}
+              aria-label={showClosed ? 'Hide closed files' : 'Show closed files'}
+            >
+              <Eye size={13} />
+            </button>
+          )}
           <button type="button" onClick={() => onNewFile('')} data-tip="New file" aria-label="New file at top level"><FilePlus size={13} /></button>
           <button type="button" onClick={onNewFolder} data-tip="New folder" aria-label="New folder"><FolderPlus size={13} /></button>
           <button type="button" onClick={onClose} data-tip="Hide files" aria-label="Hide file tree"><X size={13} /></button>
         </span>
       </div>
       <ul className={`file-tree-list${dropTarget === '' ? ' is-drop-target' : ''}`} role="tree" aria-label="Files" {...dropProps('')}>
-        {sortFolders(tree.folders).map(child => renderFolder(child, 0))}
-        {sortFiles(tree.files).map(entry => renderFile(entry, 0))}
-        {files.length === 0 && closedList.length === 0 && emptyFolders.length === 0 && <li className="file-tree-empty">No files yet</li>}
+        {orderedFolders(tree.folders).map(child => renderFolder(child, 0))}
+        {orderedFiles(tree.files).map(entry => renderFile(entry, 0))}
+        {files.length === 0 && visibleClosed.length === 0 && emptyFolders.length === 0 && <li className="file-tree-empty">No files yet</li>}
       </ul>
       {closedList.length > 0 && (
-        <button type="button" className="file-tree-clear-closed" onClick={() => onForget(closedList.map(file => file.id))}>
-          Clear {closedList.length} closed file{closedList.length === 1 ? '' : 's'} from the list
+        <button type="button" className="file-tree-clear-closed" onClick={() => (onDeleteClosed || onForget)(closedList.map(file => file.id))}>
+          Delete all closed files
         </button>
       )}
     </aside>

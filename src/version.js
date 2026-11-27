@@ -5,9 +5,19 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '3.2'
+export const APP_VERSION = '3.3'
 
 export const RELEASES = [
+  {
+    version: '3.3',
+    date: '2026-11-27',
+    notes: [
+      'Delete all closed files now asks for confirmation with the count and file names, and you can hide or show closed files in the Files panel.',
+      'Library now supports Folder view (default when folders exist) and Files view, with folder navigation.',
+      'Drag and drop to reorder files and folders in both the Files panel and Library, synced across both.',
+      'Fixed wide table overflow in split, preview, and mobile view modes.',
+    ],
+  },
   {
     version: '3.2',
     date: '2026-11-27',

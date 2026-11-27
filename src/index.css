@@ -353,6 +353,8 @@ body { margin: 0; font-family: var(--font-sans); }
 .book-page {
   position: relative;
   margin: 0 auto;
+  min-width: 0;
+  max-width: 100%;
   border-radius: 14px;
   /* The page uses the active theme's own surface + border tokens. */
   background-color: var(--bg-preview);
@@ -3346,7 +3348,7 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .pdf-dialog-backdrop.is-topmost { z-index: 130; }
 
 /* ── Tables: "Edit table" button in the preview ── */
-.rm-prose .table-wrap { position: relative; }
+.rm-prose .table-wrap { position: relative; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; }
 .rm-prose .table-edit {
   position: absolute; top: calc(1.4rem + 6px); right: 6px; z-index: 2; display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-preview); color: var(--text-3);
@@ -3603,6 +3605,15 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .library-card:hover { border-color: var(--accent-border); box-shadow: var(--shadow-md); }
 .library-card.is-current { border-color: var(--accent); }
 .library-card.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--bg-editor)); }
+.library-card.is-folder-card { min-height: 112px; justify-content: space-between; }
+.library-card.is-drop-before, .file-tree-row.is-drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.library-card.is-drop-after, .file-tree-row.is-drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.library-table tr.is-drop-before td { box-shadow: inset 0 2px 0 var(--accent); }
+.library-table tr.is-drop-after td { box-shadow: inset 0 -2px 0 var(--accent); }
+.library-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 2px 10px; font-size: 12px; color: var(--text-3); }
+.library-breadcrumbs button { border: 0; background: none; padding: 2px 6px; border-radius: 6px; color: var(--text-2); font-weight: 500; cursor: pointer; }
+.library-breadcrumbs button:hover { background: var(--accent-soft); color: var(--accent); }
+.library-breadcrumbs span[aria-current="page"] { padding: 2px 6px; color: var(--text-1); font-weight: 600; }
 .library-card-open { position: absolute; inset: 0; z-index: 0; border: 0; border-radius: inherit; background: none; cursor: pointer; }
 .library-card-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .library-card > *:not(.library-card-open) { position: relative; z-index: 1; pointer-events: none; }

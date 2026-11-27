@@ -5325,6 +5325,7 @@ export default function App() {
     const onDisk = entries.filter(entry => entry.file.diskHandle || diskHandlesRef.current.has(entry.id))
     const count = entries.length
     const details = [
+      count > 1 && !folder && `Files: ${entries.slice(0, 10).map(entry => entry.file.name).join(', ')}${count > 10 ? `, and ${count - 10} more` : ''}.`,
       synced.length > 0 && `${synced.length === count && count === 1 ? 'It is' : `${synced.length} ${synced.length === 1 ? 'file is' : 'files are'}`} also deleted from the sync folder “${syncFolder.name}”.`,
       onDisk.length > 0 && `${onDisk.length === count && count === 1 ? 'The file' : `${onDisk.length} ${onDisk.length === 1 ? 'file' : 'files'}`} on your computer ${onDisk.length === 1 ? 'is' : 'are'} not touched.`,
       'You can undo this right after.',
@@ -5380,6 +5381,36 @@ export default function App() {
     return true
   }, [files, closedFiles, emptyFolders, syncFolder, closeFiles, markWorkspaceEdit, askConfirm])
   const handleDeleteFile = useCallback(id => deleteEntries([id]), [deleteEntries])
+
+  const [itemOrder, setItemOrder] = useState(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem('readme-item-order') || '{}')
+      return { files: Array.isArray(parsed.files) ? parsed.files : [], folders: Array.isArray(parsed.folders) ? parsed.folders : [] }
+    } catch { return { files: [], folders: [] } }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('readme-item-order', JSON.stringify(itemOrder)) } catch { /* optional */ }
+  }, [itemOrder])
+  const reorderInList = (list, allKeys, sourceKey, targetKey, placeAfter) => {
+    const merged = [...list.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !list.includes(k))]
+    const without = merged.filter(k => k !== sourceKey)
+    const idx = without.indexOf(targetKey)
+    if (idx < 0) return merged
+    without.splice(idx + (placeAfter ? 1 : 0), 0, sourceKey)
+    return without
+  }
+  const reorderFileItem = useCallback((sourceId, targetId, placeAfter) => {
+    const allIds = [...files.map(f => f.id), ...closedFiles.map(e => e.file.id)]
+    setItemOrder(prev => ({ ...prev, files: reorderInList(prev.files, allIds, sourceId, targetId, placeAfter) }))
+    handleReorderFiles(sourceId, targetId, placeAfter)
+  }, [files, closedFiles, handleReorderFiles])
+  const reorderFolderItem = useCallback((sourcePath, targetPath, placeAfter) => {
+    const allFolders = [...new Set([
+      ...emptyFolders,
+      ...[...files, ...closedFiles.map(e => e.file)].flatMap(f => f.name.split('/').slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join('/')).filter(Boolean)),
+    ])]
+    setItemOrder(prev => ({ ...prev, folders: reorderInList(prev.folders, allFolders, sourcePath, targetPath, placeAfter) }))
+  }, [emptyFolders, files, closedFiles])
 
   // ── Library & properties ────────────────────────────────────
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -6439,6 +6470,7 @@ ${fontCss}
             onReopen={handleReopenFile}
             onForget={handleForgetClosed}
             onDelete={handleDeleteFile}
+            onDeleteClosed={ids => deleteEntries(ids)}
             onMoveFile={moveFileToFolder}
             onNewFile={createFileInFolder}
             onNewFolder={createFolder}
@@ -6449,6 +6481,10 @@ ${fontCss}
             onRenameFile={renameFileFromTree}
             onTogglePin={handleTogglePin}
             canPin={files.filter(file => file.pinned).length < MAX_PINNED}
+            fileOrder={itemOrder.files}
+            folderOrder={itemOrder.folders}
+            onReorderFile={reorderFileItem}
+            onReorderFolder={reorderFolderItem}
             onClose={() => setFileTreeOpen(false)}
           />
         )}
@@ -7443,7 +7479,9 @@ ${fontCss}
           {...imageActions} onOpenDocument={openDocument} onClose={() => setImagesOpen(false)} />
       )}
       {libraryOpen && (
-        <LibraryView documents={libraryDocs} activeId={activeFileId} askText={askText}
+        <LibraryView documents={libraryDocs} emptyFolders={emptyFolders} activeId={activeFileId} askText={askText}
+          fileOrder={itemOrder.files} folderOrder={itemOrder.folders}
+          onReorderFile={reorderFileItem} onReorderFolder={reorderFolderItem}
           onOpen={openDocument} onProperties={id => setPropertiesFor(id)}
           onMove={libraryMove} onAddTag={libraryAddTag} onExport={libraryExport} onDelete={ids => deleteEntries(ids)}
           onOpenImages={() => { setLibraryOpen(false); setImagesOpen(true) }} imageCount={attachments.size}

@@ -146,8 +146,17 @@ export const LIBRARY_SORTS = [
   ['folder', 'Folder'],
   ['words', 'Length'],
   ['status', 'Status'],
+  ['custom', 'Manual order'],
 ]
-export function sortDocuments(list, sort) {
+export function sortDocuments(list, sort, customOrder = []) {
+  if (sort === 'custom') {
+    const index = new Map(customOrder.map((id, i) => [id, i]))
+    return [...list].sort((a, b) => {
+      const ia = index.has(a.id) ? index.get(a.id) : Number.MAX_SAFE_INTEGER
+      const ib = index.has(b.id) ? index.get(b.id) : Number.MAX_SAFE_INTEGER
+      return (ia - ib) || a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' })
+    })
+  }
   const by = {
     updated: (a, b) => b.updatedAt - a.updatedAt || a.title.localeCompare(b.title),
     title: (a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }),
