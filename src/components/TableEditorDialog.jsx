@@ -84,6 +84,10 @@ export default function TableEditorDialog({ initial, mode = 'edit', onSave, onCa
     input?.focus({ preventScroll: true })
     // Keep the cell clear of the pinned header row and row numbers (see scroll-margin).
     input?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    // The first column / top rows: all the way back, so nothing hides under the pinned headers.
+    const scroller = gridRef.current?.closest('.table-grid-scroll')
+    if (scroller && column === 0) scroller.scrollLeft = 0
+    if (scroller && row <= 1) scroller.scrollTop = 0
     if (select) input?.select()
   }
   useEffect(() => {
@@ -306,10 +310,11 @@ export default function TableEditorDialog({ initial, mode = 'edit', onSave, onCa
               ))}
             </tbody>
           </table>
-          <div className="table-add">
-            <button type="button" className="table-add-row" onClick={() => commit(insertRow(table, table.rows.length), { row: table.rows.length, column: 0 })}><Plus size={12} /> Add row</button>
-            <button type="button" className="table-add-row" onClick={() => commit(insertColumn(table, columns), { row: r, column: columns })}><Plus size={12} /> Add column</button>
-          </div>
+        </div>
+        {/* Outside the scrolling grid, so they never scroll out of view. */}
+        <div className="table-add">
+          <button type="button" className="table-add-row" onClick={() => commit(insertRow(table, table.rows.length), { row: table.rows.length, column: 0 })}><Plus size={12} /> Add row</button>
+          <button type="button" className="table-add-row" onClick={() => commit(insertColumn(table, columns), { row: r, column: columns })}><Plus size={12} /> Add column</button>
         </div>
         {menu && createPortal(
           <div className="table-menu" role="menu" aria-label={menu.kind === 'row' ? 'Row options' : menu.kind === 'column' ? 'Column options' : menu.kind === 'more' ? 'More table options' : 'Cell options'}
