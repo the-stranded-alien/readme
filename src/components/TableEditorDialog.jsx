@@ -81,7 +81,9 @@ export default function TableEditorDialog({ initial, mode = 'edit', onSave, onCa
 
   const focusInput = (row, column, select = true) => {
     const input = gridRef.current?.querySelector(`[data-cell="${row}-${column}"]`)
-    input?.focus()
+    input?.focus({ preventScroll: true })
+    // Keep the cell clear of the pinned header row and row numbers (see scroll-margin).
+    input?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
     if (select) input?.select()
   }
   useEffect(() => {

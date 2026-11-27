@@ -3787,3 +3787,17 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .table-editor .table-toolbar { padding-left: 28px; padding-right: 28px; }
 .table-editor .table-grid-scroll { padding: 18px 28px 20px; }
 .table-editor .pdf-dialog-footer { padding-left: 28px; padding-right: 28px; }
+
+/* Table editor: big tables. The column letters, the header row and the row numbers stay in view
+   while the grid scrolls; there is room below the last row; the current cell scrolls clear of
+   the pinned header. */
+.table-editor .table-grid-scroll { min-height: min(340px, 46vh); padding-top: 0; padding-bottom: 64px; overscroll-behavior: contain; }
+.table-grid thead th { position: sticky; top: 0; z-index: 3; height: 34px; padding: 6px 0 4px; background: var(--bg-preview); }
+.table-grid tr.is-header td { position: sticky; top: 34px; z-index: 2; }
+.table-grid tr.is-header td, .table-grid tr.is-header td.is-line { background: color-mix(in srgb, var(--accent) 12%, var(--bg-preview)); }
+.table-grid tbody th { position: sticky; left: 0; z-index: 2; background: var(--bg-preview); }
+.table-grid tbody tr.is-header th { top: 34px; z-index: 4; }
+.table-grid thead th.table-corner { left: 0; z-index: 5; }
+.table-grid input { scroll-margin: 78px 48px 48px 48px; }
+/* The pinned row numbers also cover the grid's left padding, so scrolled cells don't peek out. */
+.table-grid tbody th, .table-grid thead th.table-corner { box-shadow: -30px 0 0 var(--bg-preview); }
