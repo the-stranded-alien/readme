@@ -4357,15 +4357,6 @@ export default function App() {
     const snapshots = await readAllHistory().catch(() => ({}))
     setRecoveryData({ loading: false, snapshots })
   }, [])
-  const restoreRecoverySnapshot = useCallback(async (fileId, snapshot) => {
-    const file = linkableFiles.find(item => item.id === fileId)
-    if (!file || !snapshot) return
-    const accepted = await askConfirm({ title: 'Restore this recovery snapshot?', message: `The current version of “${file.name}” will be saved to history first.`, confirmLabel: 'Restore snapshot', icon: History })
-    if (!accepted) return
-    await takeSnapshot(file.id, file.content, 'Before recovery restore')
-    changeDocuments(new Map([[file.id, snapshot.content]]), `Recovered “${file.name}” from an earlier snapshot.`)
-    setRecoveryData(null)
-  }, [linkableFiles, askConfirm, takeSnapshot, changeDocuments])
   const restoreSnapshot = useCallback(async snapshot => {
     if (!activeFile || !snapshot) return
     if (!(await askConfirm({ title: 'Restore this version?', message: 'The current text is saved as a snapshot first, so you can undo this from history.', confirmLabel: 'Restore', icon: History }))) return
@@ -5505,6 +5496,15 @@ export default function App() {
     apply(changes, true)
     setToast({ message, tone: 'success', duration: 6000, action: { label: 'Undo', run: () => apply(before, false) } })
   }, [markWorkspaceEdit])
+  const restoreRecoverySnapshot = useCallback(async (fileId, snapshot) => {
+    const file = linkableFiles.find(item => item.id === fileId)
+    if (!file || !snapshot) return
+    const accepted = await askConfirm({ title: 'Restore this recovery snapshot?', message: `The current version of “${file.name}” will be saved to history first.`, confirmLabel: 'Restore snapshot', icon: History })
+    if (!accepted) return
+    await takeSnapshot(file.id, file.content, 'Before recovery restore')
+    changeDocuments(new Map([[file.id, snapshot.content]]), `Recovered “${file.name}” from an earlier snapshot.`)
+    setRecoveryData(null)
+  }, [linkableFiles, askConfirm, takeSnapshot, changeDocuments])
   const updateAgendaProperty = useCallback((id, key, value) => {
     const file = linkableFiles.find(item => item.id === id)
     if (!file) return
