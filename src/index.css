@@ -3041,7 +3041,18 @@ button:hover > .ip svg { transition: transform .15s; }
 .view-menu-select-row > label { flex: 1; min-width: 0; font-weight: 500; }
 .view-menu-select { max-width: 148px; height: 30px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-editor); color: var(--text-1); font: inherit; font-size: 12px; cursor: pointer; }
 .view-menu-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.settings-pet-panel { display: grid; gap: 12px; }
+.settings-pet-panel { display: grid; gap: 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1px 4px 4px 1px; scrollbar-width: thin; }
+.settings-pet-panel::-webkit-scrollbar { width: 4px; }
+.settings-pet-panel::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+.settings-pet-panel .reading-pet-section { gap: 12px; padding-bottom: 14px; }
+.settings-pet-panel .reading-pet-section h3 { font-size: 11px; }
+.settings-pet-panel .reading-pet-setting { gap: 6px; font-size: 12px; line-height: 1.3; }
+.settings-pet-panel .reading-pet-setting b { font-size: 11px; }
+.settings-pet-panel .reading-pet-toggle-row { min-height: 30px; font-size: 12px; }
+.settings-pet-panel .reading-pet-count-row { font-size: 12px; }
+.settings-pet-panel .reading-pet-coat-trigger { height: 36px; font-size: 12px; }
+.settings-pet-panel .reading-pet-advanced > summary { min-height: 36px; font-size: 12px; }
+.settings-pet-panel .reading-pet-advanced-options { gap: 14px; padding: 4px 12px 12px; }
 
 /* High contrast logo: theme accent tile with the icon in the page colour (strong contrast both ways). */
 html.high-contrast .logo-glow { --logo-bg: var(--accent); }
@@ -3826,3 +3837,26 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .table-editor { height: min(720px, calc(100vh - 48px)); max-height: none; }
 .table-editor .table-grid-scroll { flex: 1 1 auto; min-height: 0; padding-bottom: 24px; }
 .table-editor .table-add { flex: none; display: flex; gap: 8px; margin: 0; padding: 10px 28px 12px 66px; border-top: 1px solid var(--border-light); }
+
+/* Shared dropdown (PickerDropdown): the app's own list instead of a native <select>. */
+.picker-trigger { display: inline-flex; align-items: center; gap: 8px; min-width: 0; height: 32px; padding: 0 10px 0 11px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-editor); color: var(--text-1); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+.picker-trigger:hover:not(:disabled) { border-color: var(--accent-border); background: var(--bg-toolbar); }
+.picker-trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.picker-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.picker-trigger:disabled { opacity: .5; cursor: default; }
+.picker-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-chevron { flex: none; color: var(--text-4); transition: transform .15s; }
+.picker-trigger[aria-expanded="true"] .picker-chevron { transform: rotate(180deg); }
+.picker-icon { display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; }
+.picker-font-sample { font-size: 13px; font-weight: 600; line-height: 1; color: var(--text-2); }
+.picker-menu { position: fixed; z-index: 1300; overflow-y: auto; padding: 5px; border: 1px solid var(--border-strong); border-radius: 11px; background: var(--bg-preview); box-shadow: var(--shadow-xl); outline: none; }
+.picker-option { display: flex; align-items: center; gap: 9px; min-height: 32px; padding: 6px 9px; border-radius: 8px; color: var(--text-2); font-size: 12.5px; cursor: pointer; }
+.picker-option.is-active { background: var(--accent-soft); color: var(--text-1); }
+.picker-option.is-selected { color: var(--accent); font-weight: 600; }
+.picker-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-hint { margin-left: 6px; color: var(--text-4); font-size: 11px; font-weight: 400; }
+.picker-check { flex: none; color: var(--accent); }
+.view-menu-select-row { gap: 12px; padding: 6px 8px 6px 10px; }
+.view-menu-select-label { flex: 1; min-width: 0; font-weight: 500; white-space: nowrap; }
+.view-menu-picker { width: 172px; flex: none; }
+.reader-picker { width: 100%; }

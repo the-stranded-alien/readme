@@ -2239,7 +2239,8 @@ describe('advanced browser features', () => {
     installApp()
     expect(screen.queryByRole('button', { name: /Color mode/ })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'View options' }))
-    fireEvent.change(screen.getByRole('combobox', { name: 'Theme' }), { target: { value: 'sepia' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Theme: Dark' }))
+    fireEvent.click(within(screen.getByRole('listbox', { name: 'Theme' })).getByRole('option', { name: 'Sepia' }))
     await waitFor(() => expect(document.documentElement.classList.contains('theme-sepia')).toBe(true))
     expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
@@ -2303,9 +2304,11 @@ describe('advanced browser features', () => {
 
     // Font dropdown in View options with 11 options
     fireEvent.click(screen.getByRole('button', { name: 'View options' }))
-    const fontSelect = screen.getByRole('combobox', { name: 'Reading font' })
-    expect(fontSelect.querySelectorAll('option').length).toBeGreaterThanOrEqual(10)
-    fireEvent.change(fontSelect, { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Reading font:/ }))
+    const fontList = screen.getByRole('listbox', { name: 'Reading font' })
+    const fontOptions = within(fontList).getAllByRole('option')
+    expect(fontOptions.length).toBeGreaterThanOrEqual(10)
+    fireEvent.click(fontOptions[5])
     expect(JSON.parse(localStorage.getItem('readme-reader-prefs')).fontIndex).toBe(5)
 
     // FileTree has no bottom hint
@@ -2352,7 +2355,21 @@ describe('advanced browser features', () => {
     fireEvent.change(within(library).getByRole('combobox', { name: 'Sort by' }), { target: { value: 'custom' } })
     const orderedTitles = within(library).getAllByRole('button', { name: /^Open / }).map(b => b.getAttribute('aria-label'))
     expect(orderedTitles.indexOf('Open Beta')).toBeLessThan(orderedTitles.indexOf('Open Alpha'))
+
+    // Dragging from the full-card open button must also start a reorder.
+    const betaCard = within(library).getByRole('button', { name: 'Open Beta' })
+    const alphaCard = within(library).getByRole('button', { name: 'Open Alpha' })
+    const libraryTransfer = { setData: (k, v) => data.set(k, v), getData: k => data.get(k) || '', get types() { return [...data.keys()] }, effectAllowed: '', dropEffect: '' }
+    const betaCardItem = betaCard.closest('li')
+    fireEvent.dragStart(alphaCard, { dataTransfer: libraryTransfer })
+    fireEvent.dragOver(betaCardItem, { dataTransfer: libraryTransfer })
+    expect(betaCardItem).toHaveClass('is-drop-before')
+    fireEvent.drop(betaCardItem, { dataTransfer: libraryTransfer })
+    const afterLibraryDrop = within(library).getAllByRole('button', { name: /^Open / }).map(b => b.getAttribute('aria-label'))
+    expect(afterLibraryDrop.indexOf('Open Alpha')).toBeLessThan(afterLibraryDrop.indexOf('Open Beta'))
     fireEvent.click(within(library).getByRole('button', { name: 'Close library' }))
+    const fileNames = within(tree).getAllByRole('treeitem').map(item => item.getAttribute('aria-label'))
+    expect(fileNames.indexOf('Alpha.md')).toBeLessThan(fileNames.indexOf('Beta.md'))
 
     // Delete all closed files shows confirmation with count and file names
     fireEvent.click(screen.getByRole('button', { name: 'Delete all closed files' }))

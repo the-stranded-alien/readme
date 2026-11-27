@@ -5,9 +5,19 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '3.3'
+export const APP_VERSION = '3.4'
 
 export const RELEASES = [
+  {
+    version: '3.4',
+    date: '2026-11-27',
+    notes: [
+      'Fixed drag-and-drop reordering in the Files panel and Library, including card and table layouts.',
+      'View options now use the shared icon dropdowns for themes and fonts, with the display icon in the header.',
+      'Pet settings now scroll with a trackpad and use the same readable spacing as other settings; closed-file actions are icon buttons below the list.',
+      'Fixed font loading and several workspace, file-order and Library edge cases.',
+    ],
+  },
   {
     version: '3.3',
     date: '2026-11-27',

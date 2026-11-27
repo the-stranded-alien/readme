@@ -24,7 +24,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, Workflow, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, AppDownload, Library, ImageOff, Images, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, Workflow, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, AppDownload, Library, ImageOff, Images, Display, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
   FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
@@ -40,6 +40,7 @@ import LinkPreview from './components/LinkPreview'
 import PdfExportDialog from './components/PdfExportDialog'
 import PublishSiteDialog from './components/PublishSiteDialog'
 import PreviewEditTools from './components/PreviewEditTools'
+import PickerDropdown from './components/PickerDropdown'
 import LibraryView from './components/LibraryView'
 import PropertiesDialog from './components/PropertiesDialog'
 import ImagesDialog from './components/ImagesDialog'
@@ -718,6 +719,22 @@ function MarkdownRenderer({ content, dark, sourceRanges = false }) {
 }
 
 // ── TOCSidebar ─────────────────────────────────────────────────
+/** The icon each theme shows (in its own colour) in theme pickers. */
+function ThemeIcon({ id, size = 14 }) {
+  const theme = themeById(id)
+  if (id.startsWith('neon')) return <Zap size={size} style={{ color: theme.swatch?.[1]?.startsWith?.('#') ? theme.swatch[1] : '#ec4899' }} />
+  if (id === 'sun') return <Sunrise size={size} style={{ color: '#ea580c' }} />
+  if (id === 'monokai') return <Palette size={size} style={{ color: '#a6e22e' }} />
+  if (id === 'nord') return <Snowflake size={size} style={{ color: '#88c0d0' }} />
+  if (id === 'solarized') return <SunDim size={size} style={{ color: '#268bd2' }} />
+  if (id === 'marble') return <Contrast size={size} style={{ color: 'var(--text-1)' }} />
+  if (id === 'ocean') return <Waves size={size} style={{ color: '#38bdf8' }} />
+  if (id === 'forest') return <Leaf size={size} style={{ color: '#2f7d4f' }} />
+  if (id === 'sepia') return <BookOpen size={size} style={{ color: '#a16207' }} />
+  return theme.dark ? <Moon size={size} style={{ color: '#a78bfa' }} /> : <Sun size={size} style={{ color: '#f59e0b' }} />
+}
+const fontOptions = () => DOC_FONTS.map((font, index) => ({ value: index, label: font.label, icon: <span className="picker-font-sample" style={{ fontFamily: font.family }}>Aa</span> }))
+
 // ── Header "View" menu: secondary display options in one place ─
 function HeaderViewMenu({ items, extra }) {
   const [position, setPosition] = useState(null)
@@ -726,14 +743,15 @@ function HeaderViewMenu({ items, extra }) {
   const close = useCallback(() => setPosition(null), [])
   useEffect(() => {
     if (!position) return undefined
-    menuRef.current?.querySelector('button, select')?.focus()
-    const onDown = event => { if (!menuRef.current?.contains(event.target) && !buttonRef.current?.contains(event.target)) close() }
+    menuRef.current?.querySelector('button')?.focus()
+    // A dropdown's list opens outside this menu (in a portal): it belongs to the menu.
+    const onDown = event => { if (!menuRef.current?.contains(event.target) && !buttonRef.current?.contains(event.target) && !event.target.closest?.('.picker-menu')) close() }
     const onKey = event => {
+      if (event.target.closest?.('.picker-menu') || menuRef.current?.querySelector('.picker-trigger[aria-expanded="true"]')) return
       if (event.key === 'Escape') { event.preventDefault(); close(); buttonRef.current?.focus() }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        if (document.activeElement?.tagName === 'SELECT') return
         event.preventDefault()
-        const controls = [...(menuRef.current?.querySelectorAll('button, select') ?? [])]
+        const controls = [...(menuRef.current?.querySelectorAll('button') ?? [])]
         const index = controls.indexOf(document.activeElement)
         controls[(index + (event.key === 'ArrowDown' ? 1 : -1) + controls.length) % controls.length]?.focus()
       }
@@ -759,7 +777,7 @@ function HeaderViewMenu({ items, extra }) {
           setPosition(current => (current ? null : { top: rect.bottom + 8, left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)), width }))
         }}
       >
-        <Eye size={15} />
+        <Display size={15} />
       </button>
       {position && createPortal(
         <div ref={menuRef} className="view-menu anim-pop-in no-print" role="menu" aria-label="View options" style={{ top: position.top, left: position.left, width: position.width }}>
@@ -1584,17 +1602,8 @@ function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityCha
             Typography
           </div>
           {docStyle && docStyle !== 'readme' && <p className="doc-style-note">Fonts come from the {docStyleById(docStyle).label} style. Pick ReadMe above to choose your own.</p>}
-          <select
-            aria-label="Reading font"
-            disabled={Boolean(docStyle && docStyle !== 'readme')}
-            value={prefs.fontIndex}
-            onChange={event => onChange({ ...prefs, fontIndex: Number(event.target.value) })}
-            className="w-full reader-chip text-left"
-          >
-            {DOC_FONTS.map((f, idx) => (
-              <option key={f.id} value={idx}>{f.label}</option>
-            ))}
-          </select>
+          <PickerDropdown label="Reading font" value={prefs.fontIndex} options={fontOptions()} className="reader-picker"
+            disabled={Boolean(docStyle && docStyle !== 'readme')} onChange={index => onChange({ ...prefs, fontIndex: index })} />
         </div>
 
         <div>
@@ -2214,84 +2223,83 @@ function ReadingPetSettings({ prefs, onChange, lite }) {
   return (
     <div className="settings-pet-panel">
       {lite && <p className="settings-muted">Lite mode is on in Features, so the reading cats are hidden until you turn Lite mode off.</p>}
-      <div className="reading-pet-options">
-        <section className="reading-pet-section" aria-label="Basic settings">
-          <label className="reading-pet-setting">
-            <span>Coat</span>
-            <ReadingPetCoatDropdown value={prefs.skin} onChange={skin => updatePref('skin', skin)} />
+
+      <section className="reading-pet-section" aria-label="Basic settings">
+        <label className="reading-pet-setting">
+          <span>Coat</span>
+          <ReadingPetCoatDropdown value={prefs.skin} onChange={skin => updatePref('skin', skin)} />
+        </label>
+        <div className="reading-pet-count-row">
+          <span>Number of cats</span>
+          <div className="reading-pet-count-control" aria-label="Number of cats">
+            <button type="button" onClick={() => updatePref('catCount', Math.max(1, prefs.catCount - 1))} disabled={prefs.catCount <= 1} aria-label="Remove a cat"><Minus size={13} /></button>
+            <output aria-live="polite" aria-label="Cat count">{prefs.catCount}</output>
+            <button type="button" onClick={() => updatePref('catCount', Math.min(10, prefs.catCount + 1))} disabled={prefs.catCount >= 10} aria-label="Add a cat"><Plus size={13} /></button>
+          </div>
+        </div>
+        <div className="reading-pet-popover-sliders">
+          <label className="reading-pet-setting reading-pet-range">
+            <span>Speed <b>{prefs.speed}</b></span>
+            <input type="range" min="4" max="18" step="1" value={prefs.speed} onChange={event => updatePref('speed', Number(event.target.value))} aria-label="Cat speed" />
           </label>
-          <div className="reading-pet-count-row">
-            <span>Number of cats</span>
-            <div className="reading-pet-count-control" aria-label="Number of cats">
-              <button type="button" onClick={() => updatePref('catCount', Math.max(1, prefs.catCount - 1))} disabled={prefs.catCount <= 1} aria-label="Remove a cat"><Minus size={13} /></button>
-              <output aria-live="polite" aria-label="Cat count">{prefs.catCount}</output>
-              <button type="button" onClick={() => updatePref('catCount', Math.min(10, prefs.catCount + 1))} disabled={prefs.catCount >= 10} aria-label="Add a cat"><Plus size={13} /></button>
+          <label className="reading-pet-setting reading-pet-range">
+            <span>Size <b>{prefs.scale.toFixed(2)}×</b></span>
+            <input type="range" min="0.75" max="1.75" step="0.25" value={prefs.scale} onChange={event => updatePref('scale', Number(event.target.value))} aria-label="Cat size" />
+          </label>
+        </div>
+        <div className="reading-pet-actions">
+          <button type="button" className="reading-pet-button reading-pet-roam" onClick={() => updatePref('roaming', !prefs.roaming)} aria-pressed={prefs.roaming}>
+            {prefs.roaming ? <PanelBottom size={13} /> : <Footprints size={13} />}
+            <span>{prefs.roaming ? 'Footer only' : 'Roam screen'}</span>
+          </button>
+          <button type="button" className={`reading-pet-button reading-pet-toggle${prefs.enabled ? '' : ' is-disabled'}`} onClick={() => updatePref('enabled', !prefs.enabled)} aria-pressed={prefs.enabled}>
+            {prefs.enabled ? <span className="reading-pet-status-dot" /> : <Cat size={13} />}
+            <span>{prefs.enabled ? 'Disable' : 'Enable'}</span>
+          </button>
+        </div>
+      </section>
+
+      <details className="reading-pet-advanced">
+        <summary>Advanced</summary>
+        <div className="reading-pet-advanced-options">
+          <section className="reading-pet-section" aria-label="Behavior">
+            <h3>Behavior</h3>
+            <ReadingPetToggle label="Sleep when idle" checked={prefs.sleepEnabled} onChange={value => updatePref('sleepEnabled', value)} />
+            <ReadingPetToggle label="Zoomies while roaming" checked={prefs.zoomies} onChange={value => updatePref('zoomies', value)} disabled={!prefs.roaming} />
+            {prefs.zoomies && prefs.roaming && <label className="reading-pet-setting reading-pet-range"><span>Zoomies chance <b>{Math.round(prefs.freerunChance * 100)}%</b></span><input type="range" min="0.01" max="0.2" step="0.01" value={prefs.freerunChance} onChange={event => updatePref('freerunChance', Number(event.target.value))} aria-label="Zoomies chance" /></label>}
+            <div className="reading-pet-popover-sliders">
+              <label className="reading-pet-setting reading-pet-range"><span>Idle after <b>{(prefs.idleThreshold / 1000).toFixed(1)}s</b></span><input type="range" min="400" max="5000" step="200" value={prefs.idleThreshold} onChange={event => updatePref('idleThreshold', Number(event.target.value))} aria-label="Idle animation delay" /></label>
+              <label className="reading-pet-setting reading-pet-range"><span>Animation <b>{prefs.animationSpeed.toFixed(1)}×</b></span><input type="range" min="0.5" max="2" step="0.1" value={prefs.animationSpeed} onChange={event => updatePref('animationSpeed', Number(event.target.value))} aria-label="Idle animation speed" /></label>
             </div>
-          </div>
-          <div className="reading-pet-popover-sliders">
-            <label className="reading-pet-setting reading-pet-range">
-              <span>Speed <b>{prefs.speed}</b></span>
-              <input type="range" min="4" max="18" step="1" value={prefs.speed} onChange={event => updatePref('speed', Number(event.target.value))} aria-label="Cat speed" />
-            </label>
-            <label className="reading-pet-setting reading-pet-range">
-              <span>Size <b>{prefs.scale.toFixed(2)}×</b></span>
-              <input type="range" min="0.75" max="1.75" step="0.25" value={prefs.scale} onChange={event => updatePref('scale', Number(event.target.value))} aria-label="Cat size" />
-            </label>
-          </div>
-          <div className="reading-pet-actions">
-            <button type="button" className="reading-pet-button reading-pet-roam" onClick={() => updatePref('roaming', !prefs.roaming)} aria-pressed={prefs.roaming}>
-              {prefs.roaming ? <PanelBottom size={13} /> : <Footprints size={13} />}
-              <span>{prefs.roaming ? 'Footer only' : 'Roam screen'}</span>
-            </button>
-            <button type="button" className={`reading-pet-button reading-pet-toggle${prefs.enabled ? '' : ' is-disabled'}`} onClick={() => updatePref('enabled', !prefs.enabled)} aria-pressed={prefs.enabled}>
-              {prefs.enabled ? <span className="reading-pet-status-dot" /> : <Cat size={13} />}
-              <span>{prefs.enabled ? 'Disable' : 'Enable'}</span>
-            </button>
-          </div>
-        </section>
+          </section>
 
-        <details className="reading-pet-advanced">
-          <summary>Advanced</summary>
-          <div className="reading-pet-advanced-options">
-            <section className="reading-pet-section" aria-label="Behavior">
-              <h3>Behavior</h3>
-              <ReadingPetToggle label="Sleep when idle" checked={prefs.sleepEnabled} onChange={value => updatePref('sleepEnabled', value)} />
-              <ReadingPetToggle label="Zoomies while roaming" checked={prefs.zoomies} onChange={value => updatePref('zoomies', value)} disabled={!prefs.roaming} />
-              {prefs.zoomies && prefs.roaming && <label className="reading-pet-setting reading-pet-range"><span>Zoomies chance <b>{Math.round(prefs.freerunChance * 100)}%</b></span><input type="range" min="0.01" max="0.2" step="0.01" value={prefs.freerunChance} onChange={event => updatePref('freerunChance', Number(event.target.value))} aria-label="Zoomies chance" /></label>}
-              <div className="reading-pet-popover-sliders">
-                <label className="reading-pet-setting reading-pet-range"><span>Idle after <b>{(prefs.idleThreshold / 1000).toFixed(1)}s</b></span><input type="range" min="400" max="5000" step="200" value={prefs.idleThreshold} onChange={event => updatePref('idleThreshold', Number(event.target.value))} aria-label="Idle animation delay" /></label>
-                <label className="reading-pet-setting reading-pet-range"><span>Animation <b>{prefs.animationSpeed.toFixed(1)}×</b></span><input type="range" min="0.5" max="2" step="0.1" value={prefs.animationSpeed} onChange={event => updatePref('animationSpeed', Number(event.target.value))} aria-label="Idle animation speed" /></label>
-              </div>
-            </section>
+          <section className="reading-pet-section" aria-label="Page reactions">
+            <h3>Page reactions</h3>
+            <ReadingPetToggle label="Nap while I type" checked={prefs.napWhileTyping} onChange={value => updatePref('napWhileTyping', value)} disabled={!prefs.roaming} />
+            <ReadingPetToggle label="Follow keyboard focus" checked={prefs.followFocus} onChange={value => updatePref('followFocus', value)} disabled={!prefs.roaming} />
+            <ReadingPetToggle label="Perch on hovered controls" checked={prefs.perchOnHover} onChange={value => updatePref('perchOnHover', value)} disabled={!prefs.roaming} />
+          </section>
 
-            <section className="reading-pet-section" aria-label="Page reactions">
-              <h3>Page reactions</h3>
-              <ReadingPetToggle label="Nap while I type" checked={prefs.napWhileTyping} onChange={value => updatePref('napWhileTyping', value)} disabled={!prefs.roaming} />
-              <ReadingPetToggle label="Follow keyboard focus" checked={prefs.followFocus} onChange={value => updatePref('followFocus', value)} disabled={!prefs.roaming} />
-              <ReadingPetToggle label="Perch on hovered controls" checked={prefs.perchOnHover} onChange={value => updatePref('perchOnHover', value)} disabled={!prefs.roaming} />
-            </section>
+          <section className="reading-pet-section" aria-label="Play">
+            <h3>Play</h3>
+            <ReadingPetToggle label="Allow keyboard petting" checked={prefs.pettable} onChange={value => updatePref('pettable', value)} />
+            <ReadingPetToggle label="Drag and toss" checked={prefs.grabbable} onChange={value => updatePref('grabbable', value)} disabled={!prefs.roaming} />
+            <ReadingPetToggle label="Drop fish treats on double-click" checked={prefs.treats} onChange={value => updatePref('treats', value)} disabled={!prefs.roaming} />
+            <ReadingPetToggle label="Thought bubbles" checked={prefs.bubbleEnabled} onChange={value => updatePref('bubbleEnabled', value)} />
+            {prefs.bubbleEnabled && <label className="reading-pet-setting"><span>Thoughts (one per line)</span><textarea rows="2" value={prefs.bubbleText} maxLength={180} onChange={event => updatePref('bubbleText', event.target.value)} aria-label="Pet thought bubbles" /></label>}
+            <ReadingPetToggle label="Meow sounds" checked={prefs.meow} onChange={value => updatePref('meow', value)} />
+            {prefs.meow && <label className="reading-pet-setting reading-pet-range"><span>Volume <b>{Math.round(prefs.volume * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value={prefs.volume} onChange={event => updatePref('volume', Number(event.target.value))} aria-label="Pet sound volume" /></label>}
+          </section>
 
-            <section className="reading-pet-section" aria-label="Play">
-              <h3>Play</h3>
-              <ReadingPetToggle label="Allow keyboard petting" checked={prefs.pettable} onChange={value => updatePref('pettable', value)} />
-              <ReadingPetToggle label="Drag and toss" checked={prefs.grabbable} onChange={value => updatePref('grabbable', value)} disabled={!prefs.roaming} />
-              <ReadingPetToggle label="Drop fish treats on double-click" checked={prefs.treats} onChange={value => updatePref('treats', value)} disabled={!prefs.roaming} />
-              <ReadingPetToggle label="Thought bubbles" checked={prefs.bubbleEnabled} onChange={value => updatePref('bubbleEnabled', value)} />
-              {prefs.bubbleEnabled && <label className="reading-pet-setting"><span>Thoughts (one per line)</span><textarea rows="2" value={prefs.bubbleText} maxLength={180} onChange={event => updatePref('bubbleText', event.target.value)} aria-label="Pet thought bubbles" /></label>}
-              <ReadingPetToggle label="Meow sounds" checked={prefs.meow} onChange={value => updatePref('meow', value)} />
-              {prefs.meow && <label className="reading-pet-setting reading-pet-range"><span>Volume <b>{Math.round(prefs.volume * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value={prefs.volume} onChange={event => updatePref('volume', Number(event.target.value))} aria-label="Pet sound volume" /></label>}
-            </section>
-
-            <section className="reading-pet-section" aria-label="Movement">
-              <h3>Movement</h3>
-              <ReadingPetToggle label="Cats follow one another" checked={prefs.parade} onChange={value => updatePref('parade', value)} disabled={prefs.catCount < 2} />
-              <ReadingPetToggle label="Remember roaming positions" checked={prefs.rememberPosition} onChange={value => updatePref('rememberPosition', value)} />
-              <ReadingPetToggle label="Avoid app toolbars" checked={prefs.avoidControls} onChange={value => updatePref('avoidControls', value)} disabled={!prefs.roaming} />
-              <ReadingPetToggle label="Visit document headings" checked={prefs.visitHeadings} onChange={value => updatePref('visitHeadings', value)} disabled={!prefs.roaming} />
-            </section>
-          </div>
-        </details>
-      </div>
+          <section className="reading-pet-section" aria-label="Movement">
+            <h3>Movement</h3>
+            <ReadingPetToggle label="Cats follow one another" checked={prefs.parade} onChange={value => updatePref('parade', value)} disabled={prefs.catCount < 2} />
+            <ReadingPetToggle label="Remember roaming positions" checked={prefs.rememberPosition} onChange={value => updatePref('rememberPosition', value)} />
+            <ReadingPetToggle label="Avoid app toolbars" checked={prefs.avoidControls} onChange={value => updatePref('avoidControls', value)} disabled={!prefs.roaming} />
+            <ReadingPetToggle label="Visit document headings" checked={prefs.visitHeadings} onChange={value => updatePref('visitHeadings', value)} disabled={!prefs.roaming} />
+          </section>
+        </div>
+      </details>
     </div>
   )
 }
@@ -4940,6 +4948,16 @@ export default function App() {
       const name = uniqueName(target, prev.filter(item => item.id !== id).map(item => item.name))
       return prev.map(item => (item.id === id ? { ...item, name } : item))
     })
+    // Closed files (listed in the Files panel and the Library) move too.
+    setClosedFiles(prev => {
+      const entry = prev.find(item => item.file.id === id)
+      if (!entry) return prev
+      const base = entry.file.name.split('/').pop()
+      const target = folder ? `${folder}/${base}` : base
+      if (target === entry.file.name) return prev
+      const name = uniqueName(target, prev.filter(item => item.file.id !== id).map(item => item.file.name))
+      return prev.map(item => (item.file.id === id ? { ...item, file: { ...item.file, name } } : item))
+    })
     markWorkspaceEdit()
   }, [markWorkspaceEdit])
   const createFileInFolder = useCallback(folder => {
@@ -5391,26 +5409,24 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('readme-item-order', JSON.stringify(itemOrder)) } catch { /* optional */ }
   }, [itemOrder])
-  const reorderInList = (list, allKeys, sourceKey, targetKey, placeAfter) => {
-    const merged = [...list.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !list.includes(k))]
-    const without = merged.filter(k => k !== sourceKey)
-    const idx = without.indexOf(targetKey)
-    if (idx < 0) return merged
-    without.splice(idx + (placeAfter ? 1 : 0), 0, sourceKey)
-    return without
+  // Drag-and-drop order, shared by the Files panel and the Library. A drop reorders what was
+  // shown (`displayed`, in on-screen order); those keys then come first in the saved order and
+  // everything else keeps its relative order (items are only ever compared with their neighbours
+  // in the same folder, or in the Library's "Manual order" list).
+  const applyOrder = (saved, displayed, source, target, after) => {
+    const base = displayed.includes(source) ? displayed : [...displayed, source]
+    const without = base.filter(key => key !== source)
+    const at = without.indexOf(target)
+    if (at < 0) return saved
+    without.splice(at + (after ? 1 : 0), 0, source)
+    return [...without, ...saved.filter(key => !without.includes(key))]
   }
-  const reorderFileItem = useCallback((sourceId, targetId, placeAfter) => {
-    const allIds = [...files.map(f => f.id), ...closedFiles.map(e => e.file.id)]
-    setItemOrder(prev => ({ ...prev, files: reorderInList(prev.files, allIds, sourceId, targetId, placeAfter) }))
-    handleReorderFiles(sourceId, targetId, placeAfter)
-  }, [files, closedFiles, handleReorderFiles])
-  const reorderFolderItem = useCallback((sourcePath, targetPath, placeAfter) => {
-    const allFolders = [...new Set([
-      ...emptyFolders,
-      ...[...files, ...closedFiles.map(e => e.file)].flatMap(f => f.name.split('/').slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join('/')).filter(Boolean)),
-    ])]
-    setItemOrder(prev => ({ ...prev, folders: reorderInList(prev.folders, allFolders, sourcePath, targetPath, placeAfter) }))
-  }, [emptyFolders, files, closedFiles])
+  const reorderFileItem = useCallback((sourceId, targetId, placeAfter, displayed = []) => {
+    setItemOrder(prev => ({ ...prev, files: applyOrder(prev.files, displayed, sourceId, targetId, placeAfter) }))
+  }, [])
+  const reorderFolderItem = useCallback((sourcePath, targetPath, placeAfter, displayed = []) => {
+    setItemOrder(prev => ({ ...prev, folders: applyOrder(prev.folders, displayed, sourcePath, targetPath, placeAfter) }))
+  }, [])
 
   // ── Library & properties ────────────────────────────────────
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -5445,11 +5461,6 @@ export default function App() {
     if (raw == null) return
     const folder = cleanFolderName(raw)
     ids.forEach(id => moveFileToFolder(id, folder))
-    setClosedFiles(prev => prev.map(entry => {
-      if (!ids.includes(entry.file.id)) return entry
-      const base = entry.file.name.split('/').pop()
-      return { ...entry, file: { ...entry.file, name: folder ? `${folder}/${base}` : base } }
-    }))
     setToast({ message: `Moved ${ids.length === 1 ? '1 document' : `${ids.length} documents`} to ${folder || 'the top level'}.`, tone: 'success' })
   }, [askText, moveFileToFolder])
   const libraryAddTag = useCallback(async ids => {
@@ -6359,21 +6370,17 @@ ${fontCss}
                 <>
                   <div className="view-menu-select-row">
                     <span className="view-menu-icon" aria-hidden="true"><Type size={15} /></span>
-                    <label htmlFor="view-menu-font">Reading font</label>
-                    <select id="view-menu-font" className="view-menu-select" value={readerPrefs.fontIndex} onChange={event => setReaderPrefs(p => ({ ...p, fontIndex: Number(event.target.value) }))} aria-label="Reading font">
-                      {DOC_FONTS.map((f, idx) => (
-                        <option key={f.id} value={idx}>{f.label}</option>
-                      ))}
-                    </select>
+                    <span className="view-menu-select-label">Reading font</span>
+                    <PickerDropdown label="Reading font" value={readerPrefs.fontIndex} width={240}
+                      options={fontOptions()} onChange={index => setReaderPrefs(p => ({ ...p, fontIndex: index }))} className="view-menu-picker"
+                      disabled={activeDocStyle !== 'readme'} />
                   </div>
                   <div className="view-menu-select-row">
                     <span className="view-menu-icon" aria-hidden="true"><Palette size={15} /></span>
-                    <label htmlFor="view-menu-theme">Theme</label>
-                    <select id="view-menu-theme" className="view-menu-select" value={theme} onChange={event => chooseTheme(event.target.value)} aria-label="Theme">
-                      {availableThemes(appSettings.extraThemes).map(item => (
-                        <option key={item.id} value={item.id}>{item.label}</option>
-                      ))}
-                    </select>
+                    <span className="view-menu-select-label">Theme</span>
+                    <PickerDropdown label="Theme" value={theme} width={200} className="view-menu-picker"
+                      options={availableThemes(appSettings.extraThemes).map(item => ({ value: item.id, label: item.label, icon: <ThemeIcon id={item.id} /> }))}
+                      onChange={chooseTheme} />
                   </div>
                 </>
               )}

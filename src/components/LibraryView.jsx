@@ -127,6 +127,10 @@ export default function LibraryView({
   const open = doc => { onOpen(doc.id); onClose() }
   const Chip = ({ children, className = '' }) => <span className={`library-chip ${className}`}>{children}</span>
 
+  const isAfter = event => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    return layout === 'cards' ? event.clientX > rect.left + rect.width / 2 : event.clientY > rect.top + rect.height / 2
+  }
   const fileDragProps = docId => ({
     draggable: Boolean(onReorderFile),
     onDragStart: event => {
@@ -137,24 +141,28 @@ export default function LibraryView({
     onDragOver: event => {
       if (!onReorderFile || !Array.from(event.dataTransfer?.types || []).includes(LIB_FILE_DRAG)) return
       event.preventDefault()
-      const rect = event.currentTarget.getBoundingClientRect()
-      const after = event.clientY > rect.top + rect.height / 2
-      setDropIndicator({ kind: 'file', key: docId, after })
+      event.dataTransfer.dropEffect = 'move'
+      setDropIndicator({ kind: 'file', key: docId, after: isAfter(event) })
     },
     onDrop: event => {
       if (!onReorderFile || !Array.from(event.dataTransfer?.types || []).includes(LIB_FILE_DRAG)) return
       event.preventDefault()
       const sourceId = event.dataTransfer.getData(LIB_FILE_DRAG)
-      const rect = event.currentTarget.getBoundingClientRect()
-      const after = event.clientY > rect.top + rect.height / 2
+      const after = isAfter(event)
       setDropIndicator(null)
       if (sourceId && sourceId !== docId) {
+        // The order shown becomes the manual order (with the move applied).
+        onReorderFile(sourceId, docId, after, shownDocs.map(doc => doc.id))
         setSort('custom')
         remember({ sort: 'custom' })
-        onReorderFile(sourceId, docId, after)
       }
     },
   })
+
+  const startFileDrag = docId => event => {
+    event.stopPropagation()
+    fileDragProps(docId).onDragStart(event)
+  }
 
   const folderDragProps = folderPath => ({
     draggable: Boolean(onReorderFolder),
@@ -166,20 +174,23 @@ export default function LibraryView({
     onDragOver: event => {
       if (!onReorderFolder || !Array.from(event.dataTransfer?.types || []).includes(LIB_FOLDER_DRAG)) return
       event.preventDefault()
-      const rect = event.currentTarget.getBoundingClientRect()
-      const after = event.clientY > rect.top + rect.height / 2
-      setDropIndicator({ kind: 'folder', key: folderPath, after })
+      event.dataTransfer.dropEffect = 'move'
+      setDropIndicator({ kind: 'folder', key: folderPath, after: isAfter(event) })
     },
     onDrop: event => {
       if (!onReorderFolder || !Array.from(event.dataTransfer?.types || []).includes(LIB_FOLDER_DRAG)) return
       event.preventDefault()
       const sourcePath = event.dataTransfer.getData(LIB_FOLDER_DRAG)
-      const rect = event.currentTarget.getBoundingClientRect()
-      const after = event.clientY > rect.top + rect.height / 2
+      const after = isAfter(event)
       setDropIndicator(null)
-      if (sourcePath && sourcePath !== folderPath) onReorderFolder(sourcePath, folderPath, after)
+      if (sourcePath && sourcePath !== folderPath) onReorderFolder(sourcePath, folderPath, after, childFolders.map(item => item.path))
     },
   })
+
+  const startFolderDrag = folderPath => event => {
+    event.stopPropagation()
+    folderDragProps(folderPath).onDragStart(event)
+  }
 
   const dropClass = (kind, key) => (
     dropIndicator?.kind === kind && dropIndicator.key === key
@@ -280,7 +291,7 @@ export default function LibraryView({
             <ul className="library-cards" aria-label="Documents">
               {childFolders.map(item => (
                 <li key={`folder:${item.path}`} className={`library-card is-folder-card${dropClass('folder', item.path)}`} {...folderDragProps(item.path)}>
-                  <button type="button" className="library-card-open" onClick={() => setCurrentPath(item.path)} aria-label={`Open folder ${item.name}`} />
+                  <button type="button" className="library-card-open" draggable={Boolean(onReorderFolder)} onDragStart={startFolderDrag(item.path)} onClick={() => setCurrentPath(item.path)} aria-label={`Open folder ${item.name}`} />
                   <div className="library-card-head">
                     <Folder size={14} aria-hidden="true" />
                     <strong>{item.name}</strong>
@@ -294,7 +305,7 @@ export default function LibraryView({
               {shownDocs.map(doc => (
                 <li key={doc.id} className={`library-card${doc.id === activeId ? ' is-current' : ''}${selected.has(doc.id) ? ' is-selected' : ''}${dropClass('file', doc.id)}`} {...fileDragProps(doc.id)}>
                   <input type="checkbox" className="library-select" checked={selected.has(doc.id)} onChange={() => toggle(doc.id)} aria-label={`Select ${doc.title}`} />
-                  <button type="button" className="library-card-open" onClick={() => open(doc)} aria-label={`Open ${doc.title}`} />
+                  <button type="button" className="library-card-open" draggable={Boolean(onReorderFile)} onDragStart={startFileDrag(doc.id)} onClick={() => open(doc)} aria-label={`Open ${doc.title}`} />
                   <div className="library-card-head">
                     <FileText size={13} aria-hidden="true" />
                     <strong>{doc.title}</strong>
@@ -321,7 +332,7 @@ export default function LibraryView({
                 {childFolders.map(item => (
                   <tr key={`folder:${item.path}`} className={dropClass('folder', item.path)} {...folderDragProps(item.path)}>
                     <td />
-                    <td><button type="button" className="library-row-open" onClick={() => setCurrentPath(item.path)}><strong className="inline-flex items-center gap-1.5"><Folder size={13} aria-hidden="true" />{item.name}</strong><span>Folder</span></button></td>
+                    <td><button type="button" className="library-row-open" draggable={Boolean(onReorderFolder)} onDragStart={startFolderDrag(item.path)} onClick={() => setCurrentPath(item.path)}><strong className="inline-flex items-center gap-1.5"><Folder size={13} aria-hidden="true" />{item.name}</strong><span>Folder</span></button></td>
                     <td>{item.path}</td>
                     <td>—</td>
                     <td />
@@ -332,7 +343,7 @@ export default function LibraryView({
                 {shownDocs.map(doc => (
                   <tr key={doc.id} className={`${doc.id === activeId ? 'is-current' : ''}${selected.has(doc.id) ? ' is-selected' : ''}${dropClass('file', doc.id)}`} {...fileDragProps(doc.id)}>
                     <td><input type="checkbox" checked={selected.has(doc.id)} onChange={() => toggle(doc.id)} aria-label={`Select ${doc.title}`} /></td>
-                    <td><button type="button" className="library-row-open" onClick={() => open(doc)}><strong>{doc.title}</strong><span>{doc.name}{doc.closed ? ' · closed' : ''}</span></button></td>
+                    <td><button type="button" className="library-row-open" draggable={Boolean(onReorderFile)} onDragStart={startFileDrag(doc.id)} onClick={() => open(doc)}><strong>{doc.title}</strong><span>{doc.name}{doc.closed ? ' · closed' : ''}</span></button></td>
                     <td>{doc.folder || '—'}</td>
                     <td>{doc.status ? <Chip className={`is-status is-${doc.status.replace(/[^a-z]/g, '')}`}>{doc.status}</Chip> : '—'}</td>
                     <td className="library-table-tags">{doc.tags.slice(0, 4).map(name => <button key={name} type="button" className="tasks-chip is-tag" onClick={() => setTag(name)} aria-label={`Show only #${name}`}>#{name}</button>)}</td>

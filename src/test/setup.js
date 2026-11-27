@@ -5,6 +5,8 @@ import { IDBFactory } from 'fake-indexeddb'
 
 beforeEach(() => {
   localStorage.clear()
+  // Some feature tests replace this API; restore jsdom's native selection after each cleanup.
+  window.getSelection = () => document.getSelection()
   const database = new IDBFactory()
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: database })
   vi.stubGlobal('indexedDB', database)

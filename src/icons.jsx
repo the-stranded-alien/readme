@@ -56,6 +56,7 @@ import {
   ErrorPicture as ParkErrorPicture,
   Undo as ParkUndo,
   Redo as ParkRedo,
+  Display as ParkDisplay,
   Transfer as ParkTransfer,
   ImageFiles as ParkImageFiles,
   RotateOne as ParkRotateOne,
@@ -305,6 +306,7 @@ export const Library = make(ParkBookshelf, 'Library')
 export const LayoutGrid = make(ParkGridFour, 'LayoutGrid')
 export const ImageOff = make(ParkErrorPicture, 'ImageOff')
 export const Undo2 = make(ParkUndo, 'Undo2')
+export const Display = make(ParkDisplay, 'Display')
 export const Redo2 = make(ParkRedo, 'Redo2')
 export const Transpose = make(ParkTransfer, 'Transpose')
 export const Images = make(ParkImageFiles, 'Images')
