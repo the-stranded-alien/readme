@@ -1109,6 +1109,27 @@ describe('advanced browser features', () => {
     localStorage.removeItem('readme-preview-edit')
   })
 
+  it('shows every document in the Library and edits properties as fields', async () => {
+    await writeWorkspace({ activeId: 'a', files: [
+      { id: 'a', name: 'Plan.md', content: '---\nstatus: draft\ntags: [work]\n---\n# Plan\n\nThe plan.' },
+      { id: 'b', name: 'notes/Idea.md', content: '# Idea\n\nAn idea. #home' },
+    ] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Library: all documents' }))
+    const library = await screen.findByRole('dialog', { name: 'Library' })
+    expect(within(library).getAllByRole('button', { name: /^Open / }).map(button => button.getAttribute('aria-label'))).toEqual(expect.arrayContaining(['Open Plan', 'Open Idea']))
+    fireEvent.change(within(library).getByRole('combobox', { name: 'Tag' }), { target: { value: 'home' } })
+    expect(within(library).getAllByRole('button', { name: /^Open / })).toHaveLength(1)
+    fireEvent.click(within(library).getByRole('button', { name: 'Close library' }))
+    // Properties: change the status from the preview's front matter card.
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit properties' }))
+    const props = await screen.findByRole('dialog', { name: 'Properties' })
+    fireEvent.change(within(props).getByRole('combobox', { name: 'status' }), { target: { value: 'final' } })
+    fireEvent.click(within(props).getByRole('button', { name: 'Save properties' }))
+    await waitFor(() => expect(document.querySelector('.frontmatter-card')?.textContent).toContain('final'))
+  })
+
   it('uses the CodeMirror editor (opt-in) with folds that mirror the preview', async () => {
     localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code', version: 2 }))
     const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body'].join('\n')

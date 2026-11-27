@@ -51,6 +51,8 @@ import {
   ContrastView as ParkContrastView,
   DownloadComputer as ParkDownloadComputer,
   CheckOne as ParkCheckOne,
+  Bookshelf as ParkBookshelf,
+  GridFour as ParkGridFour,
   More as ParkMore,
   IndentLeft as ParkIndentLeft,
   IndentRight as ParkIndentRight,
@@ -293,6 +295,8 @@ export const Minus = make(ParkMinus, 'Minus')
 export const MonitorDown = make(ParkCup, 'MonitorDown')
 export const AppDownload = make(ParkDownloadComputer, 'AppDownload')
 export const CircleCheck = make(ParkCheckOne, 'CircleCheck')
+export const Library = make(ParkBookshelf, 'Library')
+export const LayoutGrid = make(ParkGridFour, 'LayoutGrid')
 export const MonitorUp = make(ParkTeaDrink, 'MonitorUp')
 export const Moon = make(ParkMoon, 'Moon')
 export const OctagonAlert = make(ParkError, 'OctagonAlert')

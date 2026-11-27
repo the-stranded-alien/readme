@@ -24,7 +24,7 @@ import {
   WrapText, ArrowUp, Heading1, Heading2, Heading3, ListOrdered, ListChecks, SquareCode, Table, Image, Superscript, MessageSquareQuote, Quote,
   FileDown, BookOpen, Search, ChevronUp, ChevronDown, Type, UnfoldHorizontal, FoldHorizontal, Contrast, BookmarkPlus, BookmarkCheck, ChevronsDownUp, ChevronsUpDown,
   Command, FileArchive, FileCode2, Link2, LayoutTemplate, Tag,
-  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, Workflow, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, AppDownload, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
+  Settings, SlidersHorizontal, FolderOpen, FolderPlus, Pencil, Trash2, Workflow, ArrowDown, Outdent, Indent, SendTo, MoreHorizontal, PanelWiden, PanelNarrow, CircleHelp, Star, Filter, Sunrise, Snowflake, SunDim, Palette, Zap, Waves, Leaf, Volume2, Pause, Play, Highlighter, RotateCcw, Pin, PinOff, Share2, Keyboard, SearchCode, History, ArchiveRestore, DatabaseBackup, Settings2, HardDrive, Replace, Presentation, FolderTree, FileWarning, Sparkles, ScrollText, RefreshCw, Loader2, BookOpenText, Crosshair, ChevronLeft, Info, Lightbulb, MessageSquareWarning, OctagonAlert, MonitorUp, MonitorDown, AppDownload, Library, Globe, Save, GitCompare, TriangleAlert, Cat, Footprints, PanelBottom, Plus,
   FolderSync,
 } from './icons'
 import { IconStyleContext } from './icons'
@@ -40,6 +40,9 @@ import LinkPreview from './components/LinkPreview'
 import PdfExportDialog from './components/PdfExportDialog'
 import PublishSiteDialog from './components/PublishSiteDialog'
 import PreviewEditTools from './components/PreviewEditTools'
+import LibraryView from './components/LibraryView'
+import PropertiesDialog from './components/PropertiesDialog'
+import { addTags, documentInfo } from './library'
 import { useAppInstall } from './appInstall'
 import EmptyWorkspace from './components/EmptyWorkspace'
 import ShortcutsDialog from './components/ShortcutsDialog'
@@ -404,7 +407,7 @@ function CodeBlock({ rawLang, code, dark }) {
 }
 
 // ── FrontmatterCard ────────────────────────────────────────────
-function FrontmatterCard({ meta }) {
+function FrontmatterCard({ meta, onEdit }) {
   if (!meta.length) return null
   return (
     <div className="frontmatter-card anim-fade-in">
@@ -427,6 +430,7 @@ function FrontmatterCard({ meta }) {
           </div>
         )
       )}
+      {onEdit && <button type="button" className="frontmatter-edit no-print" onClick={onEdit} data-tooltip="Edit properties" aria-label="Edit properties"><SlidersHorizontal size={12} /></button>}
     </div>
   )
 }
@@ -2483,8 +2487,8 @@ function orderPinnedFirst(list) {
   return [...list.filter(file => file.pinned), ...list.filter(file => !file.pinned)]
 }
 // Fields that are safe to persist in localStorage and share with other browser tabs.
-function syncableFile({ id, name, content, pinned, color, wordGoal }) {
-  return { id, name, content, ...(pinned ? { pinned: true } : {}), ...(color ? { color } : {}), ...(wordGoal > 0 ? { wordGoal } : {}) }
+function syncableFile({ id, name, content, pinned, color, wordGoal, updatedAt }) {
+  return { id, name, content, ...(pinned ? { pinned: true } : {}), ...(color ? { color } : {}), ...(wordGoal > 0 ? { wordGoal } : {}), ...(updatedAt ? { updatedAt } : {}) }
 }
 
 // Applies an edit to the textarea through the browser's editing commands so
@@ -3449,7 +3453,7 @@ export default function App() {
   const updateActiveContent = useCallback((nextContent) => {
     if (!activeFileId) return
     markWorkspaceEdit()
-    setFiles(prev => prev.map(f => (f.id === activeFileId ? { ...f, content: nextContent } : f)))
+    setFiles(prev => prev.map(f => (f.id === activeFileId ? { ...f, content: nextContent, updatedAt: Date.now() } : f)))
     // Writing-session time: edits less than a minute apart count as active writing.
     const now = Date.now()
     setWritingStats(prev => {
@@ -5158,11 +5162,11 @@ export default function App() {
       message: count ? `Delete “${folder}” and the ${count} file${count === 1 ? '' : 's'} in it permanently?` : `Delete the empty folder “${folder}”?`,
       details,
     } : {
-      title: 'Delete file?', danger: true, icon: Trash2, confirmLabel: 'Delete',
-      message: `Delete “${entries[0].file.name}” permanently?`,
+      title: count > 1 ? `Delete ${count} files?` : 'Delete file?', danger: true, icon: Trash2, confirmLabel: 'Delete',
+      message: count > 1 ? `Delete these ${count} files permanently?` : `Delete “${entries[0].file.name}” permanently?`,
       details,
     })
-    if (!ok) return
+    if (!ok) return false
     const openIds = entries.filter(entry => entry.openIndex >= 0).map(entry => entry.id)
     const closedIds = new Set(entries.filter(entry => entry.openIndex < 0).map(entry => entry.id))
     if (openIds.length) closeFiles(openIds, { remember: false })
@@ -5201,8 +5205,91 @@ export default function App() {
         },
       },
     })
+    return true
   }, [files, closedFiles, emptyFolders, syncFolder, closeFiles, markWorkspaceEdit, askConfirm])
   const handleDeleteFile = useCallback(id => deleteEntries([id]), [deleteEntries])
+
+  // ── Library & properties ────────────────────────────────────
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [propertiesFor, setPropertiesFor] = useState(null) // file id
+  const libraryDocs = useMemo(() => (libraryOpen ? graphFiles.map(documentInfo) : []), [libraryOpen, graphFiles])
+  const openDocument = useCallback(id => {
+    if (closedFiles.some(entry => entry.file.id === id)) handleReopenFile(id)
+    else handleSelectFile(id)
+  }, [closedFiles, handleReopenFile, handleSelectFile])
+  /** Changes the content of several documents (open or closed) at once, with an Undo toast. */
+  const changeDocuments = useCallback((changes, message) => {
+    if (!changes.size) return
+    const before = new Map()
+    const apply = (map, remember) => {
+      setFiles(prev => prev.map(file => {
+        if (!map.has(file.id)) return file
+        if (remember) before.set(file.id, file.content)
+        return { ...file, content: map.get(file.id), updatedAt: Date.now() }
+      }))
+      setClosedFiles(prev => prev.map(entry => {
+        if (!map.has(entry.file.id)) return entry
+        if (remember) before.set(entry.file.id, entry.file.content)
+        return { ...entry, file: { ...entry.file, content: map.get(entry.file.id), updatedAt: Date.now() } }
+      }))
+      markWorkspaceEdit()
+    }
+    apply(changes, true)
+    setToast({ message, tone: 'success', duration: 6000, action: { label: 'Undo', run: () => apply(before, false) } })
+  }, [markWorkspaceEdit])
+  const libraryMove = useCallback(async ids => {
+    const raw = await askText({ title: `Move ${ids.length === 1 ? 'document' : `${ids.length} documents`} to a folder`, label: 'Folder (empty for the top level)', placeholder: 'e.g. notes/2026', confirmLabel: 'Move', allowEmpty: true })
+    if (raw == null) return
+    const folder = cleanFolderName(raw)
+    ids.forEach(id => moveFileToFolder(id, folder))
+    setClosedFiles(prev => prev.map(entry => {
+      if (!ids.includes(entry.file.id)) return entry
+      const base = entry.file.name.split('/').pop()
+      return { ...entry, file: { ...entry.file, name: folder ? `${folder}/${base}` : base } }
+    }))
+    setToast({ message: `Moved ${ids.length === 1 ? '1 document' : `${ids.length} documents`} to ${folder || 'the top level'}.`, tone: 'success' })
+  }, [askText, moveFileToFolder])
+  const libraryAddTag = useCallback(async ids => {
+    const raw = await askText({ title: 'Add a tag', label: 'Tag (several: separate with commas)', placeholder: 'e.g. work', confirmLabel: 'Add tag' })
+    const tags = String(raw ?? '').split(',').map(tag => tag.replace(/^#/, '').trim()).filter(Boolean)
+    if (!tags.length) return
+    const all = [...files, ...closedFileList]
+    const changes = new Map()
+    for (const id of ids) {
+      const file = all.find(item => item.id === id)
+      if (!file) continue
+      const next = addTags(file.content, tags)
+      if (next !== file.content) changes.set(id, next)
+    }
+    changeDocuments(changes, `Tagged ${changes.size === 1 ? '1 document' : `${changes.size} documents`} with ${tags.map(tag => `#${tag}`).join(', ')}.`)
+  }, [askText, files, closedFileList, changeDocuments])
+  const libraryExport = useCallback(async ids => {
+    const { default: JSZip } = await import('jszip')
+    const zip = new JSZip()
+    for (const file of [...files, ...closedFileList].filter(item => ids.includes(item.id))) zip.file(file.name, file.content)
+    const blob = await zip.generateAsync({ type: 'blob' })
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'readme-documents.zip' })
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  }, [files, closedFileList])
+  const saveProperties = useCallback(async (id, next) => {
+    const file = files.find(item => item.id === id)
+    if (!file) return
+    if (id === activeFileId) {
+      const ta = textareaRef.current
+      if (ta && view !== 'preview' && (ta.applyEdit || (ta instanceof HTMLTextAreaElement && ta.value === file.content))) {
+        // One undoable edit: replace only the front matter part that changed.
+        let start = 0
+        while (start < next.length && next[start] === file.content[start]) start += 1
+        let endOld = file.content.length, endNew = next.length
+        while (endOld > start && endNew > start && file.content[endOld - 1] === next[endNew - 1]) { endOld -= 1; endNew -= 1 }
+        applyTextareaEdit(ta, { from: start, to: endOld, text: next.slice(start, endNew), cursor: start + (endNew - start) })
+        setToast({ message: 'Properties saved.', tone: 'success' })
+        return
+      }
+    }
+    changeDocuments(new Map([[id, next]]), 'Properties saved.')
+  }, [files, activeFileId, view, changeDocuments])
   // Rename from the Files panel: only the name is editable; the folder and the extension stay.
   const renameFileFromTree = useCallback(async id => {
     const file = files.find(item => item.id === id)
@@ -5747,6 +5834,8 @@ ${fontCss}
     ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
     ...(activeFile ? [{ id: 'preview-edit', label: previewEditOn ? 'Stop editing in the preview' : 'Edit in preview', hint: 'View', icon: Pencil, run: () => { setPreviewEditOn(on => !on); if (view === 'editor') setView('preview') } }] : []),
+    { id: 'library', label: 'Library: all documents', hint: 'View', icon: Library, run: () => setLibraryOpen(true) },
+    ...(activeFile ? [{ id: 'properties', label: 'Document properties (front matter)', hint: 'Document', icon: SlidersHorizontal, run: () => setPropertiesFor(activeFileId) }] : []),
     { id: 'graph', label: 'Graph of linked documents', hint: 'View', icon: Workflow, run: () => setGraphOpen(true) },
     { id: 'publish-site', label: 'Publish as a website', hint: 'Export', icon: Globe, run: () => setPublishOpen(true) },
     { id: 'tasks', label: 'Tasks in all documents…', hint: shortcut('K', { shift: true }), icon: ListChecks, run: () => setTasksOpen(true) },
@@ -5797,7 +5886,7 @@ ${fontCss}
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
     ] : []),
   ], [
-    handleNewFile, appInstall.status, handleInstallApp, previewEditOn, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
+    handleNewFile, appInstall.status, handleInstallApp, previewEditOn, activeFileId, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, handleExportConfluence, handleCopyConfluence, handleExportSlides, openTableEditor, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
@@ -5992,6 +6081,7 @@ ${fontCss}
         fileTreeOpen={fileTreeOpen}
         onToggleFileTree={() => setFileTreeOpen(open => !open)}
         onOpenTasks={() => setTasksOpen(true)}
+        onOpenLibrary={() => setLibraryOpen(true)}
         tasksDueCount={tasksDueCount}
         searchValue={cmdQuery}
         onSearchChange={value => { setCmdQuery(value); setCmdOpen(true) }}
@@ -6846,7 +6936,7 @@ ${fontCss}
                           <EmptyState icon={Filter} title={`No ${filterLabel(contentFilter).toLowerCase()} here`} text="Try another filter, or choose Show everything." className="filter-empty no-print" />
                         )}
 
-                        <FrontmatterCard meta={frontmatterMeta} />
+                        <FrontmatterCard meta={frontmatterMeta} onEdit={() => setPropertiesFor(activeFileId)} />
 
                         <div
                           ref={docProseRef}
@@ -7015,6 +7105,18 @@ ${fontCss}
           onOpen={id => { setGraphOpen(false); if (closedFiles.some(entry => entry.file.id === id)) handleReopenFile(id); else handleSelectFile(id) }}
           onCreate={name => { createLinkedDocument(name).then(created => { if (created) setGraphOpen(false) }) }}
           onClose={() => setGraphOpen(false)} />
+      )}
+      {libraryOpen && (
+        <LibraryView documents={libraryDocs} activeId={activeFileId} askText={askText}
+          onOpen={openDocument} onProperties={id => setPropertiesFor(id)}
+          onMove={libraryMove} onAddTag={libraryAddTag} onExport={libraryExport} onDelete={ids => deleteEntries(ids)}
+          onClose={() => setLibraryOpen(false)} />
+      )}
+      {propertiesFor && files.some(file => file.id === propertiesFor) && (
+        <PropertiesDialog fileName={files.find(file => file.id === propertiesFor).name} content={files.find(file => file.id === propertiesFor).content}
+          onSave={next => saveProperties(propertiesFor, next)}
+          onEditYaml={propertiesFor === activeFileId ? () => goToEditorLine(2) : undefined}
+          onClose={() => setPropertiesFor(null)} />
       )}
       {tasksOpen && <TasksPanel tasks={allTasks} onToggle={toggleTask} onOpen={openTask} onClose={() => setTasksOpen(false)} />}
       {tableEdit && (

@@ -4,7 +4,7 @@ import { shortcut } from '../platform'
 import { useHoverTooltip } from '../useHoverTooltip'
 import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedFromDisk, labelColor, cleanFileStem, splitFileName } from '../fileUtils'
 import {
-  Check, Command, CopyPlus, Download, FilePlus, FileText, GitCompare, HardDrive, FolderTree, ListChecks, ListTree,
+  Check, Command, CopyPlus, Download, FilePlus, FileText, GitCompare, HardDrive, FolderTree, Library, ListChecks, ListTree,
   Pencil, Pin, PinOff, RotateCcw, Search, Trash2, X, XCircle,
 } from '../icons'
 
@@ -214,7 +214,7 @@ function FileSwitcher({ files, activeFileId, recentIds, onSelect, onClose, ancho
 export default function FileTabBar({
   files, activeFileId, recentIds, canReopen,
   onSelect, onClose, onCreate, onRename, onDuplicate, onCompare, onReorder, onTogglePin, onSetColor,
-  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, onDelete, fileTreeOpen, onToggleFileTree, onOpenTasks, tasksDueCount = 0,
+  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, onDelete, fileTreeOpen, onToggleFileTree, onOpenTasks, onOpenLibrary, tasksDueCount = 0,
   searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette,
 }) {
   // Labels for the small duplicate / close icons, in the app's tooltip style (the strip scrolls, so CSS tooltips would be clipped).
@@ -284,6 +284,11 @@ export default function FileTabBar({
         <button type="button" onClick={onToggleFileTree} className={`file-tree-toggle${fileTreeOpen ? ' is-active' : ''}`}
           aria-label={fileTreeOpen ? 'Hide file tree' : 'Show file tree'} aria-pressed={Boolean(fileTreeOpen)} data-tooltip="Files and folders">
           <FolderTree size={14} />
+        </button>
+      )}
+      {onOpenLibrary && (
+        <button type="button" onClick={onOpenLibrary} className="file-tree-toggle" aria-label="Library: all documents" data-tooltip="Library: all documents">
+          <Library size={14} />
         </button>
       )}
       <button type="button" onClick={onCreate} className="file-tab-add tooltip-start" data-tooltip="New file" aria-label="New file">

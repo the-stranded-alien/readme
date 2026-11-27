@@ -4,9 +4,17 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '2.5'
+export const APP_VERSION = '2.6'
 
 export const RELEASES = [
+  {
+    version: '2.6',
+    date: '2026-11-27',
+    notes: [
+      'Library: every document as cards or a table, with search, filters by folder, tag and status, saved views, and moving, tagging, exporting or deleting several at once.',
+      'Properties: edit front matter (title, tags, status, dates and more) as simple fields.',
+    ],
+  },
   {
     version: '2.5',
     date: '2026-11-27',
@@ -36,14 +44,6 @@ export const RELEASES = [
     date: '2026-11-27',
     notes: [
       'Graph view: see how your documents link to each other, open them, and find ones without links.',
-    ],
-  },
-  {
-    version: '2.1',
-    date: '2026-11-27',
-    notes: [
-      'Tasks: every task from all your documents in one panel, with due dates, tags and priorities.',
-      'Tick tasks straight in the preview.',
     ],
   },
 ]

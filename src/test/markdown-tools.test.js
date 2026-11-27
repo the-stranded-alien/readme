@@ -6,6 +6,7 @@ import { unified as unifiedForTest } from 'unified'
 import remarkParseForTest from 'remark-parse'
 import remarkGfmForTest from 'remark-gfm'
 import remarkRehypeForTest from 'remark-rehype'
+import { addTags, documentInfo, filterDocuments, inlineTags, readFrontMatter, sortDocuments, writeFrontMatter } from '../library.js'
 import { describe, expect, it } from 'vitest'
 import { htmlToMarkdown, looksRich, parseDelimited, rowsToMarkdownTable, webPageToMarkdown } from '../htmlToMarkdown.js'
 
@@ -383,6 +384,50 @@ describe('edit in preview', () => {
     expect(htmlToInline('see <a href="https://x.y">https://x.y</a>')).toBe('see https://x.y')
     expect(htmlToInline('two<br>lines')).toBe('two\nlines')
     expect(htmlToInline('<br>')).toBe('')
+  })
+})
+
+describe('library and properties', () => {
+  const doc = '---\n# a comment\ntitle: "My: plan"\nstatus: draft\ntags:\n  - work\n  - q4\npublished: false\ndate: 2026-11-20\nauthor:\n  name: Sam\n  team: Docs\nsummary: |\n  Two lines\n  of text\n---\n# Heading\n\nBody with #inline-tag and `#notatag` text.\n'
+  it('reads typed properties and keeps unknown YAML', () => {
+    const { entries } = readFrontMatter(doc)
+    const byKey = Object.fromEntries(entries.filter(e => e.key).map(e => [e.key, [e.type, e.value]]))
+    expect(byKey.title).toEqual(['text', 'My: plan'])
+    expect(byKey.tags).toEqual(['list', ['work', 'q4']])
+    expect(byKey.published).toEqual(['checkbox', false])
+    expect(byKey.date).toEqual(['date', '2026-11-20'])
+    expect(byKey.author[0]).toBe('yaml')
+    expect(byKey.summary[0]).toBe('yaml')
+  })
+  it('writes only what changed, in place', () => {
+    const props = readFrontMatter(doc).entries.filter(e => e.key).map(({ key, type, value, style }) => ({ key, type, value, style }))
+    expect(writeFrontMatter(doc, props)).toBe(doc)
+    const next = props.map(p => (p.key === 'status' ? { ...p, value: 'final' } : p.key === 'tags' ? { ...p, value: [...p.value, 'new one'] } : p)).filter(p => p.key !== 'published')
+    next.push({ key: 'reviewed', type: 'checkbox', value: true })
+    const out = writeFrontMatter(doc, next)
+    expect(out).toContain('# a comment\ntitle: "My: plan"\nstatus: final\ntags:\n  - work\n  - q4\n  - new one\ndate: 2026-11-20\nauthor:\n  name: Sam\n  team: Docs\nsummary: |\n  Two lines\n  of text\nreviewed: true\n---\n# Heading')
+    expect(out).not.toContain('published')
+    // Adding front matter to a document without it, and removing it all.
+    expect(writeFrontMatter('# Hi\n', [{ key: 'status', type: 'text', value: 'draft' }])).toBe('---\nstatus: draft\n---\n\n# Hi\n')
+    expect(writeFrontMatter('---\nstatus: x\n---\n# Hi\n', [])).toBe('# Hi\n')
+    expect(writeFrontMatter('# Hi', [{ key: 'title', type: 'text', value: 'yes' }])).toContain('title: "yes"')
+  })
+  it('describes documents for the library and filters / sorts them', () => {
+    const info = documentInfo({ id: 'a', name: 'notes/Plan.md', content: doc, updatedAt: 5 })
+    expect(info).toMatchObject({ title: 'My: plan', folder: 'notes', status: 'draft', tags: ['work', 'q4', 'inline-tag'], updatedAt: 5 })
+    expect(info.excerpt.startsWith('Body with')).toBe(true)
+    expect(inlineTags('# Heading\n\nSee #one and #two/three, not `#code` or [x](#anchor).\n```\n#nope\n```')).toEqual(['one', 'two/three'])
+    const docs = [info, documentInfo({ id: 'b', name: 'B.md', content: '# Beta\n\nwords words', updatedAt: 9, pinned: true }), documentInfo({ id: 'c', name: 'C.md', content: 'x', closed: true })]
+    expect(sortDocuments(docs, 'updated').map(d => d.id)).toEqual(['b', 'a', 'c'])
+    expect(filterDocuments(docs, { tag: 'work' }).map(d => d.id)).toEqual(['a'])
+    expect(filterDocuments(docs, { folder: 'notes' }).map(d => d.id)).toEqual(['a'])
+    expect(filterDocuments(docs, { query: 'beta' }).map(d => d.id)).toEqual(['b'])
+    expect(filterDocuments(docs, { closed: false }).map(d => d.id)).toEqual(['a', 'b'])
+  })
+  it('adds tags in the document\'s own style', () => {
+    expect(addTags('---\ntags: [a]\n---\nx', ['b', '#a'])).toBe('---\ntags: [a, b]\n---\nx')
+    expect(addTags('# T', ['new'])).toBe('---\ntags: [new]\n---\n\n# T')
+    expect(addTags('---\ntags: a, b\n---\nx', ['c'])).toBe('---\ntags: [a, b, c]\n---\nx')
   })
 })
 
