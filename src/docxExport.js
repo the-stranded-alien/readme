@@ -56,10 +56,13 @@ function fitSize(width, height) {
   return { width: Math.round(width * scale), height: Math.round(height * scale) }
 }
 
-export async function buildDocx(markdown, { title = 'Document', meta = [] } = {}) {
+export async function buildDocx(markdown, { title = 'Document', meta = [], look = {}, options = {} } = {}) {
+  // Document style (docStyles.js): fonts, heading colour, numbering, centred title, justified text.
+  const L = { body: 'Calibri', heading: 'Calibri', headingColor: '14172B', accent: ACCENT, ...look }
+  const counters = [0, 0]
   const docx = await import('docx')
   const {
-    AlignmentType, BorderStyle, Document, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun,
+    AlignmentType, BorderStyle, Document, ExternalHyperlink, FootnoteReferenceRun, Header, HeadingLevel, ImageRun,
     LevelFormat, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType,
   } = docx
 
@@ -110,7 +113,7 @@ export async function buildDocx(markdown, { title = 'Document', meta = [] } = {}
       case 'inlineMath': return [new TextRun({ text: node.value, ...style, italics: true, font: 'Cambria Math' })]
       case 'break': return [new TextRun({ text: '', break: 1 })]
       case 'link':
-        return [new ExternalHyperlink({ link: node.url, children: inline(node.children, { ...style, color: ACCENT, underline: {} }) })]
+        return [new ExternalHyperlink({ link: node.url, children: inline(node.children, { ...style, color: L.accent, underline: {} }) })]
       case 'image': {
         const image = images.get(node.url)
         if (!image) return [new TextRun({ text: `[${node.alt || 'image'}]`, ...style, italics: true, color: '6B7280' })]
@@ -136,13 +139,21 @@ export async function buildDocx(markdown, { title = 'Document', meta = [] } = {}
     const indent = ctx.quoteLevel ? { left: 360 * ctx.quoteLevel } : undefined
     const quoteBorder = ctx.quoteColor ? { left: { style: BorderStyle.SINGLE, size: 18, color: ctx.quoteColor, space: 10 } } : undefined
     switch (node.type) {
-      case 'heading':
-        return [new Paragraph({ heading: HeadingLevel[`HEADING_${Math.min(6, node.depth)}`], children: inline(node.children) })]
+      case 'heading': {
+        let number = ''
+        if (L.numbered && node.depth === 2) { counters[0] += 1; counters[1] = 0; number = `${counters[0]}.  ` }
+        if (L.numbered && node.depth === 3) { counters[1] += 1; number = `${counters[0]}.${counters[1]}  ` }
+        return [new Paragraph({
+          heading: HeadingLevel[`HEADING_${Math.min(6, node.depth)}`],
+          ...(L.centerTitle && node.depth === 1 ? { alignment: AlignmentType.CENTER } : {}),
+          children: [...(number ? [new TextRun({ text: number })] : []), ...inline(node.children)],
+        })]
+      }
       case 'paragraph': {
         const only = node.children.filter(child => !(child.type === 'text' && !child.value.trim()))
         const alignment = only.length === 1 && only[0].type === 'image' ? AlignmentType.CENTER : undefined
         const caption = alignment && only[0].alt ? [new Paragraph({ alignment, children: [new TextRun({ text: only[0].alt, italics: true, size: 18, color: '6B7280' })], spacing: { after: 160 } })] : []
-        return [new Paragraph({ children: inline(node.children), indent, border: quoteBorder, alignment, ...(ctx.bullet ? ctx.bullet() : {}) }), ...caption]
+        return [new Paragraph({ children: inline(node.children), indent, border: quoteBorder, alignment: alignment ?? (L.justify && !ctx.bullet ? AlignmentType.JUSTIFIED : undefined), ...(ctx.bullet ? ctx.bullet() : {}) }), ...caption]
       }
       case 'blockquote': {
         const paragraph = node.children[0]
@@ -244,6 +255,16 @@ export async function buildDocx(markdown, { title = 'Document', meta = [] } = {}
     ]),
   })] : []
 
+  // Cover page: title, subtitle / description, author and date.
+  const metaValue = key => { const entry = (meta || []).find(item => item?.key?.toLowerCase() === key); return entry ? (Array.isArray(entry.value) ? entry.value.join(', ') : String(entry.value)) : '' }
+  const subtitle = metaValue('subtitle') || metaValue('description')
+  const byline = [metaValue('author'), metaValue('date') || new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })].filter(Boolean).join('  ·  ')
+  const coverParagraphs = [
+    new Paragraph({ spacing: { before: 3600, after: 240 }, border: { top: { style: BorderStyle.SINGLE, size: 24, color: L.accent, space: 12 } }, children: [new TextRun({ text: metaValue('title') || title, font: L.heading, size: 60, bold: true, color: L.headingColor })] }),
+    ...(subtitle ? [new Paragraph({ spacing: { after: 480 }, children: [new TextRun({ text: subtitle, size: 28, color: '5B6178' })] })] : []),
+    new Paragraph({ children: [new TextRun({ text: byline, size: 21, color: '5B6178' })] }),
+  ]
+
   const levels = Array.from({ length: 9 }, (_, level) => ({
     level,
     format: [LevelFormat.DECIMAL, LevelFormat.LOWER_LETTER, LevelFormat.LOWER_ROMAN][level % 3],
@@ -256,21 +277,24 @@ export async function buildDocx(markdown, { title = 'Document', meta = [] } = {}
     creator: 'ReadMe',
     title,
     styles: {
-      default: { document: { run: { font: 'Calibri', size: 22, color: '1F2433' }, paragraph: { spacing: { after: 120, line: 300 } } } },
+      default: { document: { run: { font: L.body, size: 22, color: '1F2433' }, paragraph: { spacing: { after: 120, line: 300 } } } },
       paragraphStyles: [1, 2, 3, 4, 5, 6].map(level => ({
         id: `Heading${level}`, name: `Heading ${level}`, basedOn: 'Normal', next: 'Normal', quickFormat: true,
-        run: { size: [40, 32, 27, 24, 22, 21][level - 1], bold: true, color: '14172B' },
+        run: { font: L.heading, size: [40, 32, 27, 24, 22, 21][level - 1], bold: true, color: L.headingColor, ...(L.numbered && level === 3 ? { italics: true } : {}) },
         paragraph: { spacing: { before: level <= 2 ? 320 : 220, after: 120 }, keepNext: true },
       })),
     },
     numbering: { config: [{ reference: 'ordered-list', levels }] },
     footnotes,
-    sections: [{ children: [...metaParagraphs, ...body] }],
+    sections: [
+      ...(options.cover ? [{ children: coverParagraphs }] : []),
+      { ...(options.header ? { headers: { default: new Header({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: title, size: 16, color: '9AA0B8' })] })] }) } } : {}), children: [...metaParagraphs, ...body] },
+    ],
   })
 }
 
-export async function exportMarkdownDocx(markdown, { title, fileName, meta } = {}) {
-  const [{ Packer }, document] = await Promise.all([import('docx'), buildDocx(markdown, { title, meta })])
+export async function exportMarkdownDocx(markdown, { title, fileName, meta, look, options } = {}) {
+  const [{ Packer }, document] = await Promise.all([import('docx'), buildDocx(markdown, { title, meta, look, options })])
   const blob = await Packer.toBlob(document)
   const a = Object.assign(window.document.createElement('a'), { href: URL.createObjectURL(blob), download: fileName || 'document.docx' })
   a.click()

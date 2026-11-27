@@ -16,6 +16,7 @@ import { resolveFileLink, relativeFileLink } from './fileUtils'
 import { headingSlug } from './headingSections'
 import { CALLOUT_TYPES, rehypeCallouts } from './rehypeCallouts'
 import { resolveImagePath } from './attachments'
+import { docStyleCss, documentStyleId } from './docStyles'
 
 const ROOT_TOKEN = '__READme_ROOT__/'
 
@@ -165,6 +166,7 @@ function pageHtml({ site, page, pages, index, search }) {
 <meta name="generator" content="ReadMe">
 <link rel="stylesheet" href="${prefix}assets/site.css">
 ${page.math ? `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@${katex.version}/dist/katex.min.css">` : ''}
+${page.style && page.style !== 'readme' ? '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=Inter:wght@400;600;800&family=Lora:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap">' : ''}
 <script>try{var t=localStorage.getItem('site-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body>
@@ -178,7 +180,7 @@ ${page.math ? `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@$
 <div class="layout">
   <nav class="sidebar" aria-label="Pages">${navTree(pages, page.path)}</nav>
   <main id="content">
-    <article class="doc">${page.html.split(ROOT_TOKEN).join(prefix)}</article>
+    <article class="doc"${page.style && page.style !== 'readme' ? ` data-doc-style="${page.style}"` : ''}>${page.html.split(ROOT_TOKEN).join(prefix)}</article>
     <nav class="pager" aria-label="Previous and next page">
       ${prev ? `<a class="prev" href="${prefix}${encodeURI(prev.path)}"><span>Previous</span>${escapeHtml(prev.title)}</a>` : '<span></span>'}
       ${next ? `<a class="next" href="${prefix}${encodeURI(next.path)}"><span>Next</span>${escapeHtml(next.title)}</a>` : '<span></span>'}
@@ -261,7 +263,7 @@ export async function publishSite(files, options = {}) {
   for (const [index, file] of chosen.entries()) {
     options.onProgress?.(index / chosen.length, file.name)
     const rendered = await renderDocument(file.content, { fromName: file.name, files, pageNames, renderDiagrams: options.renderDiagrams, images })
-    pages.push({ ...rendered, id: file.id, name: file.name, path: pagePath(file.name, folder) })
+    pages.push({ ...rendered, id: file.id, name: file.name, path: pagePath(file.name, folder), style: documentStyleId(file.content, options.defaultStyle) })
   }
   // Sidebar / reading order: home first, then by folder and name.
   pages.sort((a, b) => (b.id === options.homeId) - (a.id === options.homeId) || a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path, undefined, { numeric: true }))
@@ -276,7 +278,7 @@ export async function publishSite(files, options = {}) {
   if (!pages.some(page => page.path === 'index.html')) {
     zip.file('index.html', `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(site.title)}</title><meta http-equiv="refresh" content="0; url=${encodeURI(home.path)}"><link rel="canonical" href="${encodeURI(home.path)}"></head><body><p><a href="${encodeURI(home.path)}">${escapeHtml(home.title)}</a></p></body></html>\n`)
   }
-  zip.file('assets/site.css', siteCss(options.accent || '#6d28d9'))
+  zip.file('assets/site.css', siteCss(options.accent || '#6d28d9') + (pages.some(page => page.style !== 'readme') ? `\n/* Document styles */\n${docStyleCss(id => `.doc[data-doc-style="${id}"]`)}\n` : ''))
   if (search) {
     zip.file('assets/search-index.js', `window.SITE_INDEX=${JSON.stringify(pages.map(page => ({ title: page.title, path: page.path, text: page.text.slice(0, 20000) })))};`)
     zip.file('assets/search.js', SEARCH_JS)

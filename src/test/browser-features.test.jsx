@@ -1926,7 +1926,8 @@ describe('advanced browser features', () => {
     expect(RELEASES[0].version).toBe(APP_VERSION)
     expect(within(dialog).getByText(`Version ${APP_VERSION}`)).toBeInTheDocument()
     expect(within(dialog).getByText('Current')).toBeInTheDocument()
-    expect(within(dialog).getAllByRole('listitem').filter(item => item.classList.contains('release-item')).length).toBeLessThanOrEqual(5)
+    // Every version is listed (none are dropped).
+    expect(within(dialog).getAllByRole('listitem').filter(item => item.classList.contains('release-item'))).toHaveLength(RELEASES.length)
     fireEvent.click(within(dialog).getByRole('button', { name: 'About' }))
     expect(within(dialog).getByRole('link', { name: 'View on GitHub' })).toHaveAttribute('href', 'https://github.com/the-stranded-alien/readme')
     document.documentElement.classList.remove('lite-mode')

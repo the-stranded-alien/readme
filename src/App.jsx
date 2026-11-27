@@ -45,6 +45,16 @@ import PropertiesDialog from './components/PropertiesDialog'
 import ImagesDialog from './components/ImagesDialog'
 import { addTags, documentInfo } from './library'
 import { useAppInstall } from './appInstall'
+import { DOC_STYLES, docStyleById, docStyleCss, documentStyleId } from './docStyles'
+import { readFrontMatter, writeFrontMatter } from './library'
+
+// Document style rules (shared with HTML / website exports), added once.
+if (typeof document !== 'undefined' && !document.getElementById('doc-style-rules')) {
+  const rules = document.createElement('style')
+  rules.id = 'doc-style-rules'
+  rules.textContent = docStyleCss()
+  document.head.append(rules)
+}
 import { ATTACHMENT_DIR, attachmentPath, attachmentsUsed, embeddedImages, extensionFor, renameAttachmentRefs, setAltText, attachmentSrc, blobToDataUrl, dataUrlToBlob, imageReferences, isAttachmentPath, resolveImagePath, rewriteImageSources } from './attachments'
 import { deleteAttachment, putAttachment, readAllAttachments } from './workspaceDb'
 import EmptyWorkspace from './components/EmptyWorkspace'
@@ -1494,7 +1504,7 @@ function loadReadingBookmarks() {
   }
 }
 
-function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityChange }) {
+function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityChange, docStyle, docStyleExplicit, defaultDocStyle, onDocStyle }) {
   const ref = useRef(null)
   useEffect(() => {
     const onDown = (e) => {
@@ -1517,13 +1527,33 @@ function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityCha
       </div>
 
       <div className="space-y-3">
+        {onDocStyle && (
+          <div role="radiogroup" aria-label="Document style">
+            <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5 flex items-center justify-between" style={{ color: 'var(--text-4)' }}>
+              <span>Document style</span><span className="normal-case tracking-normal font-normal">saved in the document</span>
+            </div>
+            <div className="doc-style-grid">
+              {DOC_STYLES.map(style => (
+                <button key={style.id} type="button" role="radio" aria-checked={docStyle === style.id} aria-label={`${style.label} style`}
+                  className={`doc-style-tile is-${style.id}${docStyle === style.id ? ' is-active' : ''}`} data-tip={style.description}
+                  onClick={() => onDocStyle(style.id === defaultDocStyle && !docStyleExplicit ? null : style.id)}>
+                  <span className="doc-style-sample" style={{ fontFamily: style.headingFont }} aria-hidden="true">Aa</span>
+                  <span className="doc-style-lines" aria-hidden="true"><i /><i /><i /></span>
+                  <span className="doc-style-name">{style.label}</span>
+                </button>
+              ))}
+            </div>
+            {docStyleExplicit && <button type="button" className="doc-style-reset" onClick={() => onDocStyle(null)}>Use the default ({docStyleById(defaultDocStyle).label})</button>}
+          </div>
+        )}
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-4)' }}>
             Typography
           </div>
+          {docStyle && docStyle !== 'readme' && <p className="doc-style-note">Fonts come from the {docStyleById(docStyle).label} style. Pick ReadMe above to choose your own.</p>}
           <div className="grid grid-cols-1 gap-1">
             {DOC_FONTS.map((f, idx) => (
-              <button key={f.id}
+              <button key={f.id} disabled={Boolean(docStyle && docStyle !== 'readme')}
                 onClick={() => onChange({ ...prefs, fontIndex: idx })}
                 className={`reader-chip text-left flex items-center justify-between ${prefs.fontIndex === idx ? 'active' : ''}`}
                 style={{ fontFamily: f.family }}
@@ -2695,7 +2725,7 @@ export default function App() {
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
   const [appSettings, setAppSettings] = useState(() => {
-    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '', embedImages: false }
+    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '', embedImages: false, defaultDocStyle: 'readme' }
     try { return { ...defaults, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return defaults }
   })
   const updateAppSetting = useCallback((key, value) => setAppSettings(current => ({ ...current, [key]: value })), [])
@@ -2980,6 +3010,10 @@ export default function App() {
   const analysis = useDocumentAnalysis(content, fileName || '', files)
 
   const activeFont = DOC_FONTS[readerPrefs.fontIndex] ?? DOC_FONTS[0]
+  // Document style: front matter "style:" or the default from Settings.
+  const activeDocStyle = documentStyleId(content, appSettings.defaultDocStyle)
+  const docStyleExplicit = useMemo(() => readFrontMatter(content).entries.some(entry => entry.key?.toLowerCase() === 'style'), [content])
+  const proseFont = activeDocStyle !== 'readme' ? docStyleById(activeDocStyle).font : activeFont.family
   const cycleDocFont = useCallback(() => {
     setReaderPrefs(p => ({ ...p, fontIndex: (p.fontIndex + 1) % DOC_FONTS.length }))
   }, [])
@@ -4849,7 +4883,7 @@ export default function App() {
       const pool = includeClosed ? [...files, ...closedFileList] : files
       const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6d28d9'
       const attachments = new Map([...attachmentsRef.current].map(([path, record]) => [path, record.blob]))
-      const { blob, pages } = await publishSite(pool, { ...options, accent, attachments, renderDiagrams: renderSiteDiagrams, onProgress: setPublishProgress })
+      const { blob, pages } = await publishSite(pool, { ...options, accent, attachments, defaultStyle: appSettings.defaultDocStyle, renderDiagrams: renderSiteDiagrams, onProgress: setPublishProgress })
       const slug = (options.title || 'site').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'site'
       const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${slug}-website.zip` })
       a.click()
@@ -4862,7 +4896,7 @@ export default function App() {
     } finally {
       setPublishBusy(false)
     }
-  }, [files, closedFileList])
+  }, [files, closedFileList, appSettings.defaultDocStyle])
 
   const uniqueName = (name, taken) => {
     const lower = new Set(taken.map(item => item.toLowerCase()))
@@ -5371,7 +5405,7 @@ export default function App() {
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 1000)
   }, [files, closedFileList, zipAttachments])
-  const saveProperties = useCallback(async (id, next) => {
+  const saveProperties = useCallback(async (id, next, message = 'Properties saved.') => {
     const file = files.find(item => item.id === id)
     if (!file) return
     if (id === activeFileId) {
@@ -5383,11 +5417,11 @@ export default function App() {
         let endOld = file.content.length, endNew = next.length
         while (endOld > start && endNew > start && file.content[endOld - 1] === next[endNew - 1]) { endOld -= 1; endNew -= 1 }
         applyTextareaEdit(ta, { from: start, to: endOld, text: next.slice(start, endNew), cursor: start + (endNew - start) })
-        setToast({ message: 'Properties saved.', tone: 'success' })
+        setToast({ message, tone: 'success' })
         return
       }
     }
-    changeDocuments(new Map([[id, next]]), 'Properties saved.')
+    changeDocuments(new Map([[id, next]]), message)
   }, [files, activeFileId, view, changeDocuments])
 
   // ── Images panel ────────────────────────────────────────────
@@ -5772,12 +5806,15 @@ export default function App() {
     const baseName = (fileName || 'document').replace(/\.[^.]+$/, '') || 'document'
     try {
       const { exportMarkdownDocx } = await import('./docxExport')
-      await exportMarkdownDocx(exportBody, { title: headings[0]?.text || baseName, fileName: `${baseName}.docx`, meta: frontmatterMeta })
+      // Same style and cover / header choices as the PDF dialog.
+      let pdfChoices = {}
+      try { pdfChoices = JSON.parse(localStorage.getItem('readme-pdf-options') || '{}') || {} } catch { pdfChoices = {} }
+      await exportMarkdownDocx(exportBody, { title: headings[0]?.text || baseName, fileName: `${baseName}.docx`, meta: frontmatterMeta.filter(entry => entry.key.toLowerCase() !== 'style'), look: docStyleById(activeDocStyle).docx, options: { cover: Boolean(pdfChoices.cover), header: Boolean(pdfChoices.header) } })
     } catch (error) {
       console.error('Could not generate the Word document', error)
       setToast({ message: 'Could not create the Word document. Please try again.', tone: 'warning' })
     }
-  }, [activeFile, markdownBody, exportBody, fileName, headings, frontmatterMeta])
+  }, [activeFile, markdownBody, exportBody, fileName, headings, frontmatterMeta, activeDocStyle])
   const openPdfDialog = useCallback(() => { if (activeFile && markdownBody.trim()) setPdfDialogOpen(true) }, [activeFile, markdownBody])
   const handleExportPdf = useCallback(async (options) => {
     if (!activeFile || !markdownBody.trim() || pdfExporting) return
@@ -5788,8 +5825,9 @@ export default function App() {
       await exportMarkdownPdf(exportBody, {
         title: headings[0]?.text || baseName,
         fileName: `${baseName}.pdf`,
-        meta: frontmatterMeta,
+        meta: frontmatterMeta.filter(entry => entry.key.toLowerCase() !== 'style'),
         options,
+        look: docStyleById(options?.style || activeDocStyle).pdf,
       })
       setPdfDialogOpen(false)
     } catch (error) {
@@ -5798,7 +5836,7 @@ export default function App() {
     } finally {
       setPdfExporting(false)
     }
-  }, [activeFile, markdownBody, exportBody, fileName, headings, frontmatterMeta, pdfExporting])
+  }, [activeFile, markdownBody, exportBody, fileName, headings, frontmatterMeta, pdfExporting, activeDocStyle])
 
   // Presentation as a landscape PDF or a PowerPoint file. `deck` ([{ body, notes }]) is the deck
   // being presented (e.g. bookmarked sections); without it, the whole file split like Present.
@@ -5816,10 +5854,10 @@ export default function App() {
     try {
       if (format === 'pptx') {
         const { exportPresentationPptx } = await import('./pptxExport')
-        await exportPresentationPptx(slides, { title: headings[0]?.text || baseName, fileName: `${baseName}.pptx`, accent })
+        await exportPresentationPptx(slides, { title: headings[0]?.text || baseName, fileName: `${baseName}.pptx`, accent, font: docStyleById(activeDocStyle).docx.body })
       } else {
         const { exportPresentationPdf } = await import('./pdfExport')
-        await exportPresentationPdf(slides.map(slide => slide.body), { title: headings[0]?.text || baseName, fileName: `${baseName} (slides).pdf`, accent })
+        await exportPresentationPdf(slides.map(slide => slide.body), { title: headings[0]?.text || baseName, fileName: `${baseName} (slides).pdf`, accent, look: docStyleById(activeDocStyle).pdf })
       }
       setToast({ message: format === 'pptx' ? 'Presentation saved as PowerPoint (.pptx).' : 'Presentation saved as a landscape PDF.', tone: 'success' })
     } catch (error) {
@@ -5828,7 +5866,7 @@ export default function App() {
     } finally {
       setSlidesExporting(null)
     }
-  }, [activeFile, markdownBody, exportBody, fileName, headings, presentationSettings, slidesExporting])
+  }, [activeFile, markdownBody, exportBody, fileName, headings, presentationSettings, slidesExporting, activeDocStyle])
 
   const handleCopyAll = useCallback(async () => {
     try {
@@ -5912,14 +5950,14 @@ export default function App() {
     if (!article) return
     const docTitle = (fileName ? fileName.replace(/\.[^.]+$/, '') : headings[0]?.text) || 'Document'
     const clone = article.cloneNode(true)
-    clone.querySelectorAll('.heading-anchor, .section-toggle, .heading-tools, .section-summary, .code-actions, .book-folio-footer, .focus-section-bar, .summary-card, .table-edit').forEach(el => el.remove())
+    clone.querySelectorAll('.heading-anchor, .section-toggle, .heading-tools, .section-summary, .code-actions, .book-folio-footer, .focus-section-bar, .summary-card, .table-edit, .frontmatter-edit, .pe-add, .pe-editor').forEach(el => el.remove())
     // Collapsed / focus-hidden sections are part of the document: export everything.
     clone.querySelectorAll('[data-collapsed]').forEach(el => el.removeAttribute('data-collapsed'))
     // Attachment images are in-memory URLs here: embed them so the file stands on its own.
     await Promise.all([...clone.querySelectorAll('img[src^="blob:"]')].map(async img => {
       try { img.src = await blobToDataUrl(await (await fetch(img.src)).blob()) } catch { /* leave it */ }
     }))
-    const fontCss = await embeddedFontCss(activeFont.family)
+    const fontCss = await embeddedFontCss(proseFont)
 
     const html = `<!doctype html>
 <html lang="en"${isDark ? ' class="dark"' : ''}>
@@ -5930,7 +5968,7 @@ export default function App() {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css" />
 <style>
   :root { color-scheme: ${isDark ? 'dark' : 'light'}; }
-  body { margin: 0; padding: 36px 20px; font-family: ${activeFont.family}; background: ${isDark ? '#121320' : isSepia ? '#e7e3dc' : '#ebecf6'}; color: ${isDark ? '#d8ddf6' : isSepia ? '#514d46' : '#2f3460'}; line-height: 1.8; }
+  body { margin: 0; padding: 36px 20px; font-family: ${proseFont}; background: ${isDark ? '#121320' : isSepia ? '#e7e3dc' : '#ebecf6'}; color: ${isDark ? '#d8ddf6' : isSepia ? '#514d46' : '#2f3460'}; line-height: 1.8; }
   .page { max-width: 780px; margin: 0 auto; padding: 44px 48px; border-radius: 14px; background: ${isDark ? '#1b1c2f' : isSepia ? '#faf8f3' : '#fcfaf5'}; border: 1px solid ${isDark ? '#262842' : isSepia ? '#d8d2c8' : '#dfe2f0'}; box-shadow: 0 14px 36px rgba(0,0,0,0.12); }
   h1,h2,h3 { color: ${isDark ? '#f3f5ff' : isSepia ? '#35332f' : '#14172b'}; line-height: 1.25; }
   h1 { border-bottom: 1px solid ${isDark ? '#262842' : isSepia ? '#d8d2c8' : '#dfe2f0'}; padding-bottom: 12px; }
@@ -5944,6 +5982,7 @@ export default function App() {
   .frontmatter-card { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
   .frontmatter-pill { padding: 3px 10px; border-radius: 99px; font-size: 12px; border: 1px solid ${isDark ? '#262842' : isSepia ? '#d8d2c8' : '#dfe2f0'}; }
 ${EXPORT_EXTRA_CSS}
+${activeDocStyle !== 'readme' ? docStyleCss() : ''}
 ${fontCss}
 </style>
 </head>
@@ -5955,7 +5994,7 @@ ${fontCss}
     })
     a.click()
     URL.revokeObjectURL(a.href)
-  }, [fileName, headings, isDark, isSepia, activeFont])
+  }, [fileName, headings, isDark, isSepia, proseFont, activeDocStyle])
 
   const handleExportZip = useCallback(async () => {
     if (!files.length) return
@@ -6907,6 +6946,16 @@ ${fontCss}
                       <ReaderSettingsPopover
                         prefs={readerPrefs}
                         onChange={setReaderPrefs}
+                        docStyle={activeFile ? activeDocStyle : null}
+                        docStyleExplicit={docStyleExplicit}
+                        defaultDocStyle={appSettings.defaultDocStyle}
+                        onDocStyle={activeFile ? id => {
+                          // Saved in the document's front matter (one undoable edit); null = use the default.
+                          const props = readFrontMatter(content).entries.filter(entry => entry.key && entry.key.toLowerCase() !== 'style').map(({ key, type, value, style }) => ({ key, type, value, style }))
+                          if (id) props.push({ key: 'style', type: 'text', value: id })
+                          const next = writeFrontMatter(content, props)
+                          if (next !== content) saveProperties(activeFileId, next, id ? `Style: ${docStyleById(id).label}.` : 'Using the default style.')
+                        } : undefined}
                         density={uiDensity}
                         onDensityChange={setUiDensity}
                         onClose={() => setReaderOpen(false)}
@@ -7148,11 +7197,12 @@ ${fontCss}
 
                         <div
                           ref={docProseRef}
-                          className={`rm-prose doc-prose ${activeFont.isSerif ? 'font-book' : ''}${sectionCollapseValue.focusKey ? ' focus-section-mode' : ''}${showOnlyBookmarked ? ' bm-only' : ''}${contentFilter ? ' is-filtered' : ''}`}
+                          data-doc-style={activeDocStyle !== 'readme' ? activeDocStyle : undefined}
+                          className={`rm-prose doc-prose ${activeFont.isSerif && activeDocStyle === 'readme' ? 'font-book' : ''}${sectionCollapseValue.focusKey ? ' focus-section-mode' : ''}${showOnlyBookmarked ? ' bm-only' : ''}${contentFilter ? ' is-filtered' : ''}`}
                           style={{
                             fontSize: READER_SIZES[readerPrefs.size]?.px ?? '17px',
                             maxWidth: 'none',
-                            fontFamily: activeFont.family,
+                            fontFamily: proseFont,
                             '--rm-line-height': READER_LINE_HEIGHTS[readerPrefs.lineHeight]?.value ?? 1.82,
                             '--rm-font-weight': READER_FONT_WEIGHTS[readerPrefs.fontWeight]?.value ?? 400,
                             '--rm-para-space': READER_PARAGRAPH_SPACING[readerPrefs.paragraphSpacing]?.value ?? '0.8rem',
@@ -7398,6 +7448,7 @@ ${fontCss}
           startAt={presenting.startAt ?? 0}
           slides={presenting.slides}
           label={presenting.label}
+          docStyle={activeDocStyle}
           renderMarkdown={markdown => <MarkdownRenderer content={markdown} dark={isDark} />}
           themes={availableThemes(appSettings.extraThemes)}
           theme={theme}
@@ -7531,6 +7582,7 @@ ${fontCss}
           hasHeadings={headings.length > 0}
           hasDiagrams={/```mermaid|\$\$/.test(markdownBody)}
           busy={pdfExporting}
+          docStyle={activeDocStyle}
           onExport={handleExportPdf}
           onClose={() => setPdfDialogOpen(false)}
         />

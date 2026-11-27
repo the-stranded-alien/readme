@@ -30,7 +30,7 @@ function openPresenterWindow() {
  * body is rendered with the app's own Markdown renderer (`renderMarkdown`).
  * Text after a `???` line is speaker notes, shown in the presenter view.
  */
-export default function PresentationMode({ markdown, slides: slideTexts, label, renderMarkdown, onClose, startAt = 0, themes = [], theme, onTheme, settings = DEFAULT_PRESENTATION_SETTINGS, onSettings, onExport, exporting }) {
+export default function PresentationMode({ markdown, slides: slideTexts, label, docStyle = 'readme', renderMarkdown, onClose, startAt = 0, themes = [], theme, onTheme, settings = DEFAULT_PRESENTATION_SETTINGS, onSettings, onExport, exporting }) {
   // `slides` (optional) presents just those slides, e.g. the bookmarked sections.
   const { splitLevel, splitRules } = settings
   const slides = useMemo(() => (slideTexts?.length ? slideTexts : splitSlides(markdown, splitOptions({ splitLevel, splitRules }))).map(splitSlideNotes),
@@ -272,7 +272,7 @@ export default function PresentationMode({ markdown, slides: slideTexts, label, 
         )}
         <div className="presentation-main">
           <div className="presentation-stage" ref={stageRef}>
-            <article key={safeIndex} className={`presentation-slide rm-prose slide-in-${direction}`} style={{ '--slide-zoom': zoom }} aria-roledescription="slide" aria-label={slideTitle(slide.body)}>
+            <article key={safeIndex} className={`presentation-slide rm-prose slide-in-${direction}`} data-doc-style={docStyle !== 'readme' ? docStyle : undefined} style={{ '--slide-zoom': zoom }} aria-roledescription="slide" aria-label={slideTitle(slide.body)}>
               {renderMarkdown(slide.body)}
             </article>
           </div>

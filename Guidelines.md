@@ -552,7 +552,7 @@ Pitfalls:
 - Don't make changes the user didn't ask for. If you spot problems, list them as suggestions.
 - Respect explicit constraints (for example: don't modify the code editor component; keep the simple editor as the default).
 - Pre-existing bugs found during verification get fixed or reported, never hidden.
-- **Version every deployment.** The app version and release notes live in one place (`src/version.js`: `APP_VERSION` shown in Settings → About, `RELEASES` shown in Settings → Versions). Every push to `main` deploys, so in the same commit bump the minor number (1.3 → 1.4 → 1.5) and add a release entry at the top: date plus only meaningful changes (at most 4 points, fewer is fine; skip small fixes), keeping the last 5. Use a major bump (2.0) only when the user asks for one.
+- **Version every deployment.** The app version and release notes live in one place (`src/version.js`: `APP_VERSION` shown in Settings → About, `RELEASES` shown in Settings → Versions). Every push to `main` deploys, so in the same commit bump the minor number (1.3 → 1.4 → 1.5) and add a release entry at the top: date plus only meaningful changes (at most 4 points, fewer is fine; skip small fixes), keeping every version. Also add or update the Help (?) entry for every new or changed feature (src/components/HelpDialog.jsx). Use a major bump (2.0) only when the user asks for one.
 - Keep a task list file (for example `Pending.md`) when the user maintains one. Mark items ✅ with a one-line note on what was done, and keep it out of commits unless asked.
 
 ---

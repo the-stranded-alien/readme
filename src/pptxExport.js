@@ -14,7 +14,9 @@ const INSET = 0.22, PAD_X = 0.62, TITLE_Y = 0.5, TITLE_H = 0.8
 const BODY_Y = 1.4, BODY_W = W - 2 * PAD_X, BODY_H = H - BODY_Y - 0.5
 const TEXT = '1F2433', MUTED = '5B6178', CODE_BG = 'F4F5FA'
 const CALLOUT_COLORS = { note: '0969DA', tip: '1A7F37', important: '8250DF', warning: '9A6700', caution: 'CF222E' }
-const FONT = 'Calibri', MONO = 'Consolas'
+// FONT follows the document style for the deck being exported.
+let FONT = 'Calibri'
+const MONO = 'Consolas'
 const GAP = 0.12, MIN_PICTURE = 1.6, TABLE_SIZE = 12
 const PT = 1 / 72
 
@@ -182,7 +184,8 @@ function layoutSlide(tree, accent) {
  * Writes the deck and downloads it. `slides`: [{ body, notes }] (Markdown).
  * `accent`: the theme colour used for the slide frame and titles.
  */
-export async function exportPresentationPptx(slides, { title = 'Presentation', fileName = 'presentation.pptx', accent = '#6d28d9' } = {}) {
+export async function exportPresentationPptx(slides, { title = 'Presentation', fileName = 'presentation.pptx', accent = '#6d28d9', font = 'Calibri' } = {}) {
+  FONT = font
   const { default: PptxGenJS } = await import('pptxgenjs')
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_16x9'

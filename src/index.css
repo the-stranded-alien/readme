@@ -3681,3 +3681,25 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .images-actions .btn-icon:disabled { opacity: .35; cursor: default; }
 .images-delete:hover { color: #b42318; }
 .md-image-missing { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; border: 1px dashed var(--border-strong); color: var(--text-3); font-size: .85em; }
+
+/* Document style picker (Aa) */
+.doc-style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.doc-style-tile { display: grid; justify-items: start; gap: 4px; padding: 8px 9px 7px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-editor); color: var(--text-1); cursor: pointer; text-align: left; }
+.doc-style-tile:hover { border-color: var(--accent-border); }
+.doc-style-tile.is-active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.doc-style-sample { font-size: 17px; font-weight: 700; line-height: 1; }
+.doc-style-tile.is-classic .doc-style-sample, .doc-style-tile.is-academic .doc-style-sample { font-weight: 600; }
+.doc-style-tile.is-minimal .doc-style-sample { font-weight: 500; }
+.doc-style-tile.is-notebook .doc-style-sample { background: linear-gradient(transparent 55%, color-mix(in srgb, var(--accent) 30%, transparent) 55%); }
+.doc-style-tile.is-modern .doc-style-sample { font-weight: 800; letter-spacing: -.04em; }
+.doc-style-lines { display: grid; gap: 3px; width: 100%; }
+.doc-style-lines i { display: block; height: 2px; border-radius: 2px; background: var(--border-strong); }
+.doc-style-lines i:nth-child(2) { width: 85%; } .doc-style-lines i:nth-child(3) { width: 60%; }
+.doc-style-tile.is-modern .doc-style-lines i:first-child, .doc-style-tile.is-readme .doc-style-lines i:first-child { background: var(--accent); }
+.doc-style-tile.is-academic .doc-style-lines i { width: 100% !important; }
+.doc-style-tile.is-notebook .doc-style-lines i { background: none; border-top: 2px dashed var(--border-strong); height: 0; }
+.doc-style-name { font-size: 11px; font-weight: 600; color: var(--text-2); }
+.doc-style-reset { margin-top: 6px; padding: 0; border: 0; background: none; color: var(--accent); font-size: 11.5px; cursor: pointer; text-decoration: underline; }
+.doc-style-note { margin: 0 0 6px; font-size: 11.5px; line-height: 1.5; color: var(--text-3); }
+.reader-popover button:disabled { opacity: .45; cursor: default; }
+.pdf-option .settings-select-wrap, .pdf-option .settings-select { width: 100%; }

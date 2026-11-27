@@ -2,11 +2,20 @@
  * App version shown in Settings → About, and release notes shown in Settings → Versions.
  * Bump the minor number with every deployment (every push to main): 1.3 → 1.4 → …
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
- * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
+ * fine; skip small fixes), newest first, keeping every version. See Guidelines.md.
  */
-export const APP_VERSION = '2.7'
+export const APP_VERSION = '2.8'
 
 export const RELEASES = [
+  {
+    version: '2.8',
+    date: '2026-11-27',
+    notes: [
+      'Document styles: Classic, Modern, Academic, Notebook and Minimal (Aa → Document style), used the same way in the preview, PDF, Word, HTML, slides and websites.',
+      'PDF and Word downloads can add a cover page and a page header.',
+      'Settings → Versions now lists every version, and Help covers every feature.',
+    ],
+  },
   {
     version: '2.7',
     date: '2026-11-27',
@@ -46,6 +55,79 @@ export const RELEASES = [
       'Publish as a website: turn your documents (or one folder) into a small website with a sidebar, search, and links between pages, ready for GitHub Pages, Netlify or any web host.',
       'Download the ReadMe app from the Download menu or Settings → App, which also shows whether it is installed and its version.',
       'Diagrams draw at the right size when your system asks for reduced motion.',
+    ],
+  },
+  {
+    version: '2.2',
+    date: '2026-11-27',
+    notes: [
+      'Graph view: see how your documents link to each other, open them, and find ones without links.',
+    ],
+  },
+  {
+    version: '2.1',
+    date: '2026-11-27',
+    notes: [
+      'Tasks: every task from all your documents in one panel, with due dates, tags and priorities.',
+      'Tick tasks straight in the preview.',
+    ],
+  },
+  {
+    version: '2.0',
+    date: '2026-11-27',
+    notes: [
+      'Paste from Word, Google Docs, Confluence or the web as clean Markdown; open Word and HTML files.',
+      'Wiki links: type [[ to link documents, with “Linked from” in the Contents bar.',
+      'Visual table editor: edit tables in a grid — add, move, align and sort rows and columns.',
+      'Reorganise documents from the Contents bar: drag sections, promote, demote or move them to another file.',
+    ],
+  },
+  {
+    version: '1.9',
+    date: '2026-11-26',
+    notes: [
+      'Download a presentation as a landscape PDF or a PowerPoint file (with speaker notes).',
+      'Pin up to 5 files; the file pinned last comes first.',
+    ],
+  },
+  {
+    version: '1.8',
+    date: '2026-11-26',
+    notes: [
+      'Sub-folders, up to three levels deep.',
+      'Rename files from the Files panel; renaming never changes the file’s folder or extension.',
+    ],
+  },
+  {
+    version: '1.7',
+    date: '2026-11-26',
+    notes: [
+      'Copy or export pages for Confluence (storage format XHTML).',
+      'Delete whole folders, with a confirmation and Undo.',
+      'New “Markdown Guide” template showing every supported Markdown feature.',
+    ],
+  },
+  {
+    version: '1.6',
+    date: '2026-11-26',
+    notes: [
+      'Create and rename folders from ReadMe’s own dialog; new folders start empty.',
+    ],
+  },
+  {
+    version: '1.5',
+    date: '2026-11-26',
+    notes: [
+      'Presentation: slide contents panel, laser pointer and pen (fading or permanent ink).',
+      'New Settings → Presentation: slide breaks, auto-advance, default text size and theme, pen and laser.',
+    ],
+  },
+  {
+    version: '1.3',
+    date: '2026-11-26',
+    notes: [
+      'Present from any heading, or present only your bookmarked sections.',
+      'Marble theme, and a default theme setting.',
     ],
   },
 ]

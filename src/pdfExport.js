@@ -43,7 +43,7 @@ const CODE_SIZE = 9
 export const PDF_PAGE_SIZES = { A4: { label: 'A4', width: 595.28, height: 841.89 }, LETTER: { label: 'US Letter', width: 612, height: 792 } }
 export const PDF_MARGINS = { narrow: { label: 'Narrow', value: 36 }, normal: { label: 'Normal', value: 54 }, wide: { label: 'Wide', value: 72 } }
 export const PDF_PAPERS = { white: { label: 'White', color: null }, sepia: { label: 'Sepia', color: '#f5ecdb' } }
-export const DEFAULT_PDF_OPTIONS = { pageSize: 'A4', margins: 'normal', toc: false, includeMeta: true, paper: 'white', diagrams: true }
+export const DEFAULT_PDF_OPTIONS = { pageSize: 'A4', margins: 'normal', toc: false, includeMeta: true, paper: 'white', diagrams: true, cover: false, header: false }
 
 // Roboto (bundled) has no emoji glyphs; strip them rather than print tofu boxes.
 const EMOJI_RE = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\uFE0F|\u200D|\u20E3/gu
@@ -68,13 +68,22 @@ function stripHtml(html) {
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
 }
 
-function createConverter({ images, footnoteOrder, contentWidth, toc, rendered }) {
+// A document style's PDF values (see docStyles.js); the defaults are the ReadMe look.
+const DEFAULT_LOOK = { font: 'Roboto', heading: 'Roboto', headingColor: COLORS.heading, accent: COLORS.accent, table: 'grid', rule: true }
+
+function createConverter({ images, footnoteOrder, contentWidth, toc, rendered, look = DEFAULT_LOOK }) {
+  const L = { ...DEFAULT_LOOK, ...look }
+  // Times only has Latin (WinAnsi) glyphs: other scripts fall back to Roboto.
+  const fontFor = value => (L.font === 'Times' && !isCourierSafe(value) ? { font: 'Roboto' } : {})
+  const counters = [0, 0, 0]
   const inline = (nodes, style = {}) => nodes.flatMap(node => inlineNode(node, style))
 
   function inlineNode(node, style) {
     switch (node.type) {
-      case 'text':
-        return [{ text: cleanText(node.value), ...style }]
+      case 'text': {
+        const value = cleanText(node.value)
+        return [{ text: value, ...fontFor(value), ...style }]
+      }
       case 'strong':
         return inline(node.children, { ...style, bold: true })
       case 'emphasis':
@@ -90,7 +99,7 @@ function createConverter({ images, footnoteOrder, contentWidth, toc, rendered })
       case 'break':
         return [{ text: '\n' }]
       case 'link':
-        return inline(node.children, { ...style, color: COLORS.accent, decoration: 'underline', link: node.url })
+        return inline(node.children, { ...style, color: L.accent, decoration: 'underline', link: node.url })
       case 'image': {
         const alt = cleanText(node.alt || 'image')
         return [{ text: `[${alt}]`, ...style, italics: true, color: COLORS.muted }]
@@ -121,7 +130,7 @@ function createConverter({ images, footnoteOrder, contentWidth, toc, rendered })
         margin: [0, 4, 0, 10],
       }
     }
-    return { text: inline(node.children), margin: [0, 0, 0, 8] }
+    return { text: inline(node.children), margin: [0, 0, 0, 8], ...(L.justify ? { alignment: 'justify' } : {}) }
   }
 
   function codeBlock(value, lang) {
@@ -160,27 +169,40 @@ function createConverter({ images, footnoteOrder, contentWidth, toc, rendered })
     })
     const allTasks = node.children.length > 0 && node.children.every(item => typeof item.checked === 'boolean')
     if (node.ordered) return { ol: items, start: node.start ?? 1, margin: [0, 0, 0, 8] }
-    return { ul: items, ...(allTasks ? { type: 'none' } : {}), markerColor: COLORS.accent, margin: [0, 0, 0, 8] }
+    return { ul: items, ...(allTasks ? { type: 'none' } : {}), markerColor: L.accent, margin: [0, 0, 0, 8] }
   }
 
   function table(node) {
     const align = node.align || []
+    const striped = L.table === 'striped'
+    const fill = rowIndex => (rowIndex === 0
+      ? (striped ? L.accent : L.table === 'grid' ? COLORS.tableHeadBg : null)
+      : (striped && rowIndex % 2 === 0 ? '#f3f4fb' : null))
     const body = node.children.map((row, rowIndex) => row.children.map((cell, cellIndex) => ({
       text: inline(cell.children),
       bold: rowIndex === 0,
-      fillColor: rowIndex === 0 ? COLORS.tableHeadBg : null,
+      fillColor: fill(rowIndex),
+      ...(striped && rowIndex === 0 ? { color: '#ffffff' } : {}),
       alignment: align[cellIndex] || 'left',
       fontSize: BASE_SIZE - 0.5,
     })))
     const columns = Math.max(...body.map(row => row.length))
     body.forEach(row => { while (row.length < columns) row.push({ text: '' }) })
+    const rows = body.length
+    // grid: every line; lines: horizontal only; booktabs: thick top / bottom, thin under the header.
+    const hWidth = L.table === 'booktabs'
+      ? index => (index === 0 || index === rows ? 1.4 : index === 1 ? 0.6 : 0)
+      : L.table === 'lines' ? index => (index === 0 || index === rows ? 1 : 0.5)
+        : striped ? () => 0 : () => 0.6
+    const vWidth = L.table === 'grid' ? () => 0.6 : () => 0
     return {
       table: { headerRows: 1, widths: Array(columns).fill('*'), body, dontBreakRows: true },
       layout: {
-        hLineColor: () => COLORS.rule,
+        hLineColor: index => (L.table === 'booktabs' || (L.table === 'lines' && (index === 0 || index === rows)) ? L.headingColor : COLORS.rule),
         vLineColor: () => COLORS.rule,
-        hLineWidth: () => 0.6,
-        vLineWidth: () => 0.6,
+        hLineWidth: hWidth,
+        vLineWidth: vWidth,
+        ...(L.dashed ? { hLineStyle: () => ({ dash: { length: 3, space: 2 } }), vLineStyle: () => ({ dash: { length: 3, space: 2 } }) } : {}),
         paddingLeft: () => 6,
         paddingRight: () => 6,
         paddingTop: () => 4,
@@ -193,19 +215,38 @@ function createConverter({ images, footnoteOrder, contentWidth, toc, rendered })
   function block(node) {
     switch (node.type) {
       case 'heading': {
-        const size = HEADING_SIZES[node.depth - 1] ?? BASE_SIZE
+        const size = (HEADING_SIZES[node.depth - 1] ?? BASE_SIZE) * (L.minimal && node.depth > 1 ? 0.9 : 1)
+        // Academic: numbered sections (2. / 2.1).
+        let number = ''
+        if (L.numbered && node.depth === 2) { counters[1] += 1; counters[2] = 0; number = `${counters[1]}.  ` }
+        if (L.numbered && node.depth === 3) { counters[2] += 1; number = `${counters[1]}.${counters[2]}  ` }
         const heading = {
-          text: inline(node.children),
+          text: [...(number ? [{ text: number }] : []), ...inline(node.children)],
           fontSize: size,
-          bold: true,
-          color: COLORS.heading,
+          bold: !L.minimal || node.depth === 1,
+          color: L.numbered && node.depth === 3 ? L.headingColor : (L.accentH3 && node.depth === 3 ? L.accent : L.headingColor),
+          ...(L.centerTitle && node.depth === 1 ? { alignment: 'center' } : {}),
+          ...(L.numbered && node.depth === 3 ? { italics: true } : {}),
           margin: [0, node.depth <= 2 ? 14 : 10, 0, node.depth <= 2 ? 3 : 5],
           ...(toc && node.depth <= 3 ? { tocItem: true, tocMargin: [(node.depth - 1) * 14, 2, 0, 2], tocStyle: { fontSize: node.depth === 1 ? 10.5 : 9.5, bold: node.depth === 1 } } : {}),
         }
         if (node.depth > 2) return { ...heading, headlineLevel: node.depth }
+        if (L.bar && node.depth === 2) {
+          // Modern: an accent bar beside section headings.
+          return {
+            headlineLevel: node.depth, unbreakable: true,
+            table: { widths: ['*'], body: [[{ ...heading, margin: [0, 0, 0, 0] }]] },
+            layout: { hLineWidth: () => 0, vLineWidth: index => (index === 0 ? 4 : 0), vLineColor: () => L.accent, paddingLeft: () => 9, paddingTop: () => 1, paddingBottom: () => 1 },
+            margin: [0, 14, 0, 8],
+          }
+        }
+        if (L.centerTitle && node.depth === 1) {
+          return { headlineLevel: 1, unbreakable: true, stack: [heading, { canvas: [{ type: 'line', x1: contentWidth / 2 - 30, y1: 0, x2: contentWidth / 2 + 30, y2: 0, lineWidth: 1, lineColor: COLORS.rule }], margin: [0, 2, 0, 14] }] }
+        }
+        if (!L.rule && !L.dashed) return { ...heading, headlineLevel: node.depth, margin: [0, node.depth === 1 ? 4 : 16, 0, 8] }
         return {
           headlineLevel: node.depth,
-          stack: [heading, { canvas: [{ type: 'line', x1: 0, y1: 0, x2: contentWidth, y2: 0, lineWidth: node.depth === 1 ? 1 : 0.6, lineColor: COLORS.rule }], margin: [0, 0, 0, 9] }],
+          stack: [heading, { canvas: [{ type: 'line', x1: 0, y1: 0, x2: node.depth === 1 && L.dashed ? Math.min(contentWidth, 220) : contentWidth, y2: 0, lineWidth: node.depth === 1 ? (L.dashed ? 3 : 1) : (L.dashed ? 1 : 0.6), lineColor: L.dashed ? L.accent : COLORS.rule, ...(L.dashed && node.depth > 1 ? { dash: { length: 4, space: 3 } } : {}) }], margin: [0, 0, 0, 9] }],
           unbreakable: true,
         }
       }
@@ -234,7 +275,7 @@ function createConverter({ images, footnoteOrder, contentWidth, toc, rendered })
           layout: {
             hLineWidth: () => 0,
             vLineWidth: index => (index === 0 ? 2.5 : 0),
-            vLineColor: () => COLORS.accent,
+            vLineColor: () => L.accent,
             paddingLeft: () => 11,
             paddingRight: () => 9,
             paddingTop: () => 7,
@@ -506,8 +547,9 @@ export async function svgToPng(markup, width, height, scale = 2) {
   }
 }
 
-export async function buildPdfDefinition(markdown, { title = 'Document', meta = [], options = {} } = {}) {
+export async function buildPdfDefinition(markdown, { title = 'Document', meta = [], options = {}, look = {} } = {}) {
   const settings = { ...DEFAULT_PDF_OPTIONS, ...options }
+  const L = { ...DEFAULT_LOOK, ...look }
   const page = PDF_PAGE_SIZES[settings.pageSize] ?? PDF_PAGE_SIZES.A4
   const margin = (PDF_MARGINS[settings.margins] ?? PDF_MARGINS.normal).value
   const contentWidth = page.width - 2 * margin
@@ -518,7 +560,7 @@ export async function buildPdfDefinition(markdown, { title = 'Document', meta = 
     renderVectorBlocks(tree, settings.diagrams),
   ])
   const footnoteOrder = []
-  const { blocks } = createConverter({ images, footnoteOrder, contentWidth, toc: settings.toc, rendered })
+  const { blocks } = createConverter({ images, footnoteOrder, contentWidth, toc: settings.toc, rendered, look: L })
   const content = blocks(tree.children)
 
   const metaEntries = (Array.isArray(meta) ? meta.map(({ key, value }) => [key, value]) : Object.entries(meta))
@@ -537,6 +579,25 @@ export async function buildPdfDefinition(markdown, { title = 'Document', meta = 
       ]).flat(),
       fontSize: 8.5,
       margin: [0, 0, 0, 12],
+    })
+  }
+
+  // Cover page: title, subtitle / description, author and date (from the front matter).
+  const metaValue = key => {
+    const entry = metaEntries.find(([name]) => name.toLowerCase() === key)
+    return entry ? cleanText(Array.isArray(entry[1]) ? entry[1].join(', ') : entry[1]) : ''
+  }
+  if (settings.cover) {
+    const subtitle = metaValue('subtitle') || metaValue('description')
+    const byline = [metaValue('author'), metaValue('date') || new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })].filter(Boolean).join('  ·  ')
+    content.unshift({
+      stack: [
+        { canvas: [{ type: 'rect', x: 0, y: 0, w: 48, h: 4, color: L.accent }], margin: [0, page.height * 0.28, 0, 22] },
+        { text: cleanText(metaValue('title') || title), fontSize: 30, bold: true, color: L.headingColor, lineHeight: 1.15 },
+        ...(subtitle ? [{ text: subtitle, fontSize: 14, color: COLORS.muted, margin: [0, 12, 0, 0] }] : []),
+        { text: byline, fontSize: 10.5, color: COLORS.muted, margin: [0, 28, 0, 0] },
+      ],
+      pageBreak: 'after',
     })
   }
 
@@ -560,9 +621,10 @@ export async function buildPdfDefinition(markdown, { title = 'Document', meta = 
     pageSize: settings.pageSize === 'LETTER' ? 'LETTER' : 'A4',
     pageMargins: [margin, margin, margin, margin + 6],
     ...(paperColor ? { background: (_currentPage, size) => ({ canvas: [{ type: 'rect', x: 0, y: 0, w: size.width, h: size.height, color: paperColor }] }) } : {}),
-    defaultStyle: { font: 'Roboto', fontSize: BASE_SIZE, lineHeight: 1.35, color: COLORS.text },
+    defaultStyle: { font: L.font, fontSize: BASE_SIZE * (L.font === 'Times' ? 1.08 : 1), lineHeight: 1.35, color: COLORS.text },
     content: content.length ? content : [{ text: ' ' }],
-    footer: (currentPage, pageCount) => ({
+    ...(settings.header ? { header: currentPage => (settings.cover && currentPage === 1 ? null : { text: cleanText(title), alignment: 'right', fontSize: 8, color: '#9aa0b8', margin: [margin, Math.max(14, margin / 2 - 4), margin, 0] }) } : {}),
+    footer: (currentPage, pageCount) => (settings.cover && currentPage === 1 ? null : {
       columns: [
         { text: cleanText(title), alignment: 'left', fontSize: 8, color: '#9aa0b8' },
         { text: `${currentPage} / ${pageCount}`, alignment: 'right', fontSize: 8, color: '#9aa0b8' },
@@ -582,17 +644,19 @@ function loadPdfMake() {
     import('pdfmake/build/pdfmake'),
     import('pdfmake/build/vfs_fonts'),
     import('pdfmake/build/standard-fonts/Courier'),
-  ]).then(([pdfMakeModule, vfsModule, courierModule]) => {
+    import('pdfmake/build/standard-fonts/Times'),
+  ]).then(([pdfMakeModule, vfsModule, courierModule, timesModule]) => {
     const pdfMake = pdfMakeModule.default ?? pdfMakeModule
     pdfMake.addVirtualFileSystem(vfsModule.default ?? vfsModule)
     pdfMake.addFontContainer(courierModule.default ?? courierModule)
+    pdfMake.addFontContainer(timesModule.default ?? timesModule)
     return pdfMake
   })
   return pdfMakePromise
 }
 
-export async function exportMarkdownPdf(markdown, { title, fileName, meta, options } = {}) {
-  const [pdfMake, definition] = await Promise.all([loadPdfMake(), buildPdfDefinition(markdown, { title, meta, options })])
+export async function exportMarkdownPdf(markdown, { title, fileName, meta, options, look } = {}) {
+  const [pdfMake, definition] = await Promise.all([loadPdfMake(), buildPdfDefinition(markdown, { title, meta, options, look })])
   await pdfMake.createPdf(definition).download(fileName || 'document.pdf')
 }
 
@@ -634,11 +698,13 @@ async function prepareDeck(slides, settings) {
   }))
 }
 
+// The document style for the deck being built (set by the deck exports).
+let deckLook = DEFAULT_LOOK
 const DECK_CONTENT = { width: DECK.width - 2 * (DECK.inset + DECK.padX), height: DECK.height - 2 * (DECK.inset + DECK.padY) }
 
 // One slide's content at text scale `k` (1 = document size).
 function deckSlide({ tree, images, rendered }, k) {
-  const { blocks } = createConverter({ images, footnoteOrder: [], contentWidth: DECK_CONTENT.width / k, toc: false, rendered })
+  const { blocks } = createConverter({ images, footnoteOrder: [], contentWidth: DECK_CONTENT.width / k, toc: false, rendered, look: deckLook })
   const stack = scaleBlock(blocks(tree.children), k)
   return { stack: stack.length ? stack : [{ text: ' ' }], fontSize: BASE_SIZE * k }
 }
@@ -666,7 +732,7 @@ function deckDefinition(slideBlocks, { title, accent, backdrop }) {
         { type: 'rect', x: DECK.inset, y: DECK.inset, w: frameW, h: frameH, r: DECK.radius, color: '#ffffff', lineWidth: DECK.border, lineColor: accent },
       ],
     }),
-    defaultStyle: { font: 'Roboto', fontSize: BASE_SIZE * DECK.scale, lineHeight: 1.35, color: COLORS.text },
+    defaultStyle: { font: deckLook.font, fontSize: BASE_SIZE * DECK.scale, lineHeight: 1.35, color: COLORS.text },
     content,
     // Each slide starts a new page — unless the page is still empty (a long slide that just
     // filled the previous page must not leave a blank page behind).
@@ -689,7 +755,8 @@ function deckDefinition(slideBlocks, { title, accent, backdrop }) {
  * pdfmake definition for a slide deck. `slides` are Markdown strings (speaker notes already
  * removed); `accent` colours the slide frame like the presentation's theme.
  */
-export async function buildPresentationPdfDefinition(slides, { title = 'Presentation', accent = COLORS.accent, backdrop = '#ebecf6', options = {} } = {}) {
+export async function buildPresentationPdfDefinition(slides, { title = 'Presentation', accent = COLORS.accent, backdrop = '#ebecf6', options = {}, look } = {}) {
+  deckLook = { ...DEFAULT_LOOK, ...look, rule: false }
   const prepared = await prepareDeck(slides, { ...DEFAULT_PDF_OPTIONS, ...options })
   return deckDefinition(prepared.map(slide => deckSlide(slide, DECK.scale)), { title, accent, backdrop })
 }
@@ -712,7 +779,8 @@ const countPdfPages = async (pdfMake, definition) => {
   await pdfMake.createPdf({ ...definition, footer: (current, count) => { pages = Math.max(pages, count); return footer(current, count) } }).getBuffer()
   return pages
 }
-export async function exportPresentationPdf(slides, { title = 'Presentation', fileName, accent = COLORS.accent, backdrop = '#ebecf6', options } = {}) {
+export async function exportPresentationPdf(slides, { title = 'Presentation', fileName, accent = COLORS.accent, backdrop = '#ebecf6', options, look: styleLook } = {}) {
+  deckLook = { ...DEFAULT_LOOK, ...styleLook, rule: false }
   const pdfMake = await loadPdfMake()
   const prepared = await prepareDeck(slides, { ...DEFAULT_PDF_OPTIONS, ...options })
   const look = { title, accent, backdrop }

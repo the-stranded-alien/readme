@@ -8,6 +8,8 @@ import remarkGfmForTest from 'remark-gfm'
 import remarkRehypeForTest from 'remark-rehype'
 import { addTags, documentInfo, filterDocuments, inlineTags, readFrontMatter, sortDocuments, writeFrontMatter } from '../library.js'
 import { attachmentPath, attachmentSrc, attachmentsUsed, embeddedImages, imageReferences, renameAttachmentRefs, resolveImagePath, rewriteImageSources, setAltText } from '../attachments.js'
+import { DOC_STYLES, docStyleCss, documentStyleId } from '../docStyles.js'
+import { buildPdfDefinition } from '../pdfExport.js'
 import { describe, expect, it } from 'vitest'
 import { htmlToMarkdown, looksRich, parseDelimited, rowsToMarkdownTable, webPageToMarkdown } from '../htmlToMarkdown.js'
 
@@ -454,6 +456,37 @@ describe('image attachments', () => {
     expect(renamed).toContain('`![not](/attachments/code.png)`')
     expect(setAltText(doc, 'notes/a.md', 'attachments/chart.png', 'Sales by month')).toContain('![Sales by month](/attachments/chart.png)')
     expect(rewriteImageSources('![a](/attachments/x.png)', 'a.md', (_ref, path) => (path === 'attachments/x.png' ? 'blob:abc' : null))).toBe('![a](blob:abc)')
+  })
+})
+
+describe('document styles', () => {
+  it('reads the style from front matter, with a default', () => {
+    expect(documentStyleId('---\nstyle: academic\n---\n# A')).toBe('academic')
+    expect(documentStyleId('---\nstyle: "Modern"\n---\n# A')).toBe('modern')
+    expect(documentStyleId('# No front matter', 'classic')).toBe('classic')
+    expect(documentStyleId('---\nstyle: unknown\n---\n', 'minimal')).toBe('minimal')
+    expect(documentStyleId('x', 'bogus')).toBe('readme')
+  })
+  it('has CSS for every style under any scope', () => {
+    const css = docStyleCss(id => `.doc[data-doc-style="${id}"]`)
+    for (const style of DOC_STYLES.filter(item => item.id !== 'readme')) expect(css).toContain(`.doc[data-doc-style="${style.id}"] h1`)
+    expect(css).not.toContain('data-doc-style="readme"')
+  })
+  it('PDFs follow the style: fonts, numbering, cover page', async () => {
+    const academic = DOC_STYLES.find(style => style.id === 'academic').pdf
+    const def = await buildPdfDefinition('# Title\n\n## Intro\n\nText.\n\n### Detail\n\nMore.\n\n## Next\n', { title: 'Title', meta: [{ key: 'author', value: 'Sam' }], options: { cover: true, header: true, includeMeta: false }, look: academic })
+    expect(def.defaultStyle.font).toBe('Times')
+    const text = JSON.stringify(def.content)
+    expect(text).toContain('"1.  "')
+    expect(text).toContain('"1.1  "')
+    expect(text).toContain('"2.  "')
+    expect(def.content[0].pageBreak).toBe('after')
+    expect(JSON.stringify(def.content[0])).toContain('Sam')
+    expect(def.header(2)).toMatchObject({ text: 'Title' })
+    expect(def.header(1)).toBeNull()
+    // Non-Latin text falls back to Roboto under Times.
+    const greek = await buildPdfDefinition('Καλημέρα and hello', { look: academic })
+    expect(JSON.stringify(greek.content)).toContain('"font":"Roboto"')
   })
 })
 

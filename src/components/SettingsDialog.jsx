@@ -4,6 +4,7 @@ import { useDialogKeys } from '../useDialogKeys'
 import { StoragePanel } from './StorageDialog'
 import { THEMES, themeClasses } from '../themes'
 import { APP_VERSION, RELEASES } from '../version'
+import { DOC_STYLES } from '../docStyles'
 
 export const REPO_URL = 'https://github.com/the-stranded-alien/readme'
 
@@ -159,6 +160,17 @@ export default function SettingsDialog({
               <>
                 <h3>Appearance</h3>
                 {appearanceExtra}
+                <label className="settings-toggle settings-field">
+                  <span className="settings-toggle-text">
+                    <strong>Default document style</strong>
+                    <span>How documents look in the preview, PDF, Word, slides and websites, unless a document picks its own style (Aa → Document style).</span>
+                  </span>
+                  <span className="settings-select-wrap">
+                    <select className="settings-select" value={settings.defaultDocStyle || 'readme'} onChange={event => onChange('defaultDocStyle', event.target.value)} aria-label="Default document style">
+                      {DOC_STYLES.map(style => <option key={style.id} value={style.id}>{style.label}</option>)}
+                    </select>
+                  </span>
+                </label>
                 <SettingsToggle label="High contrast" description="Stronger text and borders." checked={highContrast} onChange={onHighContrast} />
                 <SettingsToggle label="Compact layout" description="Tighter spacing in toolbars and lists." checked={density === 'compact'} onChange={value => onDensity(value ? 'compact' : 'comfortable')} />
               </>
@@ -229,7 +241,7 @@ export default function SettingsDialog({
                 <h3>Versions</h3>
                 <p className="settings-muted">You are on version {APP_VERSION}. What changed in recent releases:</p>
                 <ol className="release-list">
-                  {RELEASES.slice(0, 5).map(release => (
+                  {RELEASES.map(release => (
                     <li key={release.version} className="release-item">
                       <div className="release-head">
                         <strong>Version {release.version}</strong>
@@ -237,7 +249,7 @@ export default function SettingsDialog({
                         <time dateTime={release.date}>{new Date(`${release.date}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</time>
                       </div>
                       <ul>
-                        {release.notes.slice(0, 4).map(note => <li key={note}>{note}</li>)}
+                        {release.notes.map(note => <li key={note}>{note}</li>)}
                       </ul>
                     </li>
                   ))}

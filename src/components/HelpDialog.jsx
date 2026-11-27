@@ -9,7 +9,7 @@ const HELP_SECTIONS = [
   {
     id: 'start', title: 'Getting started',
     items: [
-      ['Open files', 'Click Upload, drop .md files anywhere on the window, or open a whole folder. Files you open from your computer can be saved straight back to disk.'],
+      ['Open files', 'Click Upload, drop .md files anywhere on the window, or open a whole folder. The arrow next to Upload also imports Markdown or a web page from a URL. Files you open from your computer can be saved straight back to disk.'],
       ['Create a file', 'Click New for a blank file, or the arrow next to it to start from a template or write a README from a description.'],
       ['Views', `Switch between Editor, Split, Focus, Preview and Present with the switcher at the top. ${shortcut('K')} opens the command palette, where every action can be searched.`],
       ['Saving', `Everything is saved in your browser automatically. ${shortcut('S')} saves all files right away, including files opened from disk.`],
@@ -18,11 +18,11 @@ const HELP_SECTIONS = [
   {
     id: 'files', title: 'Files & tabs',
     items: [
-      ['Tabs', 'Drag tabs to reorder them. Right-click a tab to rename, duplicate, pin, colour, compare, download or close it.'],
+      ['Tabs', 'Drag tabs to reorder them. Right-click a tab to rename, duplicate, pin, colour, compare, download or close it. Up to 5 files can be pinned; pinned files stay first, and the one pinned last comes first.'],
       ['File tree', 'The folder icon at the left of the tab bar shows your files as a tree, grouped by folder. Files you close stay listed there (marked closed) — click one to reopen it. New folder asks for a name and makes an empty folder (folders go up to three levels deep). Hover a folder to add a file or a folder inside it, rename it or delete it (with its files, after you confirm — Undo brings it back). Hover a file to rename it (only the name changes, never its folder or extension) or to pin it. Up to 5 files can be pinned; the one pinned last comes first in the tab bar.'],
       ['Link files', 'Drag a file from the Files panel into the editor to insert a link to it. Clicking the link in the preview opens that file.'],
       ['Delete', 'Right-click a tab (or use the trash icon in the Files panel) → Delete permanently. You can undo it from the notice.'],
-      ['Compare', 'Right-click a tab → Compare to see the differences between two files side by side.'],
+      ['Compare', 'The compare button in the tab bar (or right-click a tab → Compare) shows the differences between two files side by side. You can also drag a tab onto the compare button.'],
       ['History', 'The clock icon above the editor lists earlier versions of the file; restore any of them.'],
       ['Outside changes', 'If a file you opened from disk changes in another app, ReadMe offers to reload it, compare, or keep your version.'],
     ],
@@ -34,7 +34,7 @@ const HELP_SECTIONS = [
       ['Slash commands', 'Type / at the start of a line to insert headings, lists, tables, code blocks, callouts and more.'],
       ['Find & replace', `${shortcut('F', { alt: true })} opens find & replace in the editor, with match case, whole word, regular expressions and replace across all files.`],
       ['Paste from Word, Google Docs and web pages', 'Pasting formatted text gives clean Markdown: headings, bold and italics, links, lists, tables, code and callouts (Confluence and GitHub panels). One Undo (⌘/Ctrl+Z) gives you the plain text instead; ⌘/Ctrl+Shift+V always pastes plain text. Cells copied from a spreadsheet become a table. Upload or drop Word (.docx) and HTML files to convert them, and Import from URL turns a web page into Markdown.'],
-      ['Tasks', 'The ✓ list button in the header (or ⌘/Ctrl+Shift+K) shows every task list item from all your documents. Add due:2026-12-01, #tag or !high to a task to plan with it; the header shows how many are due today or overdue. Tick tasks in the panel or straight in the preview — it updates the document, and ⌘/Ctrl+Z undoes it. Click a task to jump to it.'],
+      ['Tasks', 'The ✓ list button in the tab bar, next to Compare (or ⌘/Ctrl+Shift+K), shows every task list item from all your documents. Add due:2026-12-01, #tag or !high to a task to plan with it; its badge shows how many are due today or overdue. Tick tasks in the panel or straight in the preview — it updates the document, and ⌘/Ctrl+Z undoes it. Click a task to jump to it.'],
       ['Wiki links', 'Type [[ to link to another document: pick it from the list (add # for one of its headings, | for your own label). Click a link in the preview to open it — or to create a document that doesn’t exist yet. “Linked from” at the bottom of the Contents bar lists the documents that link here. Renaming a file offers to update links to it, and exports turn wiki links into normal links.'],
       ['Publish as a website', 'Download → Publish as a Website turns your documents (all of them, or one folder) into a small website: a page per document with a sidebar, “On this page” contents, previous / next links, search, light and dark colours, and working links between pages. It downloads as a ZIP — unzip it and upload the folder to GitHub Pages, Netlify Drop, Cloudflare Pages or any web server. It is made entirely on your device.'],
       ['Graph of linked documents', 'The graph button at the top of the Contents bar (or the command palette) shows your documents as dots and their [[wiki links]] and Markdown links as lines, coloured by folder. Click a dot to open it (dashed dots are links to documents that don’t exist yet — click to create one). Drag to move around, scroll or use the buttons to zoom, search to find a document, and filter to the current document’s neighbours, a folder, or documents without links. The list view shows the same thing for keyboard and screen-reader users.'],
@@ -55,6 +55,7 @@ const HELP_SECTIONS = [
       ['Collapse sections', 'Click the arrow beside a heading to fold it, or use Collapse all in the toolbar.'],
       ['Filter', 'Use the filter in the toolbar to show only headings, a heading level, tables, code, lists, quotes or images.'],
       ['Section focus', 'Shows one section at a time; use Alt+← and Alt+→ to move between sections.'],
+      ['Document styles', 'Aa → Document style gives a document its own design: ReadMe, Classic (book serif, centred title), Modern (bold headings, accent bars, striped tables), Academic (serif, justified text, numbered sections), Notebook (highlighted headings, dashed lines) or Minimal. It is saved in the document (front matter “style:”) and used everywhere: the preview, PDF, Word, standalone HTML, slides and published websites. Settings → Appearance → Default document style sets the style for documents that don’t choose one. The PDF dialog can use another style for one download, and adds an optional cover page (title, subtitle, author, date from the properties) and page header; Word downloads use the same cover and header choices.'],
       ['Reading comfort', 'The Aa button changes the font size, line height, width, font weight and paper tone.'],
       ['Read aloud & spot', 'Listen to the document, and save your reading spot to resume later.'],
       ['Highlights', 'Select text in the page to highlight it in one of several colours. The highlights list closes with its × button, Escape, or a click outside it.'],
@@ -95,6 +96,8 @@ const HELP_SECTIONS = [
   {
     id: 'settings', title: 'Settings & themes',
     items: [
+      ['Install the app', 'Settings → App (or Download → Download ReadMe App, shown when your browser can install it) installs ReadMe as an app: its own window, works offline, opens .md files from your computer, and updates by itself. Settings → App shows whether it is already installed and the version. In the app, the title bar follows your theme.'],
+      ['Versions', 'Settings → Versions lists every ReadMe version with its date and what changed; Settings → About shows the version you are using.'],
       ['Themes', 'The theme button cycles Light, Dark and Sepia. Turn on Additional themes in Settings → Appearance for Neon (pink, blue, green, purple or multicolour rainbow), Ocean, Forest, Sun, Monokai, Nord, Solarized and Marble (black and white). High contrast works with every theme. Settings → Appearance → Default theme picks the theme ReadMe always opens with (or “Last used”).'],
       ['Lite mode', 'Settings → Features → Lite mode uses less memory by turning off syntax colours, diagrams, link previews, the reading cats and animations.'],
       ['Shortcuts', 'Press ? (outside the editor) to see every keyboard shortcut.'],
