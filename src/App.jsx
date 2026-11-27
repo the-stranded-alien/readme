@@ -3976,7 +3976,7 @@ export default function App() {
     applyTextareaEdit(ta, { from, to: ta.selectionEnd, text: plain, cursor: from + plain.length })
     import('./htmlToMarkdown').then(({ looksRich, htmlToMarkdown, parseDelimited, rowsToMarkdownTable }) => {
       let markdown = ''
-      if (html && looksRich(html)) markdown = htmlToMarkdown(html)
+      if (html && looksRich(html, plain)) markdown = htmlToMarkdown(html)
       else {
         const rows = parseDelimited(plain)
         if (rows) markdown = rowsToMarkdownTable(rows)

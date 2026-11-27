@@ -7,13 +7,28 @@ const CALLOUT_TYPES = ['note', 'tip', 'important', 'warning', 'caution']
 const PANEL_TYPES = { info: 'note', information: 'note', note: 'note', tip: 'tip', success: 'tip', warning: 'warning', error: 'caution', caution: 'caution', important: 'important' }
 const STRUCTURE = 'h1,h2,h3,h4,h5,h6,ul,ol,table,blockquote,pre,a[href],img,del,s,strike,hr,code,[data-panel-type],.confluence-information-macro,.markdown-alert,.callout'
 
+const STRUCTURE_BEYOND_CODE = STRUCTURE.split(',').filter(selector => selector !== 'pre' && selector !== 'code').join(',')
 const parse = html => new DOMParser().parseFromString(String(html || ''), 'text/html')
 
-/** Does this HTML carry formatting worth converting (not just plain text wrapped in spans)? */
-export function looksRich(html) {
+// Markdown written as plain text: headings, lists, quotes, fences, tables, **bold**, [links](…).
+const MARKDOWN_SOURCE = /^(?:#{1,6}\s|\s*[-*+]\s|\s*\d+[.)]\s|>\s?|```|~~~|\|.*\|\s*$)|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\([^)\n]+\)/m
+
+/**
+ * Does this HTML carry formatting worth converting (not just plain text wrapped in spans)?
+ * `plain` is the clipboard's plain text: a copy from a code editor (VS Code, JetBrains, Sublime…)
+ * comes with syntax-coloured HTML — that colouring isn't formatting, the plain text is the content.
+ */
+export function looksRich(html, plain = '') {
   if (!html || typeof DOMParser === 'undefined') return false
   const doc = parse(html)
-  if (doc.querySelector(STRUCTURE)) return true
+  const structural = doc.querySelector(STRUCTURE)
+  // Only a <pre>/<code> wrapper around everything still counts as "source", not formatting.
+  if (!doc.querySelector(STRUCTURE_BEYOND_CODE)) {
+    const box = doc.body.querySelector('[style], pre')
+    const codeEditor = box && (box.tagName === 'PRE' || /monospace|white-space:\s*pre/i.test(box.getAttribute('style') || ''))
+    if ((codeEditor && !structural) || MARKDOWN_SOURCE.test(plain) || (codeEditor && box.tagName === 'PRE' && MARKDOWN_SOURCE.test(box.textContent))) return false
+  }
+  if (structural) return true
   // Bold / italic: real tags (not Google Docs' outer wrapper) or inline styles. Plain paragraphs
   // alone aren't converted (the plain text is already right).
   const bold = [...doc.querySelectorAll('b, strong, em, i')].some(el => !/^docs-internal-guid/.test(el.id || '') && !/font-weight:\s*normal/i.test(el.getAttribute('style') || '') && el.textContent.trim())

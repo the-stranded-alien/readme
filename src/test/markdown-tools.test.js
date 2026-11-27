@@ -520,3 +520,19 @@ describe('guided start', () => {
   })
 })
 
+describe('pasting Markdown copied from a code editor', () => {
+  const plain = '# Storage plan\n\nStatus: **draft**\n\n| Data | Where |\n|---|---|\n\n- item'
+  // VS Code puts syntax-coloured HTML on the clipboard next to the plain text.
+  const vscode = `<meta charset='utf-8'><div style="color: #cccccc;background-color: #1f1f1f;font-family: Menlo, Monaco, 'Courier New', monospace;font-weight: normal;font-size: 12px;line-height: 18px;white-space: pre;"><div><span style="color: #569cd6;font-weight: bold;"># Storage plan</span></div><br><div><span style="color: #cccccc;">Status: </span><span style="color: #cccccc;font-weight: bold;">**draft**</span></div><div><span style="color: #cccccc;">| Data | Where |</span></div><div><span style="color: #cccccc;">|---|---|</span></div><br><div><span style="color: #6796e6;">-</span><span style="color: #cccccc;"> item</span></div></div>`
+  it('keeps the plain Markdown (syntax colours are not formatting)', () => {
+    expect(looksRich(vscode, plain)).toBe(false)
+    expect(looksRich('<pre style="font-family: JetBrains Mono, monospace"><span style="font-weight:bold"># Title</span></pre>', '# Title')).toBe(false)
+    expect(looksRich('<div><span style="font-weight:bold">## Notes</span><br><span>- one</span></div>', '## Notes\n- one')).toBe(false)
+  })
+  it('still converts real rich text', () => {
+    expect(looksRich('<p>A <span style="font-weight:700">bold</span> word</p>', 'A bold word')).toBe(true)
+    expect(looksRich('<h2>Title</h2><ul><li>one</li></ul>', 'Title\none')).toBe(true)
+    expect(looksRich('<b style="font-weight:normal" id="docs-internal-guid-1"><span style="font-weight:700">Bold</span></b>', 'Bold')).toBe(true)
+  })
+})
+
