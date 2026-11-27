@@ -1,6 +1,11 @@
 import JSZip from 'jszip'
 import { publishSite } from '../sitePublisher.js'
 import { applyCorrections, locateQuote, reviewChunks, reviewWriting } from '../onDeviceAi.js'
+import { editPlan, htmlToInline, inlineToHtml, nextPrefix, rehypeSourceRanges, roundTrips, splitBlock } from '../previewEdit.js'
+import { unified as unifiedForTest } from 'unified'
+import remarkParseForTest from 'remark-parse'
+import remarkGfmForTest from 'remark-gfm'
+import remarkRehypeForTest from 'remark-rehype'
 import { describe, expect, it } from 'vitest'
 import { htmlToMarkdown, looksRich, parseDelimited, rowsToMarkdownTable, webPageToMarkdown } from '../htmlToMarkdown.js'
 
@@ -337,6 +342,47 @@ describe('on-device writing review', () => {
     expect(locateQuote('Hello there world.', blocks, 'there')).toEqual({ from: 6, to: 11 })
     expect(locateQuote('Hello there world.', blocks, 'ab')).toBeNull()
     expect(locateQuote('Hello there world.', blocks, 'nowhere')).toBeNull()
+  })
+})
+
+describe('edit in preview', () => {
+  it('marks rendered blocks with the source range they came from', async () => {
+    const md = '# Title\n\nA paragraph.\n\n- one\n- two\n\n```js\nx\n```\n'
+    const processor = unifiedForTest().use(remarkParseForTest).use(remarkGfmForTest).use(remarkRehypeForTest).use(rehypeSourceRanges)
+    const tree = await processor.run(processor.parse(md))
+    const marked = []
+    const walk = node => { if (node.properties?.dataSrcKind) marked.push([node.tagName, node.properties.dataSrcKind, md.slice(node.properties.dataSrcFrom, node.properties.dataSrcTo)]); node.children?.forEach(walk) }
+    walk(tree)
+    expect(marked).toEqual([
+      ['h1', 'h', '# Title'], ['p', 'p', 'A paragraph.'], ['li', 'li', '- one'], ['li', 'li', '- two'],
+      ['pre', 'code', '```js\nx\n```'], ['code', 'code', '```js\nx\n```'],
+    ])
+  })
+  it('splits blocks into marker and text', () => {
+    expect(splitBlock('h', '## Steps to follow ##')).toEqual({ prefix: '## ', inline: 'Steps to follow' })
+    expect(splitBlock('li', '- [x] Done **now**')).toEqual({ prefix: '- [x] ', inline: 'Done **now**' })
+    expect(splitBlock('li', '12. Twelfth')).toEqual({ prefix: '12. ', inline: 'Twelfth' })
+    expect(splitBlock('li', '- parent\n  - child')).toBeNull()
+    expect(splitBlock('h', 'Setext\n===')).toBeNull()
+    expect(nextPrefix('li', '3. ')).toBe('4. ')
+    expect(nextPrefix('li', '  - [x] ')).toBe('  - [ ] ')
+    expect(nextPrefix('h', '## ')).toBe('')
+  })
+  it('edits as formatted text only when nothing would change', () => {
+    for (const text of ['Some **bold**, *italic*, `code` and [a link](https://x.y).', 'a_b_c and [[Wiki link]] and 50 * 2', 'Line one\nline two', '~~gone~~ ==marked== $x^2$'])
+      expect(roundTrips(text), text).toBe(true)
+    expect(htmlToInline(inlineToHtml('a_b_c and [[Wiki]]'))).toBe('a_b_c and [[Wiki]]')
+    expect(roundTrips('Press <kbd>Ctrl</kbd>')).toBe(false)
+    expect(editPlan('p', 'Press <kbd>Ctrl</kbd>').mode).toBe('source')
+    expect(editPlan('table', '| a |').mode).toBe('table')
+    expect(editPlan('code', '```\nx\n```').mode).toBe('source')
+    expect(editPlan('h', '## Hi *there*')).toMatchObject({ mode: 'rich', prefix: '## ', html: 'Hi <em>there</em>' })
+  })
+  it('turns edited HTML back into tidy Markdown', () => {
+    expect(htmlToInline('Hello <b>world</b> and <i>you</i>')).toBe('Hello **world** and *you*')
+    expect(htmlToInline('see <a href="https://x.y">https://x.y</a>')).toBe('see https://x.y')
+    expect(htmlToInline('two<br>lines')).toBe('two\nlines')
+    expect(htmlToInline('<br>')).toBe('')
   })
 })
 

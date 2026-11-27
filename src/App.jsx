@@ -12,6 +12,8 @@ import MermaidBlock from './components/MermaidBlock'
 import CommandPalette from './components/CommandPalette'
 import { MD_TEMPLATES, parseFrontmatter } from './templates'
 import { rehypeHeadingSections, headingSlug, headingText } from './headingSections'
+import { rehypeSourceRanges } from './previewEdit'
+import { usePreviewEditing } from './usePreviewEditing'
 import { rehypeCallouts, rehypeStandaloneImages } from './rehypeCallouts'
 import { IMAGE_DATA_URL_RE, autoPair, continueMarkup, countWords, deletePair, formatMarkdownTables, imageFileToDataUrl, imageReferenceMarkdown } from './editorAssist'
 import {
@@ -37,6 +39,7 @@ import ImageLightbox from './components/ImageLightbox'
 import LinkPreview from './components/LinkPreview'
 import PdfExportDialog from './components/PdfExportDialog'
 import PublishSiteDialog from './components/PublishSiteDialog'
+import PreviewEditTools from './components/PreviewEditTools'
 import { useAppInstall } from './appInstall'
 import EmptyWorkspace from './components/EmptyWorkspace'
 import ShortcutsDialog from './components/ShortcutsDialog'
@@ -499,13 +502,14 @@ function SectionHeading({ as, iconSize, node, children, ...rest }) {
   const id = headingSlug(text)
   const key = properties.dataSectionKey
   // Headings outside the section structure (e.g. the hidden footnotes label) keep their own attributes.
+  const range = properties.dataSrcFrom != null ? { 'data-src-from': properties.dataSrcFrom, 'data-src-to': properties.dataSrcTo, 'data-src-kind': properties.dataSrcKind } : {}
   if (!key) return createElement(as, { ...rest, id: rest.id || id }, children)
   const canToggle = Boolean(state && key && !properties.dataEmpty)
   const collapsed = isSectionCollapsed(state, properties)
   const bookmarked = Boolean(extras?.bookmarks?.has(id))
   const headingClass = [canToggle && `has-section-toggle${collapsed ? ' is-collapsed' : ''}`, bookmarked && 'is-bookmarked'].filter(Boolean).join(' ')
   return (
-    createElement(as, { id, 'aria-label': text.trim() || undefined, className: headingClass || undefined }, <>
+    createElement(as, { id, 'aria-label': text.trim() || undefined, className: headingClass || undefined, ...range }, <>
       {canToggle && (
         <button
           type="button"
@@ -588,20 +592,22 @@ function markdownUrlTransform(url, key, node) {
   return defaultUrlTransform(url)
 }
 
-function MarkdownRenderer({ content, dark }) {
+function MarkdownRenderer({ content, dark, sourceRanges = false }) {
   const components = useMemo(() => ({
     pre({ children }) { return <>{children}</> },
 
-    code({ className, children }) {
+    code({ className, children, node }) {
       // Support "language-ts:filename.ts" notation
       const raw = (className || '').replace('language-', '')
       const str = String(children).replace(/\n$/, '')
-      if (raw.toLowerCase() === 'mermaid') {
-        return <DiagramBlock code={str} dark={dark} />
-      }
-      const isBlock = Boolean(raw) || str.includes('\n')
-      if (isBlock) return <CodeBlock rawLang={raw} code={str} dark={dark} />
-      return <code>{children}</code>
+      let block = null
+      if (raw.toLowerCase() === 'mermaid') block = <DiagramBlock code={str} dark={dark} />
+      else if (raw || str.includes('\n')) block = <CodeBlock rawLang={raw} code={str} dark={dark} />
+      if (!block) return <code>{children}</code>
+      // Edit in preview: code blocks carry their source range on a wrapper.
+      const from = node?.properties?.dataSrcFrom
+      if (sourceRanges && from != null) return <div className="pe-src" data-src-from={from} data-src-to={node.properties.dataSrcTo} data-src-kind="code">{block}</div>
+      return block
     },
 
     a(props) {
@@ -624,7 +630,11 @@ function MarkdownRenderer({ content, dark }) {
       return <input type={type} />
     },
 
-    hr() { return <hr /> },
+    hr(props) {
+      const rest = { ...props }
+      delete rest.node
+      return <hr {...rest} />
+    },
     // Tables get an "Edit table" button (shown on hover); the app opens the table editor.
     table(props) {
       const rest = { ...props }
@@ -639,12 +649,16 @@ function MarkdownRenderer({ content, dark }) {
     },
     // Headings with hover-anchor links and a collapse toggle for their section
     ...SECTION_COMPONENTS,
-  }), [dark])
+  }), [dark, sourceRanges])
+  const rehypePlugins = useMemo(() => [
+    ...(sourceRanges ? [rehypeSourceRanges] : []),
+    rehypeKatex, rehypeMarks, rehypeCallouts, rehypeStandaloneImages, rehypeHeadingSections,
+  ], [sourceRanges])
 
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks, remarkMath, remarkWikiLinks]}
-      rehypePlugins={[rehypeKatex, rehypeMarks, rehypeCallouts, rehypeStandaloneImages, rehypeHeadingSections]}
+      rehypePlugins={rehypePlugins}
       urlTransform={markdownUrlTransform}
       components={components}
     >
@@ -2919,6 +2933,14 @@ export default function App() {
     const active = themeClasses(themeById(theme))
     for (const name of ALL_THEME_CLASSES) root.classList.toggle(name, active.includes(name))
     root.classList.toggle('high-contrast', highContrast)
+    // The installed app's title bar (and mobile browser bars) follow the theme.
+    const bar = getComputedStyle(root).getPropertyValue('--bg-header').trim() || getComputedStyle(root).getPropertyValue('--bg-app').trim()
+    // Title bars can't be see-through: drop the alpha ("#ffffffd6" → "#ffffff", rgba → rgb).
+    const solid = /^#[0-9a-f]{8}$/i.test(bar) ? bar.slice(0, 7)
+      : /^rgba\(/i.test(bar) ? bar.replace(/^rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/i, 'rgb($1,$2,$3)') : bar
+    let meta = document.querySelector('meta[name="theme-color"]')
+    if (!meta) { meta = document.createElement('meta'); meta.name = 'theme-color'; document.head.append(meta) }
+    if (solid) meta.content = solid
   }, [isDark, isSepia, highContrast, theme])
   // Turning additional themes off while one is active falls back to Dark.
   useEffect(() => {
@@ -4445,6 +4467,51 @@ export default function App() {
   // ── Content filter (show only headings / tables / code …) ────
   const [filterCount, setFilterCount] = useState(0)
   const docProseRef = useRef(null)
+
+  // ── Edit in preview ─────────────────────────────────────────
+  const [previewEditOn, setPreviewEditOn] = useState(() => { try { return localStorage.getItem('readme-preview-edit') === '1' } catch { return false } })
+  useEffect(() => { try { localStorage.setItem('readme-preview-edit', previewEditOn ? '1' : '0') } catch { /* optional */ } }, [previewEditOn])
+  // Edits made while only the preview is showing get their own undo / redo (the editor is hidden).
+  const previewHistoryRef = useRef({ fileId: null, undo: [], redo: [] })
+  const applyPreviewEdit = useCallback(({ from, to, text }) => {
+    const offset = content.length - markdownBody.length
+    const ta = textareaRef.current
+    if (view !== 'preview' && ta && (ta.applyEdit || (ta instanceof HTMLTextAreaElement && ta.value === content))) {
+      // The editor is showing: one undoable edit there (and the caret follows the change).
+      const before = document.activeElement
+      applyTextareaEdit(ta, { from: from + offset, to: to + offset, text, cursor: from + offset + text.length })
+      if (before && before !== ta && before !== document.body && before.isConnected) before.focus({ preventScroll: true })
+      else ta.blur?.()
+      return
+    }
+    const history = previewHistoryRef.current
+    if (history.fileId !== activeFileId) Object.assign(history, { fileId: activeFileId, undo: [], redo: [] })
+    history.undo.push(content)
+    if (history.undo.length > 100) history.undo.shift()
+    history.redo = []
+    updateActiveContent(content.slice(0, from + offset) + text + content.slice(to + offset))
+  }, [content, markdownBody, view, activeFileId, updateActiveContent])
+  const previewEditing = usePreviewEditing({
+    enabled: previewEditOn && view !== 'editor' && Boolean(activeFile) && !presenting,
+    rootRef: docProseRef, body: markdownBody, applyEdit: applyPreviewEdit, askText,
+  })
+  useEffect(() => {
+    if (!previewEditOn || view !== 'preview') return undefined
+    const onKey = event => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return
+      if (event.target.closest?.('input, textarea, select, [contenteditable="true"], .cm-editor')) return
+      const history = previewHistoryRef.current
+      if (history.fileId !== activeFileId) return
+      const stack = event.shiftKey ? history.redo : history.undo
+      if (!stack.length) return
+      event.preventDefault()
+      const target = stack.pop()
+      ;(event.shiftKey ? history.undo : history.redo).push(content)
+      updateActiveContent(target)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [previewEditOn, view, activeFileId, content, updateActiveContent])
   // Re-apply after every render of the page content (React may replace nodes).
   useLayoutEffect(() => {
     const root = docProseRef.current
@@ -5679,6 +5746,7 @@ ${fontCss}
     ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => { setDiffCompareId(null); setDiffOpen(true) } }] : []),
     ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
+    ...(activeFile ? [{ id: 'preview-edit', label: previewEditOn ? 'Stop editing in the preview' : 'Edit in preview', hint: 'View', icon: Pencil, run: () => { setPreviewEditOn(on => !on); if (view === 'editor') setView('preview') } }] : []),
     { id: 'graph', label: 'Graph of linked documents', hint: 'View', icon: Workflow, run: () => setGraphOpen(true) },
     { id: 'publish-site', label: 'Publish as a website', hint: 'Export', icon: Globe, run: () => setPublishOpen(true) },
     { id: 'tasks', label: 'Tasks in all documents…', hint: shortcut('K', { shift: true }), icon: ListChecks, run: () => setTasksOpen(true) },
@@ -5729,7 +5797,7 @@ ${fontCss}
       { id: 'dl-zip', label: `Export All Files (${files.length}) as ZIP`, hint: 'Export', icon: FileArchive, run: handleExportZip },
     ] : []),
   ], [
-    handleNewFile, appInstall.status, handleInstallApp, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
+    handleNewFile, appInstall.status, handleInstallApp, previewEditOn, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
     toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
     handleExportHtml, handleExportConfluence, handleCopyConfluence, handleExportSlides, openTableEditor, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables,
@@ -6270,6 +6338,19 @@ ${fontCss}
                   </div>
                   <button
                     type="button"
+                    onClick={() => setPreviewEditOn(on => !on)}
+                    disabled={!activeFile}
+                    aria-pressed={previewEditOn}
+                    data-tooltip={previewEditOn ? 'Stop editing in the preview' : 'Edit in preview: click any paragraph, heading or list item to change it'}
+                    aria-label="Edit in preview"
+                    className={`btn-icon !p-1 disabled:opacity-40${previewEditOn ? ' is-active' : ''}`}
+                    style={{ color: previewEditOn ? 'var(--accent)' : 'var(--text-4)', background: previewEditOn ? 'var(--accent-soft)' : 'transparent' }}
+                  >
+                    <Pencil size={12} />
+                    {view === 'preview' && <span className="reader-toolbar-label text-[10px] font-medium whitespace-nowrap">{previewEditOn ? 'Editing' : 'Edit'}</span>}
+                  </button>
+                  <button
+                    type="button"
                     onClick={saveReadingBookmark}
                     disabled={!activeFile}
                     data-tooltip={activeBookmark ? 'Update saved reading position' : 'Bookmark this reading position'}
@@ -6781,10 +6862,16 @@ ${fontCss}
                         >
                           <SectionCollapseContext.Provider value={sectionCollapseValue}>
                             <SectionExtrasContext.Provider value={sectionExtrasValue}>
-                              <MarkdownRenderer content={markdownBody} dark={isDark} />
+                              <MarkdownRenderer content={markdownBody} dark={isDark} sourceRanges={previewEditOn} />
                             </SectionExtrasContext.Provider>
                           </SectionCollapseContext.Provider>
                         </div>
+                        {previewEditOn && (
+                          <button type="button" className="pe-add no-print" onClick={previewEditing.addParagraphAtEnd}>
+                            <Plus size={13} /> Add a paragraph
+                          </button>
+                        )}
+                        {previewEditOn && <PreviewEditTools editing={previewEditing} />}
 
                         {focusSection && !searchingDocument && (
                           <nav className="focus-section-bar no-print" aria-label="Section focus">

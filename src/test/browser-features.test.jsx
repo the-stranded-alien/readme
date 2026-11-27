@@ -1079,6 +1079,36 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Publish as a website' })).toBeNull())
   })
 
+  it('edits blocks right in the preview when Edit in preview is on', async () => {
+    await writeWorkspace({ activeId: 'pe', files: [{ id: 'pe', name: 'Edit.md', content: '# Title\n\nHello world.\n\n```js\nconst a = 1\n```\n' }] })
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit in preview' }))
+    await waitFor(() => expect(document.querySelector('.doc-prose p[data-src-kind="p"]')).toBeTruthy())
+    // A paragraph opens as formatted text.
+    window.getSelection?.()?.removeAllRanges?.()
+    await waitFor(() => {
+      if (!document.querySelector('.pe-text')) fireEvent.click(document.querySelector('.doc-prose p[data-src-kind="p"]'))
+      expect(document.querySelector('.pe-text')).toBeTruthy()
+    })
+    const box = await screen.findByRole('textbox', { name: 'Edit paragraph' })
+    expect(box.innerHTML).toBe('Hello world.')
+    box.innerHTML = 'Hello <b>there</b>.'
+    fireEvent.keyDown(box, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('.doc-prose p[data-src-kind="p"]')?.textContent).toBe('Hello there.'))
+    // A code block opens as its Markdown source.
+    fireEvent.click(document.querySelector('.doc-prose [data-src-kind="code"] .code-wrapper'))
+    const source = await screen.findByRole('textbox', { name: 'Edit code block (Markdown)' })
+    expect(source.value).toBe('```js\nconst a = 1\n```')
+    fireEvent.change(source, { target: { value: '```js\nconst a = 2\n```' } })
+    fireEvent.keyDown(source, { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(document.querySelector('.doc-prose .code-wrapper')?.textContent).toContain('const a = 2'))
+    // Off again: no source markers.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit in preview' }))
+    await waitFor(() => expect(document.querySelector('.doc-prose [data-src-kind]')).toBeNull())
+    localStorage.removeItem('readme-preview-edit')
+  })
+
   it('uses the CodeMirror editor (opt-in) with folds that mirror the preview', async () => {
     localStorage.setItem('readme-editor-prefs', JSON.stringify({ engine: 'code', version: 2 }))
     const doc = ['# Book', '', 'Intro', '', '## One', '', 'First body', '', '## Two', '', 'Second body'].join('\n')

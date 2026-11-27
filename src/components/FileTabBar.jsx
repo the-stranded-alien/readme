@@ -286,14 +286,6 @@ export default function FileTabBar({
           <FolderTree size={14} />
         </button>
       )}
-      {onOpenTasks && (
-        <button type="button" onClick={onOpenTasks} className="file-tree-toggle file-tabs-tasks"
-          data-tooltip={tasksDueCount ? `Tasks: ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}
-          aria-label={tasksDueCount ? `Tasks, ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}>
-          <ListChecks size={14} />
-          {tasksDueCount > 0 && <span className="header-badge" aria-hidden="true">{tasksDueCount > 99 ? '99+' : tasksDueCount}</span>}
-        </button>
-      )}
       <button type="button" onClick={onCreate} className="file-tab-add tooltip-start" data-tooltip="New file" aria-label="New file">
         <FilePlus size={12} />
         <span>New</span>
@@ -495,6 +487,15 @@ export default function FileTabBar({
             <GitCompare size={14} />
           </button>
         </div>
+        {onOpenTasks && (
+          <button type="button" onClick={onOpenTasks} className="file-tabs-command-button file-tabs-tasks"
+            data-tooltip={tasksDueCount ? `Tasks: ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}
+            aria-label={tasksDueCount ? `Tasks, ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}>
+            <ListChecks size={14} />
+            {tasksDueCount > 0 && <span className="header-badge" aria-hidden="true">{tasksDueCount > 99 ? '99+' : tasksDueCount}</span>}
+          </button>
+        )}
+
         <label className="file-tabs-command-search">
           <Search size={13} aria-hidden="true" />
           <input

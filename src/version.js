@@ -4,9 +4,17 @@
  * and add a RELEASES entry at the top: only meaningful changes (at most 4 points, fewer is
  * fine; skip small fixes), newest first, keeping the last 5. See Guidelines.md.
  */
-export const APP_VERSION = '2.4'
+export const APP_VERSION = '2.5'
 
 export const RELEASES = [
+  {
+    version: '2.5',
+    date: '2026-11-27',
+    notes: [
+      'Edit in preview: click any paragraph, heading or list item in the preview and change it right there, with a formatting bar and “/” for new blocks.',
+      'In the installed app, the title bar now follows your theme.',
+    ],
+  },
   {
     version: '2.4',
     date: '2026-11-27',
@@ -36,16 +44,6 @@ export const RELEASES = [
     notes: [
       'Tasks: every task from all your documents in one panel, with due dates, tags and priorities.',
       'Tick tasks straight in the preview.',
-    ],
-  },
-  {
-    version: '2.0',
-    date: '2026-11-27',
-    notes: [
-      'Paste from Word, Google Docs, Confluence or the web as clean Markdown; open Word and HTML files.',
-      'Wiki links: type [[ to link documents, with “Linked from” in the Contents bar.',
-      'Visual table editor: edit tables in a grid — add, move, align and sort rows and columns.',
-      'Reorganise documents from the Contents bar: drag sections, promote, demote or move them to another file.',
     ],
   },
 ]
