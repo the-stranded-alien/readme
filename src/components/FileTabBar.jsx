@@ -291,9 +291,8 @@ export default function FileTabBar({
           <Library size={14} />
         </button>
       )}
-      <button type="button" onClick={onCreate} className="file-tab-add tooltip-start" data-tooltip="New file" aria-label="New file">
-        <FilePlus size={12} />
-        <span>New</span>
+      <button type="button" onClick={onCreate} className="file-tree-toggle tooltip-start" data-tooltip="New File" aria-label="New File">
+        <FilePlus size={14} />
       </button>
       <div
         ref={scrollRef}

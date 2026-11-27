@@ -759,7 +759,7 @@ function HeaderViewMenu({ items, extra }) {
           setPosition(current => (current ? null : { top: rect.bottom + 8, left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)), width }))
         }}
       >
-        <SlidersHorizontal size={15} />
+        <Eye size={15} />
       </button>
       {position && createPortal(
         <div ref={menuRef} className="view-menu anim-pop-in no-print" role="menu" aria-label="View options" style={{ top: position.top, left: position.left, width: position.width }}>
@@ -1465,11 +1465,17 @@ function loadInitialWorkspace() {
 
 // ── Reader preferences (long-form book reading) ───────────────
 const DOC_FONTS = [
-  { id: 'inter',  num: 1, label: 'Inter (Clean Sans)',         family: "'Inter', system-ui, sans-serif",          isSerif: false },
-  { id: 'lora',   num: 2, label: 'Lora (Book Serif)',          family: "'Lora', Georgia, serif",                  isSerif: true  },
-  { id: 'plex',   num: 3, label: 'IBM Plex Sans (Tech)',       family: "'IBM Plex Sans', system-ui, sans-serif",  isSerif: false },
-  { id: 'serif4', num: 4, label: 'Source Serif 4 (Editorial)', family: "'Source Serif 4', Georgia, serif",        isSerif: true  },
-  { id: 'roboto', num: 5, label: 'Roboto (Neutral Sans)',       family: "'Roboto', Arial, sans-serif",               isSerif: false },
+  { id: 'inter',    num: 1,  label: 'Inter (Clean Sans)',         family: "'Inter', system-ui, sans-serif",          isSerif: false },
+  { id: 'lora',     num: 2,  label: 'Lora (Book Serif)',          family: "'Lora', Georgia, serif",                  isSerif: true  },
+  { id: 'plex',     num: 3,  label: 'IBM Plex Sans (Tech)',       family: "'IBM Plex Sans', system-ui, sans-serif",  isSerif: false },
+  { id: 'serif4',   num: 4,  label: 'Source Serif 4 (Editorial)', family: "'Source Serif 4', Georgia, serif",        isSerif: true  },
+  { id: 'roboto',   num: 5,  label: 'Roboto (Neutral Sans)',      family: "'Roboto', Arial, sans-serif",             isSerif: false },
+  { id: 'merri',    num: 6,  label: 'Merriweather (Classic)',     family: "'Merriweather', Georgia, serif",          isSerif: true  },
+  { id: 'playfair', num: 7,  label: 'Playfair Display (Heading)', family: "'Playfair Display', Georgia, serif",      isSerif: true  },
+  { id: 'jakarta',  num: 8,  label: 'Plus Jakarta Sans (Modern)', family: "'Plus Jakarta Sans', system-ui, sans-serif", isSerif: false },
+  { id: 'mono',     num: 9,  label: 'JetBrains Mono (Code)',      family: "'JetBrains Mono', 'Fira Code', monospace", isSerif: false },
+  { id: 'georgia',  num: 10, label: 'Georgia (Traditional)',      family: "Georgia, 'Times New Roman', serif",       isSerif: true  },
+  { id: 'system',   num: 11, label: 'System UI (Native)',         family: "system-ui, -apple-system, sans-serif",    isSerif: false },
 ]
 const READER_SIZES = {
   sm: { label: 'S',  px: '15px' },
@@ -1578,18 +1584,17 @@ function ReaderSettingsPopover({ prefs, onChange, onClose, density, onDensityCha
             Typography
           </div>
           {docStyle && docStyle !== 'readme' && <p className="doc-style-note">Fonts come from the {docStyleById(docStyle).label} style. Pick ReadMe above to choose your own.</p>}
-          <div className="grid grid-cols-1 gap-1">
+          <select
+            aria-label="Reading font"
+            disabled={Boolean(docStyle && docStyle !== 'readme')}
+            value={prefs.fontIndex}
+            onChange={event => onChange({ ...prefs, fontIndex: Number(event.target.value) })}
+            className="w-full reader-chip text-left"
+          >
             {DOC_FONTS.map((f, idx) => (
-              <button key={f.id} disabled={Boolean(docStyle && docStyle !== 'readme')}
-                onClick={() => onChange({ ...prefs, fontIndex: idx })}
-                className={`reader-chip text-left flex items-center justify-between ${prefs.fontIndex === idx ? 'active' : ''}`}
-                style={{ fontFamily: f.family }}
-              >
-                <span>{f.label}</span>
-                <span className="text-[10px] opacity-70">{f.num}</span>
-              </button>
+              <option key={f.id} value={idx}>{f.label}</option>
             ))}
-          </div>
+          </select>
         </div>
 
         <div>
@@ -6317,19 +6322,29 @@ ${fontCss}
             <HeaderViewMenu
               items={[
                 { id: 'awake', label: 'Keep screen awake while reading', icon: keepAwake ? MonitorUp : MonitorDown, run: () => setKeepAwake(value => !value), checked: keepAwake },
-                { id: 'font', label: `Reading font: ${activeFont.label}`, hint: `${readerPrefs.fontIndex + 1}/${DOC_FONTS.length}`, icon: Type, run: cycleDocFont, keepOpen: true },
                 { id: 'contrast', label: 'High contrast', icon: Contrast, run: toggleHighContrast, checked: highContrast },
               ]}
               extra={(
-                <div className="view-menu-select-row">
-                  <span className="view-menu-icon" aria-hidden="true"><Palette size={15} /></span>
-                  <label htmlFor="view-menu-theme">Theme</label>
-                  <select id="view-menu-theme" className="view-menu-select" value={theme} onChange={event => chooseTheme(event.target.value)} aria-label="Theme">
-                    {availableThemes(appSettings.extraThemes).map(item => (
-                      <option key={item.id} value={item.id}>{item.label}</option>
-                    ))}
-                  </select>
-                </div>
+                <>
+                  <div className="view-menu-select-row">
+                    <span className="view-menu-icon" aria-hidden="true"><Type size={15} /></span>
+                    <label htmlFor="view-menu-font">Reading font</label>
+                    <select id="view-menu-font" className="view-menu-select" value={readerPrefs.fontIndex} onChange={event => setReaderPrefs(p => ({ ...p, fontIndex: Number(event.target.value) }))} aria-label="Reading font">
+                      {DOC_FONTS.map((f, idx) => (
+                        <option key={f.id} value={idx}>{f.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="view-menu-select-row">
+                    <span className="view-menu-icon" aria-hidden="true"><Palette size={15} /></span>
+                    <label htmlFor="view-menu-theme">Theme</label>
+                    <select id="view-menu-theme" className="view-menu-select" value={theme} onChange={event => chooseTheme(event.target.value)} aria-label="Theme">
+                      {availableThemes(appSettings.extraThemes).map(item => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
               )}
             />
             {!appSettings.workspaceSyncDisabled && (() => {

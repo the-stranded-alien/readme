@@ -490,8 +490,8 @@ describe('advanced browser features', () => {
 
   it('pins, labels, closes others and reopens tabs from the tab context menu', async () => {
     installApp()
-    fireEvent.click(document.querySelector('.file-tab-add'))
-    fireEvent.click(document.querySelector('.file-tab-add'))
+    fireEvent.click(screen.getByRole('button', { name: 'New File' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New File' }))
     const tabs = () => screen.getAllByRole('tab')
     expect(tabs()).toHaveLength(3)
 
@@ -524,7 +524,7 @@ describe('advanced browser features', () => {
 
   it('opens a fuzzy file switcher from the files pill', async () => {
     installApp()
-    fireEvent.click(document.querySelector('.file-tab-add'))
+    fireEvent.click(screen.getByRole('button', { name: 'New File' }))
     fireEvent.click(screen.getByRole('button', { name: /2 open files/ }))
     const input = await screen.findByRole('combobox', { name: 'Find a file' })
     fireEvent.change(input, { target: { value: 'wlcm' } })
@@ -540,7 +540,7 @@ describe('advanced browser features', () => {
 
   it('reorders tabs with drag and drop', async () => {
     installApp()
-    fireEvent.click(document.querySelector('.file-tab-add'))
+    fireEvent.click(screen.getByRole('button', { name: 'New File' }))
     const [first, second] = screen.getAllByRole('tab')
     const names = [first.getAttribute('aria-label'), second.getAttribute('aria-label')]
     const data = new Map()
@@ -2284,5 +2284,25 @@ describe('advanced browser features', () => {
     fireEvent.change(editor, { target: { value: '# Open updated' } })
     fireEvent.keyDown(window, { key: 's', metaKey: true })
     await waitFor(() => expect(written.get('open.md')).toBe('# Open updated'))
+  })
+
+  it('offers more fonts as a dropdown in View options, matches New File icon, and hides file tree hint', async () => {
+    installApp()
+    // New File button in FileTabBar uses circle icon style without "New" label
+    const newFileBtn = await screen.findByRole('button', { name: 'New File' })
+    expect(newFileBtn).toHaveClass('file-tree-toggle')
+    expect(newFileBtn).toHaveAttribute('data-tooltip', 'New File')
+    expect(newFileBtn).toHaveTextContent('')
+
+    // Font dropdown in View options with 11 options
+    fireEvent.click(screen.getByRole('button', { name: 'View options' }))
+    const fontSelect = screen.getByRole('combobox', { name: 'Reading font' })
+    expect(fontSelect.querySelectorAll('option').length).toBeGreaterThanOrEqual(10)
+    fireEvent.change(fontSelect, { target: { value: '5' } })
+    expect(JSON.parse(localStorage.getItem('readme-reader-prefs')).fontIndex).toBe(5)
+
+    // FileTree has no bottom hint
+    fireEvent.click(screen.getByRole('button', { name: 'Show file tree' }))
+    expect(document.querySelector('.file-tree-hint')).toBeNull()
   })
 })

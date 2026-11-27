@@ -5,9 +5,18 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '3.1'
+export const APP_VERSION = '3.2'
 
 export const RELEASES = [
+  {
+    version: '3.2',
+    date: '2026-11-27',
+    notes: [
+      'Added 6 more reading fonts and changed Reading font to a dropdown in View options and Aa settings.',
+      'Updated the View options icon and header action order.',
+      'Matched the New File button in the tab bar to the circular icon style and removed the bottom hint from the Files panel.',
+    ],
+  },
   {
     version: '3.1',
     date: '2026-11-27',

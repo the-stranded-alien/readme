@@ -180,7 +180,6 @@ export default function FileTree({
           Clear {closedList.length} closed file{closedList.length === 1 ? '' : 's'} from the list
         </button>
       )}
-      <p className="file-tree-hint">Closed files stay here; click one to reopen it. Drag a file onto a folder to move it, or into the editor to link to it. Folders come from paths like <code>notes/plan.md</code>.</p>
     </aside>
   )
 }
