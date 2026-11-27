@@ -138,7 +138,9 @@ describe('advanced browser features', () => {
     expect(screen.getByRole('button', { name: 'Cat coat' })).toHaveTextContent('Lavender')
     await waitFor(() => expect(JSON.parse(localStorage.getItem('readme-reading-pet')).version).toBe(4))
     fireEvent.click(screen.getByRole('button', { name: 'Cat coat' }))
-    fireEvent.click(screen.getByRole('option', { name: 'Calico' }))
+    const calicoOption = screen.getByRole('option', { name: 'Calico' })
+    expect(calicoOption.querySelector('.reading-pet-coat-cat').style.color).toBe('rgb(217, 119, 6)')
+    fireEvent.click(calicoOption)
     expect(screen.getByRole('button', { name: 'Cat coat' })).toHaveTextContent('Calico')
     expect(screen.getByLabelText('Cat count')).toHaveTextContent('1')
     fireEvent.click(screen.getByRole('button', { name: 'Add a cat' }))
@@ -164,13 +166,12 @@ describe('advanced browser features', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pet' }))
     expect(screen.getByRole('button', { name: 'Cat coat' })).toHaveTextContent('Lavender')
     expect(screen.queryByRole('switch', { name: 'Customize each cat' })).not.toBeInTheDocument()
-    const advanced = screen.getByText('Advanced').closest('details')
-    expect(advanced).not.toHaveAttribute('open')
+    expect(screen.getByRole('heading', { name: 'Advanced options' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Advanced options' }).closest('details')).toBeNull()
     expect(screen.queryByRole('button', { name: /custom artwork/i })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Cat coat' }))
     expect(screen.getAllByRole('option')).toHaveLength(24)
     fireEvent.click(screen.getByRole('button', { name: 'Roam screen' }))
-    fireEvent.click(screen.getByText('Advanced'))
 
     for (const name of ['Sleep when idle', 'Zoomies while roaming', 'Nap while I type', 'Follow keyboard focus', 'Perch on hovered controls', 'Allow keyboard petting', 'Drag and toss', 'Drop fish treats on double-click', 'Thought bubbles', 'Meow sounds', 'Cats follow one another', 'Remember roaming positions', 'Avoid app toolbars', 'Visit document headings']) {
       expect(screen.getByRole('switch', { name })).toBeInTheDocument()
@@ -2335,9 +2336,11 @@ describe('advanced browser features', () => {
 
     // Hide / Show closed files toggle
     expect(within(tree).getByRole('treeitem', { name: 'One.md (closed)' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Hide closed files' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Closed file options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide closed files' }))
     expect(within(tree).queryByRole('treeitem', { name: 'One.md (closed)' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Show closed files' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Closed file options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show closed files' }))
     expect(within(tree).getByRole('treeitem', { name: 'One.md (closed)' })).toBeInTheDocument()
 
     // Reorder files via drag and drop in Files panel and verify in Library
@@ -2372,7 +2375,8 @@ describe('advanced browser features', () => {
     expect(fileNames.indexOf('Alpha.md')).toBeLessThan(fileNames.indexOf('Beta.md'))
 
     // Delete all closed files shows confirmation with count and file names
-    fireEvent.click(screen.getByRole('button', { name: 'Delete all closed files' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Closed file options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete all closed files (2)' }))
     const confirm = await screen.findByRole('alertdialog', { name: 'Delete 2 files?' })
     expect(confirm).toHaveTextContent('One.md')
     expect(confirm).toHaveTextContent('Two.md')

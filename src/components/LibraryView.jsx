@@ -142,7 +142,8 @@ export default function LibraryView({
       if (!onReorderFile || !Array.from(event.dataTransfer?.types || []).includes(LIB_FILE_DRAG)) return
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
-      setDropIndicator({ kind: 'file', key: docId, after: isAfter(event) })
+      const after = isAfter(event)
+      setDropIndicator(current => current?.kind === 'file' && current.key === docId && current.after === after ? current : { kind: 'file', key: docId, after })
     },
     onDrop: event => {
       if (!onReorderFile || !Array.from(event.dataTransfer?.types || []).includes(LIB_FILE_DRAG)) return
@@ -175,7 +176,8 @@ export default function LibraryView({
       if (!onReorderFolder || !Array.from(event.dataTransfer?.types || []).includes(LIB_FOLDER_DRAG)) return
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
-      setDropIndicator({ kind: 'folder', key: folderPath, after: isAfter(event) })
+      const after = isAfter(event)
+      setDropIndicator(current => current?.kind === 'folder' && current.key === folderPath && current.after === after ? current : { kind: 'folder', key: folderPath, after })
     },
     onDrop: event => {
       if (!onReorderFolder || !Array.from(event.dataTransfer?.types || []).includes(LIB_FOLDER_DRAG)) return

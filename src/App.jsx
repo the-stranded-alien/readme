@@ -2098,6 +2098,14 @@ function DownloadMenuButton({
 
 // ── FileTabBar ─────────────────────────────────────────────────
 const READING_PET_SKINS = ONEKO_SKINS.map(skin => skin.id)
+const READING_PET_SKIN_COLORS = {
+  classic: '#9b6b45', black: '#64748b', gray: '#94a3b8', calico: '#d97706', tora: '#c2410c',
+  catppuccin: '#cba6f7', ghost: '#cbd5e1', silver: '#94a3b8', spirit: '#a78bfa', valentine: '#e11d48',
+  maia: '#e879a9', vaporwave: '#d946ef', ginger: '#ea580c', sage: '#65a30d', siamese: '#8b5e3c',
+  'strawberry-milk': '#f472b6', 'blue-frost': '#38bdf8', lavender: '#a78bfa', tuxedo: '#475569',
+  peach: '#fb923c', honey: '#ca8a04', mocha: '#92400e', mint: '#14b8a6', 'midnight-blue': '#3b82f6',
+}
+const petSkinColor = id => READING_PET_SKIN_COLORS[id] || '#a78bfa'
 
 function ReadingPetCoatDropdown({ value, onChange, ariaLabel = 'Cat coat' }) {
   const rootRef = useRef(null)
@@ -2130,6 +2138,7 @@ function ReadingPetCoatDropdown({ value, onChange, ariaLabel = 'Cat coat' }) {
         aria-haspopup="listbox"
         aria-expanded={open}
       >
+        <Cat className="reading-pet-coat-cat" size={15} style={{ color: petSkinColor(value) }} aria-hidden="true" />
         <span>{selectedSkin?.name || 'Lavender'}</span>
         <ChevronDown size={13} aria-hidden="true" />
       </button>
@@ -2147,6 +2156,7 @@ function ReadingPetCoatDropdown({ value, onChange, ariaLabel = 'Cat coat' }) {
                 aria-selected={skin.id === value}
                 onClick={() => { onChange(skin.id); setOpen(false) }}
               >
+                <Cat className="reading-pet-coat-cat" size={15} style={{ color: petSkinColor(skin.id) }} aria-hidden="true" />
                 <span>{skin.name}</span>
                 {skin.id === value && <Check size={13} aria-hidden="true" />}
               </button>
@@ -2259,8 +2269,8 @@ function ReadingPetSettings({ prefs, onChange, lite }) {
         </div>
       </section>
 
-      <details className="reading-pet-advanced">
-        <summary>Advanced</summary>
+      <div className="reading-pet-advanced">
+        <h3 className="reading-pet-advanced-title">Advanced options</h3>
         <div className="reading-pet-advanced-options">
           <section className="reading-pet-section" aria-label="Behavior">
             <h3>Behavior</h3>
@@ -2299,7 +2309,7 @@ function ReadingPetSettings({ prefs, onChange, lite }) {
             <ReadingPetToggle label="Visit document headings" checked={prefs.visitHeadings} onChange={value => updatePref('visitHeadings', value)} disabled={!prefs.roaming} />
           </section>
         </div>
-      </details>
+      </div>
     </div>
   )
 }

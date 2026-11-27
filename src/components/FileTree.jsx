@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { ChevronRight, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, Pin, PinOff, RotateCcw, Trash2, X } from '../icons'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronRight, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, MoreHorizontal, Pencil, Pin, PinOff, RotateCcw, Trash2, X } from '../icons'
 import { FILE_DRAG_TYPE, MAX_FOLDER_DEPTH, folderDepth, isModifiedFromDisk, labelColor } from '../fileUtils'
 
 const FOLDER_DRAG_TYPE = 'application/x-readme-folder'
@@ -41,6 +41,16 @@ export default function FileTree({
   const [showClosed, setShowClosed] = useState(() => {
     try { return localStorage.getItem(SHOW_CLOSED_KEY) !== 'false' } catch { return true }
   })
+  const [closedMenuOpen, setClosedMenuOpen] = useState(false)
+  const closedMenuRef = useRef(null)
+  useEffect(() => {
+    if (!closedMenuOpen) return undefined
+    const closeOutside = event => { if (!closedMenuRef.current?.contains(event.target)) setClosedMenuOpen(false) }
+    const closeEscape = event => { if (event.key === 'Escape') setClosedMenuOpen(false) }
+    document.addEventListener('mousedown', closeOutside)
+    document.addEventListener('keydown', closeEscape)
+    return () => { document.removeEventListener('mousedown', closeOutside); document.removeEventListener('keydown', closeEscape) }
+  }, [closedMenuOpen])
   const toggleShowClosed = () => setShowClosed(prev => {
     const next = !prev
     try { localStorage.setItem(SHOW_CLOSED_KEY, String(next)) } catch { /* optional */ }
@@ -79,7 +89,7 @@ export default function FileTree({
         const rect = event.currentTarget.getBoundingClientRect()
         const after = event.clientY > rect.top + rect.height / 2
         event.dataTransfer.dropEffect = 'move'
-        setReorderTarget({ kind: 'folder', key: folderPath, after })
+        setReorderTarget(current => current?.kind === 'folder' && current.key === folderPath && current.after === after ? current : { kind: 'folder', key: folderPath, after })
         return
       }
       if (!hasFileDrag(event)) return
@@ -126,7 +136,7 @@ export default function FileTree({
       const rect = event.currentTarget.getBoundingClientRect()
       const after = event.clientY > rect.top + rect.height / 2
       event.dataTransfer.dropEffect = 'move'
-      setReorderTarget({ kind: 'file', key: fileId, after })
+      setReorderTarget(current => current?.kind === 'file' && current.key === fileId && current.after === after ? current : { kind: 'file', key: fileId, after })
     },
     onDragLeave: event => {
       if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -270,6 +280,22 @@ export default function FileTree({
         <span className="file-tree-header-actions">
           <button type="button" onClick={() => onNewFile('')} data-tip="New file" aria-label="New file at top level"><FilePlus size={13} /></button>
           <button type="button" onClick={onNewFolder} data-tip="New folder" aria-label="New folder"><FolderPlus size={13} /></button>
+          {closedList.length > 0 && (
+            <div className="file-tree-more-wrap" ref={closedMenuRef}>
+              <button type="button" onClick={() => setClosedMenuOpen(open => !open)} aria-expanded={closedMenuOpen}
+                aria-label="Closed file options" data-tip="Closed file options"><MoreHorizontal size={15} /></button>
+              {closedMenuOpen && (
+                <div className="file-tree-more-menu anim-pop-in" role="menu" aria-label="Closed file options">
+                  <button type="button" role="menuitem" onClick={() => { toggleShowClosed(); setClosedMenuOpen(false) }}>
+                    <Eye size={16} /><span>{showClosed ? 'Hide closed files' : 'Show closed files'}</span>
+                  </button>
+                  <button type="button" role="menuitem" className="is-danger" onClick={() => { setClosedMenuOpen(false); (onDeleteClosed || onForget)(closedList.map(file => file.id)) }}>
+                    <Trash2 size={16} /><span>Delete all closed files ({closedList.length})</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <button type="button" onClick={onClose} data-tip="Hide files" aria-label="Hide file tree"><X size={13} /></button>
         </span>
       </div>
@@ -278,25 +304,6 @@ export default function FileTree({
         {(() => { const entries = orderedFiles(tree.files); const ids = entries.map(entry => entry.file.id); return entries.map(entry => renderFile(entry, 0, ids, '')) })()}
         {files.length === 0 && visibleClosed.length === 0 && emptyFolders.length === 0 && <li className="file-tree-empty">No files yet</li>}
       </ul>
-      {closedList.length > 0 && (
-        <div className="file-tree-closed-actions">
-          <button
-            type="button"
-            className="file-tree-closed-btn"
-            onClick={toggleShowClosed}
-            aria-pressed={!showClosed}
-            data-tip={showClosed ? 'Hide closed files' : 'Show closed files'}
-            aria-label={showClosed ? 'Hide closed files' : 'Show closed files'}
-          ><Eye size={13} /></button>
-          <button
-            type="button"
-            className="file-tree-closed-btn is-danger"
-            onClick={() => (onDeleteClosed || onForget)(closedList.map(file => file.id))}
-            data-tip="Delete all closed files"
-            aria-label="Delete all closed files"
-          ><Trash2 size={13} /></button>
-        </div>
-      )}
     </aside>
   )
 }
