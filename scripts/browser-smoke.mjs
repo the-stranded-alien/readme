@@ -38,7 +38,34 @@ try {
   if (await page.getByPlaceholder('Jump to file, heading, template, or command…').inputValue() !== 'readme smoke search') throw new Error('Saved workspace search did not reopen with its query.')
   await page.keyboard.press('Escape')
 
-  await page.getByRole('button', { name: 'Editor', exact: true }).click()
+  const modeTrack = page.locator('.pill-track')
+  const editorMode = modeTrack.getByRole('button', { name: 'Editor', exact: true })
+  const previewMode = modeTrack.getByRole('button', { name: 'Preview', exact: true })
+  const trackMetrics = await modeTrack.evaluate(track => {
+    const outer = track.getBoundingClientRect()
+    const inner = track.querySelector('.pill-btn').getBoundingClientRect()
+    const active = track.querySelector('.pill-btn.active').getBoundingClientRect()
+    const indicator = track.querySelector('.pill-indicator').getBoundingClientRect()
+    return {
+      topGap: inner.top - outer.top,
+      bottomGap: outer.bottom - inner.bottom,
+      indicatorTopError: Math.abs(active.top - indicator.top),
+      indicatorBottomError: Math.abs(active.bottom - indicator.bottom),
+    }
+  })
+  if (Math.abs(trackMetrics.topGap - trackMetrics.bottomGap) > 1 || trackMetrics.indicatorTopError > 1 || trackMetrics.indicatorBottomError > 1) {
+    throw new Error('View mode capsule spacing or active indicator alignment is uneven.')
+  }
+  if (await modeTrack.locator('.pill-divider').count()) throw new Error('Present is still separated by a divider in the view mode capsule.')
+  const editorBox = await editorMode.boundingBox()
+  const previewBox = await previewMode.boundingBox()
+  await page.mouse.move(editorBox.x + editorBox.width / 2, editorBox.y + editorBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(previewBox.x + previewBox.width / 2, previewBox.y + previewBox.height / 2, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForFunction(() => document.querySelector('.pill-btn[data-mode-id="preview"]')?.classList.contains('active'))
+  await editorMode.click()
+  await page.waitForFunction(() => document.querySelector('.pill-btn[data-mode-id="editor"]')?.classList.contains('active'))
   await page.locator('textarea.editor-textarea').fill('A short introduction to this checklist.\n\n- First item\n- Second item\n\nA table follows.\n\n| Item | Value |\n| --- | --- |\n| A | B |\n\n> A final note.')
   const chooseMode = async (scope, option) => {
     const picker = scope.getByRole('button', { name: /^Slide splitting mode:/ })

@@ -39,6 +39,11 @@ function put(storeName, key, value) {
 
 export const readWorkspace = () => get(STORE_NAME, 'workspace')
 export const writeWorkspace = value => put(STORE_NAME, 'workspace', value)
+export const readDailyNotes = async () => {
+  const value = await get(STORE_NAME, 'daily-notes')
+  return Array.isArray(value) ? value : []
+}
+export const writeDailyNotes = notes => put(STORE_NAME, 'daily-notes', Array.isArray(notes) ? notes : [])
 
 // ── Version history (per file) ─────────────────────────────────
 export async function readHistory(fileId) {

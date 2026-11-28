@@ -5,9 +5,19 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '3.7'
+export const APP_VERSION = '3.8'
 
 export const RELEASES = [
+  {
+    version: '3.8',
+    date: '2026-11-28',
+    notes: [
+      'Added Daily Notes for quick thoughts and tasks, with search, date navigation, and the option to keep notes central or add them to a document.',
+      'Added comments and review tools for selected text, including colored highlights, filtering, resolving, and deletion.',
+      'Workspace and Storage settings explain how to use device-linked drive folders for local sync.',
+      'View modes now have smoother transitions, a more balanced selector, and drag-to-switch support.',
+    ],
+  },
   {
     version: '3.7',
     date: '2026-11-28',

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDialogKeys } from '../useDialogKeys'
-import { ArchiveRestore, DatabaseBackup, HardDrive, ShieldCheck, ShieldAlert, X } from '../icons'
+import { ArchiveRestore, DatabaseBackup, HardDrive, ShieldCheck, ShieldAlert, FolderSync, X } from '../icons'
 import { formatBytes, requestPersistentStorage, storageStatus } from '../pwaIntegration'
 
 /** Storage usage + "keep my data"; shared by the Storage dialog and Settings. */
@@ -21,8 +21,8 @@ export function StoragePanel() {
   }
   const percent = status?.quota ? Math.min(100, (status.usage / status.quota) * 100) : 0
 
-  if (!status) return <p className="storage-muted">Checking storage…</p>
-  if (!status.supported) return <p className="storage-muted">This browser doesn't report storage usage.</p>
+  if (!status) return <><p className="storage-muted">Checking storage…</p><DeviceLinkedDriveNote /></>
+  if (!status.supported) return <><p className="storage-muted">This browser doesn't report storage usage.</p><DeviceLinkedDriveNote /></>
   return (
     <>
       <div className="storage-usage">
@@ -51,7 +51,20 @@ export function StoragePanel() {
       {failure && !status.persisted && (
         <p className="storage-failure" role="alert"><ShieldAlert size={14} aria-hidden="true" /><span><strong>Couldn’t protect your data.</strong> {failure}</span></p>
       )}
+      <DeviceLinkedDriveNote />
     </>
+  )
+}
+
+export function DeviceLinkedDriveNote() {
+  return (
+    <aside className="device-drive-note">
+      <FolderSync size={17} aria-hidden="true" />
+      <div>
+        <strong>Use a device-linked drive folder</strong>
+        <p>For the same workspace on multiple devices, choose a folder managed by Google Drive for desktop, OneDrive, Dropbox, or iCloud Drive. ReadMe syncs with the local folder provided by that app; select its folder in ReadMe on each device and keep files available offline.</p>
+      </div>
+    </aside>
   )
 }
 

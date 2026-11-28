@@ -29,7 +29,7 @@ import {
 } from './icons'
 import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
-import { addSnapshot, readAllHistory, readHistory, readSyncFolder, readSyncState, readWorkspace, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
+import { addSnapshot, readAllHistory, readDailyNotes, readHistory, readSyncFolder, readSyncState, readWorkspace, writeDailyNotes, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
 import { canSyncToFolder, existsInFolder, folderPermission, readFolder, removeFromFolder, syncPath, writeAttachmentsToFolder, writeToFolder } from './folderSync'
 import { analyzeDocument, applyQualityFix, extractHeadings } from './documentAnalysis'
 import { FILE_DRAG_TYPE, fileLinkTitle, fuzzyScore, makeDuplicateFileName, relativeFileLink, resolveFileLink, MAX_FOLDER_DEPTH, cleanFileStem, folderDepth, splitFileName } from './fileUtils'
@@ -42,6 +42,7 @@ import PublishSiteDialog from './components/PublishSiteDialog'
 import PreviewEditTools from './components/PreviewEditTools'
 import PickerDropdown from './components/PickerDropdown'
 import LibraryView from './components/LibraryView'
+import DailyNotesDialog from './components/DailyNotesDialog'
 import PropertiesDialog from './components/PropertiesDialog'
 import ImagesDialog from './components/ImagesDialog'
 import { addTags, documentInfo, readFrontMatter, writeFrontMatter } from './library'
@@ -1181,10 +1182,41 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
 }
 
 // ── PillSwitcher ───────────────────────────────────────────────
-function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
+function PillSwitcher({ view, onChange, onDragChange = onChange, onPresent, canPresent = false }) {
   const containerRef = useRef(null)
   const btnRefs = useRef([])
+  const dragRef = useRef(null)
   const [pill, setPill] = useState({ left: 4, width: 72, height: 29, top: 3 })
+
+  const modeAt = clientX => {
+    const modes = btnRefs.current.slice(0, VIEW_MODES.length).filter(Boolean)
+    return modes.reduce((closest, button) => {
+      const rect = button.getBoundingClientRect()
+      const distance = Math.abs(clientX - (rect.left + rect.width / 2))
+      return !closest || distance < closest.distance ? { id: button.dataset.modeId, distance } : closest
+    }, null)?.id
+  }
+  const onTrackPointerDown = event => {
+    if (event.button !== 0 || !event.target.closest('.pill-btn:not(.pill-present)')) return
+    dragRef.current = { startX: event.clientX, dragging: false }
+  }
+  const onTrackPointerMove = event => {
+    const drag = dragRef.current
+    if (!drag) return
+    if (!drag.dragging && Math.abs(event.clientX - drag.startX) < 6) return
+    drag.dragging = true
+    const id = modeAt(event.clientX)
+    if (id && id !== view) onDragChange(id)
+  }
+  const onTrackPointerEnd = event => {
+    const drag = dragRef.current
+    if (!drag) return
+    if (drag.dragging) {
+      const id = modeAt(event.clientX)
+      if (id && id !== view) onDragChange(id)
+    }
+    dragRef.current = null
+  }
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -1193,7 +1225,9 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
       if (btn && containerRef.current) {
         const cr = containerRef.current.getBoundingClientRect()
         const br = btn.getBoundingClientRect()
-        setPill({ left: br.left - cr.left, top: br.top - cr.top, width: br.width, height: br.height })
+        // Absolutely positioned children use the padding edge as their origin;
+        // compensate for the 1px track border so the indicator aligns with the button.
+        setPill({ left: br.left - cr.left - 1, top: br.top - cr.top - 1, width: br.width, height: br.height })
       }
     }
     measure()
@@ -1204,12 +1238,14 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
   }, [view])
 
   return (
-    <div ref={containerRef} className="pill-track hidden sm:flex" data-tour="views">
+    <div ref={containerRef} className="pill-track hidden sm:flex" data-tour="views"
+      onPointerDown={onTrackPointerDown} onPointerMove={onTrackPointerMove} onPointerUp={onTrackPointerEnd} onPointerCancel={onTrackPointerEnd}>
       <div className="pill-indicator" style={pill} />
       {VIEW_MODES.map((mode, i) => {
         const { id, label } = mode
         return (
         <button key={id} ref={el => (btnRefs.current[i] = el)}
+          data-mode-id={id}
           onClick={() => onChange(id)}
           className={`pill-btn ${view === id ? 'active' : ''}`}
           title={label}
@@ -1222,7 +1258,6 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
       })}
       {onPresent && (
         <>
-          <span className="pill-divider" aria-hidden="true" />
           {/* Not a layout: opens the full-screen slide view. */}
           <button
             type="button"
@@ -2781,6 +2816,9 @@ export default function App() {
   const [activeFileId, setActiveFileId] = useState(initialWorkspace.activeId)
   const [workspaceReady, setWorkspaceReady] = useState(false)
   const [view, setView]             = useState('split')
+  const setViewWithTransition = useCallback(nextView => {
+    withThemeTransition(() => setView(nextView))
+  }, [])
   const [isDragging, setIsDragging] = useState(false)
   const [mobileTab, setMobileTab]   = useState('preview')
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -2813,6 +2851,14 @@ export default function App() {
   const [annotations, setAnnotations] = useState(() => {
     try { return JSON.parse(localStorage.getItem('readme-annotations') || '[]') } catch { return [] }
   })
+  const [dailyNotes, setDailyNotes] = useState([])
+  const [dailyNotesReady, setDailyNotesReady] = useState(false)
+  const dailyNotesRef = useRef([])
+  useEffect(() => {
+    let live = true
+    readDailyNotes().then(value => { if (live) { dailyNotesRef.current = value; setDailyNotes(value) } }).catch(() => {}).finally(() => { if (live) setDailyNotesReady(true) })
+    return () => { live = false }
+  }, [])
   const [annotationOpen, setAnnotationOpen] = useState(null)
   const [annotationText, setAnnotationText] = useState('')
   const [annotationNote, setAnnotationNote] = useState('')
@@ -4779,6 +4825,7 @@ export default function App() {
 
   // ── Write a README from a description ───────────────────────
   const [writeReadmeOpen, setWriteReadmeOpen] = useState(false)
+  const [dailyNotesOpen, setDailyNotesOpen] = useState(false)
   const [readmeWriting, setReadmeWriting] = useState(null) // { fileId, preparing, progress }
   const readmeAbortRef = useRef(null)
   const readmeQuickRef = useRef(false) // "Use quick version": skip the AI and use the generator
@@ -5945,6 +5992,33 @@ export default function App() {
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   // Share links + transient toast messages.
   const [toast, setToast] = useState(null)
+  const commitDailyNotes = useCallback(update => {
+    const next = update(dailyNotesRef.current)
+    dailyNotesRef.current = next
+    setDailyNotes(next)
+    writeDailyNotes(next).catch(() => {})
+  }, [])
+  const addDailyNote = useCallback(entry => commitDailyNotes(prev => [...prev, { ...entry, id: createFileId(), createdAt: Date.now(), done: false }]), [commitDailyNotes])
+  const updateDailyNote = useCallback((id, changes) => commitDailyNotes(prev => prev.map(entry => entry.id === id ? { ...entry, ...changes, updatedAt: Date.now() } : entry)), [commitDailyNotes])
+  const deleteDailyNote = useCallback(id => commitDailyNotes(prev => prev.filter(entry => entry.id !== id)), [commitDailyNotes])
+  const organizeDailyNote = useCallback((entry, destinationId) => {
+    const target = files.find(file => file.id === destinationId)
+      ?? closedFiles.find(item => item.file.id === destinationId)?.file
+    if (!target) return
+    const dateLabel = new Date(`${entry.date}T12:00:00`).toLocaleDateString(undefined, { dateStyle: 'long' })
+    const content = entry.type === 'task'
+      ? `- [${entry.done ? 'x' : ' '}] ${entry.text.split('\n').join('\n  ')}`
+      : `> ${entry.text.split('\n').join('\n> ')}`
+    const updated = `${target.content.trimEnd()}\n\n## Daily note — ${dateLabel}\n\n${content}\n`
+    markWorkspaceEdit()
+    if (files.some(file => file.id === destinationId)) {
+      setFiles(prev => prev.map(file => file.id === destinationId ? { ...file, content: updated, updatedAt: Date.now() } : file))
+    } else {
+      setClosedFiles(prev => prev.map(item => item.file.id === destinationId ? { ...item, file: { ...item.file, content: updated, updatedAt: Date.now() } } : item))
+    }
+    commitDailyNotes(prev => prev.map(note => note.id === entry.id ? { ...note, organizedTo: destinationId, organizedAt: Date.now() } : note))
+    setToast({ message: `Added to “${target.name}”.`, tone: 'success' })
+  }, [files, closedFiles, markWorkspaceEdit, commitDailyNotes])
   useEffect(() => {
     if (!workspaceReady) return
     const now = new Date()
@@ -6320,6 +6394,7 @@ ${fontCss}
     ...(files.length > 1 ? [{ id: 'compare', label: 'Compare open files', hint: 'Document', icon: GitCompare, run: () => { setDiffCompareId(null); setDiffOpen(true) } }] : []),
     ...(activeFile && /\|.*\n\s*\|?\s*:?-+/.test(content) ? [{ id: 'format-tables', label: 'Format tables (align pipes)', hint: 'Editor', icon: AlignLeft, run: handleFormatTables }] : []),
     { id: 'global-search', label: 'Search in all files…', hint: shortcut('F', { shift: true }), icon: SearchCode, run: () => setGlobalSearchOpen(true) },
+    { id: 'daily-notes', label: 'Open daily notes', hint: 'Workspace', icon: BookOpenText, run: () => setDailyNotesOpen(true) },
     ...(activeFile ? [{ id: 'preview-edit', label: previewEditOn ? 'Stop editing in the preview' : 'Edit in preview', hint: 'View', icon: Pencil, run: () => { setPreviewEditOn(on => !on); if (view === 'editor') setView('preview') } }] : []),
     { id: 'library', label: 'Library: all documents', hint: 'View', icon: Library, run: () => setLibraryOpen(true) },
     { id: 'check-links', label: 'Check workspace links…', hint: 'Workspace', icon: Link2, run: () => setLinkCheckOpen(true) },
@@ -6469,7 +6544,7 @@ ${fontCss}
             </div>
           </div>
           <div className="justify-self-center">
-            <PillSwitcher view={view} onChange={setView} onPresent={() => openPresentation()} canPresent={Boolean(activeFile && markdownBody.trim())} />
+            <PillSwitcher view={view} onChange={setViewWithTransition} onDragChange={setView} onPresent={() => openPresentation()} canPresent={Boolean(activeFile && markdownBody.trim())} />
           </div>
 
           <div className="flex items-center gap-1 justify-self-end shrink-0">
@@ -6577,6 +6652,7 @@ ${fontCss}
         fileTreeOpen={fileTreeOpen}
         onToggleFileTree={() => setFileTreeOpen(open => !open)}
         onOpenTasks={() => setTasksOpen(true)}
+        onOpenDailyNotes={() => setDailyNotesOpen(true)}
         onOpenLibrary={() => setLibraryOpen(true)}
         tasksDueCount={tasksDueCount}
         searchValue={cmdQuery}
@@ -6649,7 +6725,7 @@ ${fontCss}
           />
         ) : (
           <>
-            <div className="flex-1 flex min-w-0 min-h-0">
+            <div className="mode-content-region flex-1 flex min-w-0 min-h-0">
             {/* Editor pane */}
             <div
               className={`flex-col min-h-0 overflow-hidden ${mobileTab === 'editor' ? '!flex w-full' : 'hidden sm:flex'}`}
@@ -7888,6 +7964,10 @@ ${fontCss}
           onClose={() => setStorageOpen(false)}
         />
       )}
+
+      {dailyNotesOpen && <DailyNotesDialog notes={dailyNotes} documents={linkableFiles} activeDocumentId={activeFileId} loading={!dailyNotesReady}
+        onAdd={addDailyNote} onUpdate={updateDailyNote} onDelete={deleteDailyNote} onOrganize={organizeDailyNote}
+        onClose={() => setDailyNotesOpen(false)} />}
 
       <input ref={restoreInputRef} type="file" accept=".zip,application/zip" hidden onChange={handleRestoreFile} aria-label="Restore workspace from backup" />
 

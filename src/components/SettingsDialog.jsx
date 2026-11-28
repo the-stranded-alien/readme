@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { ArchiveRestore, Cat, DatabaseBackup, FileArchive, Feather, FolderOpen, FolderSync, HardDrive, History, Info, AppDownload, CircleCheck, Palette, Presentation, RefreshCw, Settings, Sparkles, X } from '../icons'
 import { useDialogKeys } from '../useDialogKeys'
-import { StoragePanel } from './StorageDialog'
+import { DeviceLinkedDriveNote, StoragePanel } from './StorageDialog'
 import { THEMES, themeClasses } from '../themes'
 import { APP_VERSION, RELEASES } from '../version'
 import { DOC_STYLES } from '../docStyles'
@@ -78,7 +78,7 @@ export function FolderSyncCard({ supported, state, disabled, onConnect, onReconn
         <>
           <p className="settings-muted">Workspace folder sync is disabled. The status icon in the header is hidden.</p>
           {onToggleDisabled && (
-            <div className="settings-actions">
+            <div className="settings-actions folder-sync-actions">
               <button type="button" className="reader-chip" onClick={() => onToggleDisabled(false)}>Enable workspace sync</button>
             </div>
           )}
@@ -87,13 +87,13 @@ export function FolderSyncCard({ supported, state, disabled, onConnect, onReconn
         <>
           <p className="settings-muted">Your browser can’t save to folders. Use desktop Chrome or Edge, or back up the workspace instead.</p>
           {onToggleDisabled && (
-            <div className="settings-actions">
+            <div className="settings-actions folder-sync-actions">
               <button type="button" className="reader-chip" onClick={() => onToggleDisabled(true)}>Disable workspace sync</button>
             </div>
           )}
         </>
       ) : !state ? (
-        <div className="settings-actions">
+        <div className="settings-actions folder-sync-actions">
           <button type="button" className="pdf-dialog-primary" onClick={onConnect}><FolderOpen size={13} />Choose a folder…</button>
           {onToggleDisabled && (
             <button type="button" className="reader-chip" onClick={() => onToggleDisabled(true)}>Disable</button>
@@ -106,7 +106,7 @@ export function FolderSyncCard({ supported, state, disabled, onConnect, onReconn
             {state.status === 'needs-permission' && <>The browser needs your permission again to use <strong>{state.name}</strong>.</>}
             {state.status === 'error' && <>Couldn’t sync with <strong>{state.name}</strong>: {state.error}</>}
           </p>
-          <div className="settings-actions">
+          <div className="settings-actions folder-sync-actions">
             {state.status === 'needs-permission'
               ? <button type="button" className="pdf-dialog-primary" onClick={onReconnect}>Allow access</button>
               : <button type="button" className="reader-chip" onClick={onSyncNow}><RefreshCw size={12} /> Sync now</button>}
@@ -124,6 +124,7 @@ export function FolderSyncCard({ supported, state, disabled, onConnect, onReconn
           {item.conflicts > 0 && <span className="folder-sync-conflict-count">{item.conflicts} unresolved conflict{item.conflicts === 1 ? '' : 's'}</span>}
         </li>)}</ol> : <p className="settings-muted">No sync activity yet.</p>}
       </details>
+      <DeviceLinkedDriveNote />
     </div>
   )
 }
@@ -179,7 +180,7 @@ export default function SettingsDialog({
               <>
                 <h3>Workspace</h3>
                 <p className="settings-muted">{fileCount} file{fileCount === 1 ? '' : 's'} open. Everything is saved in this browser automatically; ⌘/Ctrl+S saves now.</p>
-                <div className="settings-actions">
+                <div className="settings-actions workspace-file-actions">
                   <button type="button" className="reader-chip" onClick={onBackup}><DatabaseBackup size={12} /> Back up workspace (.zip)</button>
                   <button type="button" className="reader-chip" onClick={onRestore}><ArchiveRestore size={12} /> Restore from backup…</button>
                   <button type="button" className="reader-chip" onClick={onExportZip} disabled={!fileCount}><FileArchive size={12} /> Export all files (.zip)</button>

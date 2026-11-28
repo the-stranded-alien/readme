@@ -444,7 +444,7 @@ mark.rm-search-hit.current {
 /* ── Pill view-mode switcher ──────────────────────────────── */
 .pill-track {
   position: relative; display: flex; align-items: center; gap: 1px;
-  padding: 3px; border-radius: 12px;
+  box-sizing: border-box; height: 36px; padding: 3px; border-radius: 12px;
   background: var(--accent-soft); border: 1px solid var(--accent-border);
   box-shadow: inset 0 1px 2px color-mix(in srgb, var(--accent) 6%, transparent);
 }
@@ -468,7 +468,7 @@ mark.rm-search-hit.current {
 }
 .pill-btn {
   position: relative; z-index: 1; display: flex; align-items: center; gap: 5px;
-  padding: 5px 11px; border-radius: 8px; font-size: 12px; font-weight: 500;
+  height: 28px; box-sizing: border-box; padding: 0 11px; border-radius: 8px; font-size: 12px; font-weight: 500;
   cursor: pointer; transition: color .15s; white-space: nowrap;
   user-select: none; border: none; background: none; color: var(--text-3);
 }
@@ -1776,6 +1776,14 @@ button[data-tooltip]:not(:focus-visible)::after {
 /* ── Theme cross-fade (View Transitions API) ──────────────── */
 ::view-transition-old(root),
 ::view-transition-new(root) { animation-duration: .32s; animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
+.mode-content-region { view-transition-name: mode-content; }
+::view-transition-old(mode-content) { animation: mode-content-out .18s ease both; }
+::view-transition-new(mode-content) { animation: mode-content-in .28s cubic-bezier(.2,.7,.25,1) both; }
+@keyframes mode-content-out { to { opacity: 0; transform: translateX(-5px); } }
+@keyframes mode-content-in { from { opacity: 0; transform: translateX(5px); } to { opacity: 1; transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(mode-content), ::view-transition-new(mode-content) { animation-duration: .01ms; }
+}
 
 /* ── Consistent header icon sizing ────────────────────────── */
 .surface-header .btn-icon > .i-icon { width: 15px; height: 15px; }
@@ -1996,6 +2004,14 @@ button[data-tooltip]:not(:focus-visible)::after {
 .storage-persist > div { display: grid; gap: 2px; }
 .storage-persist strong { font-size: 13px; color: var(--text-1); }
 .storage-persist span { font-size: 11.5px; color: var(--text-3); }
+.storage-persist { grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; }
+.storage-persist > .i-icon { display: grid; place-items: center; width: 20px; height: 20px; }
+.storage-persist .pdf-dialog-primary { white-space: nowrap; }
+.device-drive-note { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: start; gap: 10px; padding: 11px 12px; border: 1px solid var(--accent-border); border-radius: 10px; background: color-mix(in srgb, var(--accent) 5%, var(--bg-editor)); }
+.device-drive-note > .i-icon { width: 18px; height: 18px; margin-top: 1px; color: var(--accent); }
+.device-drive-note > div { min-width: 0; }
+.device-drive-note strong { display: block; color: var(--text-1); font-size: 12px; line-height: 1.4; }
+.device-drive-note p { margin: 4px 0 0; color: var(--text-3); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
 .template-menu-separator { height: 1px; margin: 4px 6px; background: var(--border-light); }
 .template-menu-item.is-compact { align-items: center; padding: 6px 9px; }
 .template-menu-icon.is-plain { width: 24px; height: 24px; color: var(--text-3); background: transparent; border-color: transparent; }
@@ -2236,7 +2252,9 @@ button[data-tooltip]:not(:focus-visible)::after {
 .tooltip-end[data-tooltip]::after { left: auto; right: 0; transform: none; }
 
 /* Present action in the header mode switcher */
-.pill-divider { align-self: center; width: 1px; height: 16px; margin: 0 3px; background: var(--border-strong); opacity: .6; }
+.pill-track { touch-action: pan-y; }
+.pill-track:active { cursor: grabbing; }
+.pill-btn.pill-present { margin-left: 4px; }
 .pill-btn.pill-present:disabled { opacity: .4; cursor: not-allowed; }
 .pill-btn.pill-present:not(:disabled):hover { color: var(--accent); }
 
@@ -2660,6 +2678,14 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 .folder-sync-status.is-connected { color: #15803d; }
 .dark .folder-sync-status.is-connected { color: #4ade80; }
 .folder-sync-status.is-error, .folder-sync-status.is-needs-permission { color: #b45309; }
+.folder-sync-actions { align-items: center; }
+.folder-sync-actions > button { display: inline-flex; align-items: center; justify-content: center; flex: 0 1 auto; gap: 7px; min-height: 32px; padding: 0 12px; white-space: nowrap; }
+.workspace-file-actions > button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 32px; }
+@media (max-width: 600px) {
+  .folder-sync-actions > button { flex: 1 1 auto; }
+  .storage-persist { grid-template-columns: 20px minmax(0, 1fr); }
+  .storage-persist > button { grid-column: 2; justify-self: start; }
+}
 
 /* ── Editor toolbar labels (portal; the toolbar scrolls) ──── */
 .fmt-tooltip {
@@ -3334,6 +3360,80 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .annotation-review-actions button.is-danger:hover { border-color: #dc2626; background: color-mix(in srgb, #dc2626 9%, var(--bg-preview)); }
 @media (max-width: 520px) {
   .annotation-popover { max-width: calc(100vw - 16px); max-height: 72vh; }
+}
+
+/* ── Daily notes ─────────────────────────────────────────── */
+.daily-notes-backdrop { z-index: 1100; }
+.daily-notes-dialog { display: flex; flex-direction: column; width: min(980px, calc(100vw - 32px)); height: min(720px, calc(100vh - 40px)); overflow: hidden; border: 1px solid var(--border); border-radius: 18px; background: var(--bg-preview); color: var(--text-1); box-shadow: var(--shadow-xl); }
+.daily-notes-header { display: flex; align-items: center; gap: 11px; padding: 15px 18px; border-bottom: 1px solid var(--border-light); }
+.daily-notes-heading-icon { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+.daily-notes-heading-copy { flex: 1; min-width: 0; }
+.daily-notes-heading-copy h2 { margin: 0; color: var(--text-1); font-size: 15px; font-weight: 700; }
+.daily-notes-heading-copy p { margin: 2px 0 0; color: var(--text-3); font-size: 11.5px; }
+.daily-notes-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 0; flex: 1; }
+.daily-notes-sidebar { display: flex; flex-direction: column; min-height: 0; gap: 14px; padding: 14px 11px; border-right: 1px solid var(--border-light); background: var(--bg-editor); }
+.daily-notes-search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 9px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-preview); color: var(--text-4); }
+.daily-notes-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text-1); font: inherit; font-size: 12px; }
+.daily-notes-date-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; color: var(--text-3); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.daily-notes-date-heading button { padding: 3px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--accent); font: inherit; font-size: 11px; letter-spacing: 0; text-transform: none; cursor: pointer; }
+.daily-notes-date-heading button:hover { background: var(--accent-soft); }
+.daily-notes-date-list { display: grid; align-content: start; gap: 3px; min-height: 0; overflow: auto; }
+.daily-notes-date-list > button { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.daily-notes-date-list > button:hover { background: var(--bg-hover, var(--accent-soft)); }
+.daily-notes-date-list > button.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.daily-notes-date-list > button > svg { flex: 0 0 14px; color: var(--text-4); }
+.daily-notes-date-list > button > span { flex: 1; min-width: 0; }
+.daily-notes-date-list > button > small { color: var(--text-4); font-size: 10px; }
+.daily-notes-empty-date { margin: 8px 4px; color: var(--text-4); font-size: 11px; }
+.daily-notes-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 14px; overflow: auto; padding: 18px 20px 22px; }
+.daily-notes-day-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.daily-notes-day-nav h3 { margin: 0; color: var(--text-1); font-size: 16px; font-weight: 700; }
+.daily-notes-day-nav > div:first-child > span { display: block; margin-top: 3px; color: var(--text-4); font-size: 11px; }
+.daily-notes-date-actions { display: flex; align-items: center; gap: 5px; }
+.daily-notes-date-actions > button { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-editor); color: var(--text-3); font-size: 18px; cursor: pointer; }
+.daily-notes-date-actions > input { width: 132px; height: 29px; padding: 0 7px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-editor); color: var(--text-2); font: inherit; font-size: 11px; }
+.daily-notes-capture { display: grid; gap: 9px; padding: 12px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--bg-editor); }
+.daily-notes-capture-row,.daily-notes-capture-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.daily-notes-type-picker { width: 132px; height: 29px; font-size: 11.5px; }
+.daily-notes-capture-hint { color: var(--text-4); font-size: 10px; }
+.daily-notes-capture > textarea,.daily-note-edit { box-sizing: border-box; width: 100%; min-height: 68px; resize: vertical; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; outline: 0; background: var(--bg-preview); color: var(--text-1); font: inherit; font-size: 12px; line-height: 1.5; }
+.daily-notes-capture > textarea:focus,.daily-note-edit:focus { border-color: var(--accent-border); box-shadow: 0 0 0 2px var(--accent-soft); }
+.daily-notes-capture-footer > label { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--text-4); font-size: 11px; white-space: nowrap; }
+.daily-notes-destination-picker { max-width: 220px; height: 29px; font-size: 11px; }
+.daily-notes-capture-footer > .pdf-dialog-primary { flex: 0 0 auto; }
+.daily-notes-entries { display: grid; align-content: start; gap: 9px; min-height: 0; }
+.daily-note-entry { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border-light); border-radius: 11px; background: var(--bg-preview); }
+.daily-note-entry.is-thought { border-left: 3px solid var(--accent-border); }
+.daily-note-entry.is-task { border-left: 3px solid #d97706; }
+.daily-note-entry.is-done { opacity: .72; }
+.daily-note-check { display: grid; place-items: center; flex: 0 0 19px; width: 19px; height: 19px; margin-top: 2px; padding: 0; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg-editor); color: var(--accent); cursor: pointer; }
+.daily-note-check[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.daily-note-entry-content { flex: 1; min-width: 0; }
+.daily-note-entry-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 5px; }
+.daily-note-entry-meta > span { color: var(--text-4); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.daily-note-entry-meta > small { color: var(--accent); font-size: 10px; }
+.daily-note-entry-content > p { margin: 0; color: var(--text-1); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.daily-note-edit { min-height: 58px; }
+.daily-note-entry-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.daily-note-entry-actions button { display: inline-flex; align-items: center; gap: 5px; min-height: 27px; padding: 0 8px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--bg-editor); color: var(--text-3); font: inherit; font-size: 10.5px; cursor: pointer; }
+.daily-note-entry-actions button:hover { border-color: var(--accent-border); color: var(--accent); }
+.daily-note-entry-actions button.is-danger:hover { border-color: #dc2626; color: #dc2626; }
+.daily-notes-empty { display: grid; justify-items: center; gap: 7px; padding: 32px 16px; border: 1px dashed var(--border-strong); border-radius: 12px; color: var(--text-4); text-align: center; }
+.daily-notes-empty > svg { color: var(--accent); }
+.daily-notes-empty strong { color: var(--text-2); font-size: 12px; }
+.daily-notes-empty span { max-width: 320px; font-size: 11px; line-height: 1.5; }
+@media (max-width: 640px) {
+  .daily-notes-dialog { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .daily-notes-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .daily-notes-sidebar { gap: 9px; padding: 9px 12px; border-right: 0; border-bottom: 1px solid var(--border-light); }
+  .daily-notes-date-heading { display: none; }
+  .daily-notes-date-list { display: flex; gap: 5px; overflow-x: auto; }
+  .daily-notes-date-list > button { flex: 0 0 auto; }
+  .daily-notes-main { padding: 14px 12px 18px; }
+  .daily-notes-day-nav { align-items: flex-start; flex-direction: column; }
+  .daily-notes-capture-footer { align-items: flex-start; flex-direction: column; }
+  .daily-notes-capture-footer > label { width: 100%; justify-content: space-between; }
+  .daily-notes-destination-picker { max-width: 65%; }
 }
 
 /* ── Presentation: contents panel, pen and laser, blank screen ── */

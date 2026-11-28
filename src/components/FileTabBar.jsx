@@ -5,7 +5,7 @@ import { useHoverTooltip } from '../useHoverTooltip'
 import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedFromDisk, labelColor, cleanFileStem, splitFileName } from '../fileUtils'
 import {
   Check, Command, CopyPlus, Download, FilePlus, FileText, GitCompare, HardDrive, FolderTree, Library, ListChecks, ListTree,
-  Pencil, Pin, PinOff, RotateCcw, Search, Trash2, X, XCircle,
+  BookOpenText, Pencil, Pin, PinOff, RotateCcw, Search, Trash2, X, XCircle,
 } from '../icons'
 
 function splitPath(name) {
@@ -214,7 +214,7 @@ function FileSwitcher({ files, activeFileId, recentIds, onSelect, onClose, ancho
 export default function FileTabBar({
   files, activeFileId, recentIds, canReopen,
   onSelect, onClose, onCreate, onRename, onDuplicate, onCompare, onReorder, onTogglePin, onSetColor,
-  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, onDelete, fileTreeOpen, onToggleFileTree, onOpenTasks, onOpenLibrary, tasksDueCount = 0,
+  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, onDelete, fileTreeOpen, onToggleFileTree, onOpenTasks, onOpenDailyNotes, onOpenLibrary, tasksDueCount = 0,
   searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette,
 }) {
   // Labels for the small duplicate / close icons, in the app's tooltip style (the strip scrolls, so CSS tooltips would be clipped).
@@ -497,6 +497,13 @@ export default function FileTabBar({
             aria-label={tasksDueCount ? `Tasks, ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}>
             <ListChecks size={14} />
             {tasksDueCount > 0 && <span className="header-badge" aria-hidden="true">{tasksDueCount > 99 ? '99+' : tasksDueCount}</span>}
+          </button>
+        )}
+        {onOpenDailyNotes && (
+          <button type="button" onClick={onOpenDailyNotes} className="file-tabs-command-button file-tabs-daily-notes"
+            data-tip="Daily notes. Capture thoughts and tasks, then add them to a document later."
+            aria-label="Open daily notes">
+            <BookOpenText size={14} />
           </button>
         )}
         {onOpenTasks && <span className="file-tabs-task-divider" aria-hidden="true" />}
