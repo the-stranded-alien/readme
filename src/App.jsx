@@ -3227,7 +3227,8 @@ export default function App() {
     if (before) setTheme(current => (current === before ? current : before))
   }, [])
   const toggleHighContrast = useCallback(() => {
-    withThemeTransition(() => setHighContrast(h => !h))
+    // A full-screen cross-fade makes this accessibility change look like a flash.
+    setHighContrast(h => !h)
   }, [])
 
   // Sync in-memory file list + active tab to browser localStorage (best-effort)
