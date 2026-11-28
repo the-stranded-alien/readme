@@ -95,6 +95,7 @@ import TemplatesDialog from './components/TemplatesDialog'
 import SlashMenu from './components/SlashMenu'
 import FindReplacePanel from './components/FindReplacePanel'
 import PresentationMode from './components/PresentationMode'
+import SlideSplitControls from './components/SlideSplitControls'
 import FileTree from './components/FileTree'
 import AiToolsDialog from './components/AiToolsDialog'
 import { aiSupport, canWriteWithAi, detectLanguage, hasAnyAi, readmeFromPrompt, summarizeDocument, writeReadmeWithAi } from './onDeviceAi'
@@ -1181,9 +1182,10 @@ function TocSidebar({ headings, activeId, onNavigate, bookmarks = new Set(), onT
 }
 
 // ── PillSwitcher ───────────────────────────────────────────────
-function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
+function PillSwitcher({ view, onChange, onPresent, canPresent = false, presentationSettings, onPresentationSettings }) {
   const containerRef = useRef(null)
   const btnRefs = useRef([])
+  const [splitOpen, setSplitOpen] = useState(false)
   const [pill, setPill] = useState({ left: 4, width: 72, height: 29, top: 3 })
 
   useLayoutEffect(() => {
@@ -1202,6 +1204,15 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
     if (observer) observer.observe(containerRef.current)
     return () => observer?.disconnect()
   }, [view])
+
+  useEffect(() => {
+    if (!splitOpen) return undefined
+    const onPointerDown = event => { if (!containerRef.current?.contains(event.target)) setSplitOpen(false) }
+    const onKeyDown = event => { if (event.key === 'Escape') setSplitOpen(false) }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => { document.removeEventListener('pointerdown', onPointerDown); document.removeEventListener('keydown', onKeyDown) }
+  }, [splitOpen])
 
   return (
     <div ref={containerRef} className="pill-track hidden sm:flex" data-tour="views">
@@ -1235,6 +1246,13 @@ function PillSwitcher({ view, onChange, onPresent, canPresent = false }) {
             <Presentation size={13} />
             <span className="pill-label">Present</span>
           </button>
+          <span className="home-slide-split">
+            <button type="button" className="pill-btn pill-split-settings" onClick={() => setSplitOpen(open => !open)}
+              aria-label="Choose slide split" aria-expanded={splitOpen} title="Choose where new slides start">
+              <Settings2 size={13} /><span className="pill-label">Split</span>
+            </button>
+            {splitOpen && <SlideSplitControls settings={presentationSettings} onChange={onPresentationSettings} label="Home slide splitting options" className="home-slide-split-popover" />}
+          </span>
         </>
       )}
     </div>
@@ -6439,7 +6457,8 @@ ${fontCss}
             </div>
           </div>
           <div className="justify-self-center">
-            <PillSwitcher view={view} onChange={setView} onPresent={() => openPresentation()} canPresent={Boolean(activeFile && markdownBody.trim())} />
+            <PillSwitcher view={view} onChange={setView} onPresent={() => openPresentation()} canPresent={Boolean(activeFile && markdownBody.trim())}
+              presentationSettings={presentationSettings} onPresentationSettings={setPresentationSettings} />
           </div>
 
           <div className="flex items-center gap-1 justify-self-end shrink-0">

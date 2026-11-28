@@ -493,7 +493,7 @@ export default function FileTabBar({
         </div>
         {onOpenTasks && (
           <button type="button" onClick={onOpenTasks} className="file-tabs-command-button file-tabs-tasks"
-            data-tooltip={tasksDueCount ? `Tasks: ${tasksDueCount} due today or overdue` : 'Tasks in all documents · includes document agenda'}
+            data-tooltip={tasksDueCount ? `Open Tasks · ${tasksDueCount} task${tasksDueCount === 1 ? '' : 's'} due today or overdue. Review task lists and document deadlines.` : 'Open Tasks to review task lists across documents, set due dates, and add document deadline reminders.'}
             aria-label={tasksDueCount ? `Tasks, ${tasksDueCount} due today or overdue` : 'Tasks in all documents'}>
             <ListChecks size={14} />
             {tasksDueCount > 0 && <span className="header-badge" aria-hidden="true">{tasksDueCount > 99 ? '99+' : tasksDueCount}</span>}

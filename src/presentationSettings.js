@@ -12,11 +12,19 @@ export const SPLIT_LEVELS = [
   { value: 1, label: 'Heading 1' },
 ]
 export const SPLIT_MODES = [
-  { value: 'smart', label: 'Smart split' },
   { value: 'headings', label: 'By headings' },
-  { value: 'blocks', label: 'By content blocks' },
+  { value: 'blocks', label: 'By selected blocks' },
   { value: 'length', label: 'By word count' },
+  { value: 'smart', label: 'Smart split' },
   { value: 'single', label: 'One slide' },
+]
+export const SPLIT_TRIGGERS = [
+  { value: 'heading', label: 'Headings' },
+  { value: 'paragraph', label: 'Paragraphs' },
+  { value: 'list', label: 'Lists' },
+  { value: 'table', label: 'Tables' },
+  { value: 'quote', label: 'Quotes' },
+  { value: 'code', label: 'Code blocks' },
 ]
 export const SPLIT_TARGETS = [
   { value: 100, label: 'Short · about 100 words' },
@@ -44,8 +52,10 @@ export const ZOOM_CHOICES = Array.from(
 )
 
 export const DEFAULT_PRESENTATION_SETTINGS = {
-  splitMode: 'smart',       // use headings when present; otherwise group semantic blocks
+  splitMode: 'headings',    // preserve the established heading-based presentation by default
+  splitModeExplicit: false,
   splitLevel: 2,          // headings up to this level start a slide
+  splitTriggers: ['heading', 'list', 'table', 'quote', 'code'],
   splitRules: false,      // a `---` line also starts a slide
   splitTargetWords: 180,  // target for smart and word-count splitting; blocks stay intact
   zoom: 'last',           // default text size: 'last' (last used) or a number
@@ -67,9 +77,14 @@ export function normalizePresentationSettings(raw) {
   const s = raw && typeof raw === 'object' ? raw : {}
   const d = DEFAULT_PRESENTATION_SETTINGS
   const colorIds = INK_COLORS.map(color => color.id)
+  // Smart was the old out-of-box value and got auto-saved for many users. Move that
+  // legacy default to headings, while retaining a mode explicitly picked going forward.
+  const splitModeExplicit = s.splitModeExplicit === true
   return {
-    splitMode: pick(s.splitMode, SPLIT_MODES.map(mode => mode.value), d.splitMode),
+    splitMode: pick(s.splitModeExplicit === true ? s.splitMode : s.splitMode === 'smart' ? d.splitMode : s.splitMode, SPLIT_MODES.map(mode => mode.value), d.splitMode),
+    splitModeExplicit,
     splitLevel: pick(Number(s.splitLevel), SPLIT_LEVELS.map(level => level.value), d.splitLevel),
+    splitTriggers: Array.isArray(s.splitTriggers) ? [...new Set(s.splitTriggers.filter(value => SPLIT_TRIGGERS.some(trigger => trigger.value === value)))] : [...d.splitTriggers],
     splitRules: s.splitRules === true,
     splitTargetWords: pick(Number(s.splitTargetWords), SPLIT_TARGETS.map(target => target.value), d.splitTargetWords),
     zoom: s.zoom === 'last' || s.zoom == null ? 'last' : clampZoom(s.zoom),
@@ -93,4 +108,4 @@ export function savePresentationSettings(settings) {
   try { localStorage.setItem(PRESENTATION_SETTINGS_KEY, JSON.stringify(settings)) } catch { /* storage is optional */ }
 }
 export const inkColor = id => (INK_COLORS.find(color => color.id === id) ?? INK_COLORS[0]).value
-export const splitOptions = settings => ({ mode: settings.splitMode, level: settings.splitLevel, rules: settings.splitRules, targetWords: settings.splitTargetWords })
+export const splitOptions = settings => ({ mode: settings.splitMode, level: settings.splitLevel, triggers: settings.splitTriggers, rules: settings.splitRules, targetWords: settings.splitTargetWords })

@@ -112,7 +112,7 @@ export default function TemplatesDialog({ builtIn, custom, onSave, onDelete, onU
                   <textarea value={normalize(editing).frontMatter} onChange={event => update('frontMatter', event.target.value)} spellCheck={false} placeholder={'title: Weekly report\nstatus: draft'} />
                 </label>
                 <label className="templates-field is-grow">
-                  <span>Starter content (Markdown)</span>
+                  <span>Starter Content (Markdown)</span>
                   <textarea value={normalize(editing).starterContent} onChange={event => update('starterContent', event.target.value)} spellCheck={false} />
                 </label>
               </>

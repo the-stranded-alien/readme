@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, Eraser, Loader2, Hourglass, LaserPointer, ListTree, Maximize2, Minimize2, Palette, PanelLeftClose, Pause, Pencil, Pin, Play, Settings2, StickyNote, X, ZoomIn, ZoomOut } from '../icons'
 import { PRESENTATION_ZOOM, clampZoom, slideTitle, splitSlideNotes, splitSlides } from '../presentation'
-import { DEFAULT_PRESENTATION_SETTINGS, INK_COLORS, SPLIT_LEVELS, SPLIT_MODES, SPLIT_TARGETS, inkColor, splitOptions } from '../presentationSettings'
+import { DEFAULT_PRESENTATION_SETTINGS, INK_COLORS, inkColor, splitOptions } from '../presentationSettings'
 import InkLayer from './InkLayer'
+import SlideSplitControls from './SlideSplitControls'
 
 const readZoom = () => { try { return clampZoom(localStorage.getItem(PRESENTATION_ZOOM.key) ?? 1) } catch { return 1 } }
 const formatElapsed = ms => {
@@ -32,9 +33,9 @@ function openPresenterWindow() {
  */
 export default function PresentationMode({ markdown, slides: slideTexts, label, docStyle = 'readme', renderMarkdown, onClose, startAt = 0, themes = [], theme, onTheme, settings = DEFAULT_PRESENTATION_SETTINGS, onSettings, onExport, exporting }) {
   // `slides` (optional) presents just those slides, e.g. the bookmarked sections.
-  const { splitLevel, splitRules, splitMode, splitTargetWords } = settings
-  const slides = useMemo(() => (slideTexts?.length ? slideTexts : splitSlides(markdown, splitOptions({ splitLevel, splitRules, splitMode, splitTargetWords }))).map(splitSlideNotes),
-    [markdown, slideTexts, splitLevel, splitRules, splitMode, splitTargetWords])
+  const { splitLevel, splitRules, splitMode, splitTargetWords, splitTriggers } = settings
+  const slides = useMemo(() => (slideTexts?.length ? slideTexts : splitSlides(markdown, splitOptions({ splitLevel, splitRules, splitMode, splitTargetWords, splitTriggers }))).map(splitSlideNotes),
+    [markdown, slideTexts, splitLevel, splitRules, splitMode, splitTargetWords, splitTriggers])
   const [index, setIndex] = useState(() => Math.min(startAt, slides.length - 1))
   const [fullscreen, setFullscreen] = useState(false)
   const [zoom, setZoom] = useState(() => (settings.zoom === 'last' ? readZoom() : clampZoom(settings.zoom)))
@@ -64,10 +65,6 @@ export default function PresentationMode({ markdown, slides: slideTexts, label, 
     document.addEventListener('pointerdown', onDown)
     return () => document.removeEventListener('pointerdown', onDown)
   }, [splitOpen])
-  const setSplitSetting = (key, value) => {
-    onSettings?.(current => ({ ...current, [key]: value }))
-    setIndex(0)
-  }
   // A colour picked in the toolbar becomes the default too.
   const choosePenColor = useCallback(id => {
     setPenColor(id)
@@ -314,18 +311,7 @@ export default function PresentationMode({ markdown, slides: slideTexts, label, 
             aria-label="Slide splitting options" title="Choose how this presentation is split into slides">
             <Settings2 size={15} />
           </button>
-          {splitOpen && <div className="presentation-split-popover" role="group" aria-label="Slide splitting options">
-            <label><span>Split mode</span><select className="settings-select" aria-label="Slide splitting mode" value={splitMode || 'headings'} onChange={event => setSplitSetting('splitMode', event.target.value)}>
-              {SPLIT_MODES.map(mode => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
-            </select></label>
-            {['smart', 'headings'].includes(splitMode || 'headings') && <label><span>New slide at</span><select className="settings-select" aria-label="Heading level for slides" value={splitLevel} onChange={event => setSplitSetting('splitLevel', Number(event.target.value))}>
-              {SPLIT_LEVELS.map(level => <option key={level.value} value={level.value}>{level.label}</option>)}
-            </select></label>}
-            {['smart', 'length'].includes(splitMode) && <label><span>Target slide length</span><select className="settings-select" aria-label="Target slide length" value={splitTargetWords} onChange={event => setSplitSetting('splitTargetWords', Number(event.target.value))}>
-              {SPLIT_TARGETS.map(target => <option key={target.value} value={target.value}>{target.label}</option>)}
-            </select></label>}
-            {['smart', 'headings'].includes(splitMode || 'headings') && <label className="presentation-split-rule"><input type="checkbox" checked={splitRules} onChange={event => setSplitSetting('splitRules', event.target.checked)} /><span>Break at horizontal rules</span></label>}
-          </div>}
+          {splitOpen && <SlideSplitControls settings={settings} onChange={update => { onSettings?.(update); setIndex(0) }} label="Slide splitting options" />}
         </span>}
         {label && <span className="presentation-label" title={`Presenting ${label.toLowerCase()} only`}>{label}</span>}
         <button type="button" onClick={() => go(-1)} disabled={safeIndex === 0} aria-label="Previous slide" title="Previous slide (←)"><ChevronLeft size={18} /></button>
