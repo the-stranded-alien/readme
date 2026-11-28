@@ -2622,13 +2622,10 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 /* ── Editor toolbar: more options, scrolls when it doesn't fit ─ */
 .fmt-scroll {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow-x: auto; overflow-y: hidden;
-  scrollbar-width: thin; scrollbar-color: transparent transparent; padding-bottom: 1px;
+  scrollbar-width: none; padding-bottom: 1px;
   mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
 }
-.fmt-scroll:hover { scrollbar-color: var(--border-strong) transparent; }
-.fmt-scroll::-webkit-scrollbar { height: 2px; }
-.fmt-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
-.fmt-scroll:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
+.fmt-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .fmt-scroll > * { flex-shrink: 0; }
 .highlight-picker { position: fixed; z-index: 140; display: flex; gap: 6px; padding: 8px; border-radius: 12px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-xl); }
 .highlight-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--bg-preview); box-shadow: 0 0 0 1px var(--border-strong); cursor: pointer; }
