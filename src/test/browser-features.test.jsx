@@ -1402,6 +1402,14 @@ describe('advanced browser features', () => {
     expect(splitSlides(md, { level: 6, rules: true })).toEqual(['# A\n\na', '## B\n\nb', '### C\n\nc', 'd\n\nSetext\n---'])
   })
 
+  it('combines heading levels and block types in custom slide splitting', async () => {
+    const { splitSlides } = await import('../presentation.js')
+    const md = '# First\n\nIntro\n\n## Detail\n\nBody\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nEnd'
+    expect(splitSlides(md, { mode: 'custom', splitLevels: [1, 2], splitTriggers: ['table'] })).toEqual([
+      '# First\n\nIntro', '## Detail\n\nBody', '| A | B |\n| --- | --- |\n| 1 | 2 |\n\nEnd',
+    ])
+  })
+
   it('presents with a contents panel, pen, laser, blank screen and settings', async () => {
     localStorage.setItem('readme-presentation-settings', JSON.stringify({ splitLevel: 1, showTimer: true, autoAdvance: 10 }))
     await writeWorkspace({ activeId: 'p', files: [{ id: 'p', name: 'Deck.md', content: '# Deck\n\nIntro\n\n## One\n\nFirst\n\n# Two\n\nSecond\n\n# Three\n\nThird' }] })
@@ -1458,7 +1466,8 @@ describe('advanced browser features', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings', exact: true }))
     const dialog = await screen.findByRole('dialog', { name: 'Settings' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Presentation' }))
-    fireEvent.change(within(dialog).getByRole('combobox', { name: 'New slide at' }), { target: { value: '2' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Heading level for slides:/ }))
+    fireEvent.click(screen.getByRole('option', { name: 'Headings 1 & 2' }))
     fireEvent.change(within(dialog).getByRole('combobox', { name: 'Pen mode' }), { target: { value: 'permanent' } })
     fireEvent.click(within(within(dialog).getByRole('radiogroup', { name: 'Laser colour' })).getByRole('radio', { name: 'Green' }))
     const saved = JSON.parse(localStorage.getItem('readme-presentation-settings'))

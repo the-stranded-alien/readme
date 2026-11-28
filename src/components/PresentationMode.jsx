@@ -33,9 +33,9 @@ function openPresenterWindow() {
  */
 export default function PresentationMode({ markdown, slides: slideTexts, label, docStyle = 'readme', renderMarkdown, onClose, startAt = 0, themes = [], theme, onTheme, settings = DEFAULT_PRESENTATION_SETTINGS, onSettings, onExport, exporting }) {
   // `slides` (optional) presents just those slides, e.g. the bookmarked sections.
-  const { splitLevel, splitRules, splitMode, splitTargetWords, splitTriggers } = settings
-  const slides = useMemo(() => (slideTexts?.length ? slideTexts : splitSlides(markdown, splitOptions({ splitLevel, splitRules, splitMode, splitTargetWords, splitTriggers }))).map(splitSlideNotes),
-    [markdown, slideTexts, splitLevel, splitRules, splitMode, splitTargetWords, splitTriggers])
+  const { splitLevel, splitLevels, splitTriggers, splitMode, splitTargetWords } = settings
+  const slides = useMemo(() => (slideTexts?.length ? slideTexts : splitSlides(markdown, splitOptions({ splitLevel, splitLevels, splitTriggers, splitMode, splitTargetWords }))).map(splitSlideNotes),
+    [markdown, slideTexts, splitLevel, splitLevels, splitTriggers, splitMode, splitTargetWords])
   const [index, setIndex] = useState(() => Math.min(startAt, slides.length - 1))
   const [fullscreen, setFullscreen] = useState(false)
   const [zoom, setZoom] = useState(() => (settings.zoom === 'last' ? readZoom() : clampZoom(settings.zoom)))
@@ -61,7 +61,9 @@ export default function PresentationMode({ markdown, slides: slideTexts, label, 
   }, [exportOpen])
   useEffect(() => {
     if (!splitOpen) return undefined
-    const onDown = event => { if (!splitRef.current?.contains(event.target)) setSplitOpen(false) }
+    const onDown = event => {
+      if (!splitRef.current?.contains(event.target) && !event.target.closest?.('.picker-menu')) setSplitOpen(false)
+    }
     document.addEventListener('pointerdown', onDown)
     return () => document.removeEventListener('pointerdown', onDown)
   }, [splitOpen])

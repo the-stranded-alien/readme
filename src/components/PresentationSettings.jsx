@@ -1,7 +1,8 @@
 import { SettingsToggle } from './SettingsDialog'
 import {
-  AUTO_ADVANCE_SECONDS, FADE_SECONDS, INK_COLORS, PEN_WIDTHS, SPLIT_LEVELS, SPLIT_MODES, SPLIT_TARGETS, SPLIT_TRIGGERS, ZOOM_CHOICES,
+  AUTO_ADVANCE_SECONDS, FADE_SECONDS, INK_COLORS, PEN_WIDTHS, ZOOM_CHOICES,
 } from '../presentationSettings'
+import SlideSplitControls from './SlideSplitControls'
 
 function Field({ label, description, children }) {
   return (
@@ -38,31 +39,14 @@ function InkColors({ label, value, onChange }) {
 
 /** Settings → Presentation: how documents become slides, and the pen, laser and display defaults. */
 export default function PresentationSettings({ settings, onChange, themes }) {
-  const set = (key, value) => onChange({ ...settings, [key]: value, ...(key === 'splitMode' ? { splitModeExplicit: true } : {}) })
+  const set = (key, value) => onChange({ ...settings, [key]: value })
   return (
     <>
       <h4 className="settings-subhead">Slides</h4>
-      <Field label="Slide splitting" description="Choose how to divide a document into slides. Headings are the default; Smart split is optional.">
-        <Select label="Slide splitting" value={settings.splitMode} onChange={value => set('splitMode', value)} options={SPLIT_MODES} />
+      <Field label="Presentation splitting" description="Choose a split mode, or use Custom to combine heading levels and content types. The Present as slides button uses this setting.">
+        <SlideSplitControls variant="settings" settings={settings} label="Presentation splitting settings"
+          onChange={update => onChange(update(settings))} />
       </Field>
-      {['smart', 'headings'].includes(settings.splitMode) && <Field label="Heading level" description="Choose which headings start a new slide.">
-        <Select label="New slide at" value={settings.splitLevel} onChange={value => set('splitLevel', Number(value))} options={SPLIT_LEVELS} />
-      </Field>}
-      {settings.splitMode === 'blocks' && <Field label="New slide at" description="Choose which content types begin a new slide. Complete lists, tables, quotes and code blocks stay intact.">
-        <div className="split-trigger-grid">
-          {SPLIT_TRIGGERS.map(trigger => <label key={trigger.value}>
-            <input type="checkbox" checked={(settings.splitTriggers || []).includes(trigger.value)} onChange={event => {
-              const values = settings.splitTriggers || []
-              set('splitTriggers', event.target.checked ? [...values, trigger.value] : values.filter(value => value !== trigger.value))
-            }} />{trigger.label}
-          </label>)}
-        </div>
-      </Field>}
-      {['smart', 'length'].includes(settings.splitMode) && <Field label="Target slide length" description={`${settings.splitMode === 'smart' ? 'Used when a document has no headings. ' : ''}An approximate target; lists, tables and code blocks stay intact, so a slide may exceed it.`}>
-        <Select label="Target slide length" value={settings.splitTargetWords} onChange={value => set('splitTargetWords', Number(value))} options={SPLIT_TARGETS} />
-      </Field>}
-      <SettingsToggle label="Break at horizontal rules" description="A --- line on its own also starts a new slide."
-        checked={settings.splitRules} onChange={value => set('splitRules', value)} />
       <Field label="Auto-advance" description="Move to the next slide automatically. Pause it from the toolbar.">
         <Select label="Auto-advance" value={settings.autoAdvance} onChange={value => set('autoAdvance', Number(value))}
           options={AUTO_ADVANCE_SECONDS.map(seconds => ({ value: seconds, label: seconds ? `Every ${seconds} seconds` : 'Off' }))} />

@@ -235,6 +235,7 @@ Rules learned the hard way:
 ### Icon buttons and hovers
 
 - **Every** icon button gets the same **round** hover (`background: var(--icon-hover-bg); color: var(--icon-hover-fg); border-radius: 999px`) inside a **square hit area** of at least 28–32px.
+- A hover must never change an icon button's shape. Do not add a component-level square/pill `border-radius` override to a round icon button; verify its computed radius is still `999px` before and during hover.
 - Danger buttons override the hover colours: `--icon-hover-bg: rgba(239,68,68,.14); --icon-hover-fg: #ef4444`.
 - Scope toolbar-wide rules so they don't leak into popovers, e.g. `.toolbar button:not(.popover *)`.
 - Hover circles in scrolling strips get clipped. Give toolbar groups `height: auto` and use `::before` dividers (plain lines, not capsules) between groups.
@@ -249,6 +250,7 @@ Rules learned the hard way:
   - hidden on scroll and pointer-down;
   - clamped to the viewport.
 - **Every icon-only button needs both** an `aria-label` and a tooltip with the same wording. Labels can be removed to save space (e.g. "Write README" and "Templates" became icon-only) only if hover still names them.
+- Check tooltip text for wrapping and viewport bounds in the production browser. Never let long copy escape the viewport or depend on a clipped pseudo-element.
 
 ### Menus
 
@@ -342,13 +344,18 @@ Rules learned the hard way:
 
 ### Presentation mode patterns
 
-- **Settings live in one normalised object** (`src/presentationSettings.js`: defaults, allowed values, `normalize…`), stored under a `readme-` key so backups include it. Settings → Presentation edits it; the slide toolbar changes things for the current session only.
+- **Settings live in one normalised object** (`src/presentationSettings.js`: defaults, allowed values, `normalize…`), stored under a `readme-` key so backups include it. Settings → Presentation edits it; the presentation toolbar uses the same controls and updates that saved configuration.
 - **The presentation has its own theme.** It starts in the default presentation theme (or the last one used in a presentation) and the app's theme comes back on exit.
-- **Slide splitting is configurable** (smart, headings, semantic content blocks, approximate word count, or one slide; heading level 1–6 and optional `---` breaks). Smart splitting uses headings when present and otherwise groups complete Markdown blocks, keeping lists, tables, quotes and fenced code intact. Every helper that maps headings to slides takes the same normalized options.
+- **Slide splitting is configurable** in Settings → Presentation (headings, semantic content blocks, approximate word count, Smart split, one slide, or Custom). Custom can combine any H1–H6 levels with paragraphs, lists, tables, quotes, code blocks and horizontal rules. Smart splitting uses headings when present and otherwise groups complete Markdown blocks, keeping lists, tables, quotes and fenced code intact. Every helper that maps headings to slides takes the same normalized options.
 - **Pen and laser are drawn on a canvas over the stage** that only takes the pointer while the pen is on. Strokes belong to a slide; fading ink is removed after its time, permanent ink stays until cleared. The toolbar sits above the canvas and stays usable.
 - **Keys keep working when focus falls out.** If the focused control is removed, a window-level listener still handles keys whose target is `body`.
 - **Escape unwinds one layer at a time:** blank screen → active tool → exit.
 - **Popovers close on an outside click, not on hover-out,** and always have a visible × and Escape.
+
+### Shared controls and dropdowns
+
+- Reuse the same component and visual treatment when a setting appears in Settings and inside its feature (for example, `SlideSplitControls` for Presentation Settings and the presentation toolbar). The home Present button launches directly with the saved settings; it does not add a separate split control.
+- Use `PickerDropdown` for custom app popovers and menus. Do not put native `<select>` controls inside a custom popover; they break the app's dropdown styling, keyboard behavior and portal positioning. Extend the shared component when it needs another option type.
 
 ### Never use the browser's own dialogs
 
@@ -507,7 +514,7 @@ Target: **zero axe violations** in every view, in every theme, with and without 
 
 ### Real-browser checks (Playwright + real Chrome, headless)
 
-Keep reusable browser checks in `scripts/` and run `npm run test:browser` against real Chrome. The smoke script builds the production bundle, serves that bundle with Vite preview, and covers app boot, saved searches, the Recovery dialog, Files drawer reordering, viewport-clamped closed-file options, and Library overflow at 390px. Expand it alongside the product's functional surface; keep the broader manual checklist below:
+Keep reusable browser checks in `scripts/` and run `npm run test:browser` against real Chrome. The smoke script builds the production bundle, serves that bundle with Vite preview, and covers app boot, saved searches, configured home Present launch, combined Custom split settings in Settings and the presentation toolbar, shared dropdowns, Tasks hover shape and tooltip bounds, Files header alignment, recovery, Files reordering, mobile edge menus and Library overflow. Expand it alongside the product's functional surface; keep the broader manual checklist below:
 
 1. **Visual / accessibility sweep:**
    - every view in Light and Dark, with no console errors, no icon problems and no horizontal scroll, plus a full axe run;
@@ -573,6 +580,9 @@ Pitfalls:
 - [ ] Tokens only: no hard-coded colours. New surfaces work in all themes and in high contrast.
 - [ ] Icons go through the wrapper. Sizes and styles are correct, decorative icons are `aria-hidden`, and every icon button has a label and a tooltip.
 - [ ] Hovers are round and consistent. Tooltips aren't clipped and are hidden while their menu is open.
+- [ ] Check each icon button before and during hover: its round shape is unchanged. Check long tooltips at narrow and wide viewports; the full text wraps and stays inside the viewport.
+- [ ] Custom popovers use `PickerDropdown`, never native selects. A control shown in Settings and inside its feature uses the same shared component and visual treatment.
+- [ ] Presentation settings offer standard split presets plus a Custom mode that allows combining heading levels and content types. Custom choices stay hidden while a preset is selected. The home Present button launches with that saved choice and its tooltip reads exactly “Present as slides”.
 - [ ] Menus, dialogs and palettes are keyboard-complete (arrows, Enter, Escape, focus return) with correct ARIA.
 - [ ] Destructive actions are undoable (toast Undo and/or version history). Programmatic edits keep native undo.
 - [ ] Data persists across reloads and between tabs, is included in backups, and nothing is silently overwritten.

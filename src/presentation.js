@@ -1,8 +1,6 @@
-// Splits a Markdown document into slides. The pure-helper default stays on the
-// established heading behavior; the app's saved presentation default is smart.
-// Options: `level` (1–6) — headings up to this level start a slide;
-//          `rules` — a `---` line (after a blank line) also starts a slide.
+// Splits a Markdown document into slides using a preset or combined custom triggers.
 export const DEFAULT_SPLIT = { mode: 'headings', level: 2, rules: false, targetWords: 180 }
+const DEFAULT_BLOCK_TRIGGERS = ['heading', 'list', 'table', 'quote', 'code']
 
 export function splitSlides(markdown, options) {
   return splitSlidesWithHeadings(markdown, options).slides
@@ -35,7 +33,9 @@ function contentBlocks(markdown) {
     else if (parts.length > 1 && /\|/.test(parts[0]) && /^\s*\|?\s*:?-{3,}/.test(parts[1])) type = 'table'
     else if (/^\s{0,3}(?:[-+*]\s|\d+[.)]\s)/.test(parts[0])) type = 'list'
     else if (/^\s{0,3}>/.test(parts[0])) type = 'quote'
-    blocks.push({ type, text, words: wordCount(text) })
+    const atxHeading = type === 'heading' ? /^(#{1,6})\s/.exec(parts[0].trim()) : null
+    const setextLevel = type === 'heading' ? (/^\s*=+\s*$/.test(parts[1] || '') ? 1 : 2) : undefined
+    blocks.push({ type, level: atxHeading?.[1].length ?? setextLevel, text, words: wordCount(text) })
   }
   for (const line of String(markdown ?? '').split('\n')) {
     const match = /^\s{0,3}(`{3,}|~{3,})/.exec(line)
@@ -74,14 +74,14 @@ function contentUnits(blocks) {
     const attachLead = block.type === 'paragraph' && block.words <= 48 && next && ['list', 'table', 'quote', 'code'].includes(next.type)
     const attachHeading = block.type === 'heading' && next && next.type !== 'heading' && next.type !== 'rule'
     if (attachLead || attachHeading) {
-      units.push({ type: next.type, types: [block.type, next.type], text: `${block.text}\n\n${next.text}`, words: block.words + next.words })
+      units.push({ type: next.type, types: [block.type, next.type], headingLevel: block.type === 'heading' ? block.level : undefined, text: `${block.text}\n\n${next.text}`, words: block.words + next.words })
       index += 1
     } else units.push({ ...block })
   }
   return units
 }
 
-function splitContentBlocks(markdown, { mode, rules, targetWords, triggers = [] }) {
+function splitContentBlocks(markdown, { mode, rules, targetWords, triggers = [], headingLevels = [] }) {
   const units = contentUnits(contentBlocks(markdown))
   const slides = []
   let current = []
@@ -95,12 +95,12 @@ function splitContentBlocks(markdown, { mode, rules, targetWords, triggers = [] 
     previousType = ''
   }
   for (const unit of units) {
-    if (unit.type === 'rule' && rules) { flush(); continue }
+    if (unit.type === 'rule' && (rules || triggers.includes('rule'))) { flush(); continue }
     const strongBoundary = (unit.types?.some(type => triggers.includes(type)) || triggers.includes(unit.type))
       && words >= targetWords * 0.55
       && !['list', 'table', 'quote', 'code'].includes(previousType)
     const sizeBoundary = words > 0 && words + unit.words > targetWords
-    const selectedBoundary = current.length > 0 && (unit.types || [unit.type]).some(type => triggers.includes(type))
+    const selectedBoundary = current.length > 0 && ((unit.types || [unit.type]).some(type => triggers.includes(type)) || headingLevels.includes(unit.headingLevel ?? unit.level))
     if (mode === 'blocks' && selectedBoundary || mode === 'length' && sizeBoundary || mode === 'smart' && current.length && (sizeBoundary || strongBoundary)) flush()
     current.push(unit.text)
     words += unit.words
@@ -125,7 +125,7 @@ function headingsInSlides(slides) {
   return result
 }
 
-export function splitSlidesWithHeadings(markdown, { mode = DEFAULT_SPLIT.mode, level = DEFAULT_SPLIT.level, triggers = ['heading', 'list', 'table', 'quote', 'code'], rules = DEFAULT_SPLIT.rules, targetWords = DEFAULT_SPLIT.targetWords } = {}) {
+export function splitSlidesWithHeadings(markdown, { mode = DEFAULT_SPLIT.mode, level = DEFAULT_SPLIT.level, splitLevels = [], splitTriggers = [], triggers = DEFAULT_BLOCK_TRIGGERS, rules = DEFAULT_SPLIT.rules, targetWords = DEFAULT_SPLIT.targetWords } = {}) {
   const breakAt = new RegExp(`^\\s{0,3}#{1,${Math.min(6, Math.max(1, Number(level) || 2))}}\\s`)
   const lines = String(markdown ?? '').split('\n')
   const setextStarts = new Set()
@@ -173,11 +173,14 @@ export function splitSlidesWithHeadings(markdown, { mode = DEFAULT_SPLIT.mode, l
   flush()
   const sourceSlides = slides.length ? slides : [markdown.trim() || ' ']
   const hasHeadings = contentBlocks(markdown).some(block => block.type === 'heading')
+  const blockTriggers = mode === 'blocks' && splitTriggers.length ? splitTriggers : triggers
   const resolvedSlides = mode === 'single'
     ? [String(markdown ?? '').trim() || ' ']
-    : mode === 'blocks' || mode === 'length' || (mode === 'smart' && (!hasHeadings || !triggers.includes('heading')))
-      ? splitContentBlocks(markdown, { mode: mode === 'smart' ? 'smart' : mode, triggers, rules, targetWords: Math.max(40, Number(targetWords) || DEFAULT_SPLIT.targetWords) })
-      : sourceSlides
+    : mode === 'custom'
+      ? splitContentBlocks(markdown, { mode: 'blocks', triggers: splitTriggers, headingLevels: splitLevels, rules: splitTriggers.includes('rule'), targetWords: Math.max(40, Number(targetWords) || DEFAULT_SPLIT.targetWords) })
+      : mode === 'blocks' || mode === 'length' || (mode === 'smart' && !hasHeadings)
+          ? splitContentBlocks(markdown, { mode: mode === 'smart' ? 'smart' : mode, triggers: blockTriggers, rules, targetWords: Math.max(40, Number(targetWords) || DEFAULT_SPLIT.targetWords) })
+          : sourceSlides
   return { slides: resolvedSlides, headingSlides: headingsInSlides(resolvedSlides) }
 }
 

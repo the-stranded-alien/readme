@@ -13,19 +13,22 @@ export const SPLIT_LEVELS = [
 ]
 export const SPLIT_MODES = [
   { value: 'headings', label: 'By headings' },
-  { value: 'blocks', label: 'By selected blocks' },
+  { value: 'blocks', label: 'By content blocks' },
   { value: 'length', label: 'By word count' },
   { value: 'smart', label: 'Smart split' },
   { value: 'single', label: 'One slide' },
+  { value: 'custom', label: 'Custom' },
 ]
-export const SPLIT_TRIGGERS = [
-  { value: 'heading', label: 'Headings' },
+export const SPLIT_CUSTOM_LEVELS = Array.from({ length: 6 }, (_, index) => ({ value: index + 1, label: `Heading ${index + 1} (H${index + 1})` }))
+export const SPLIT_CUSTOM_TRIGGERS = [
   { value: 'paragraph', label: 'Paragraphs' },
   { value: 'list', label: 'Lists' },
   { value: 'table', label: 'Tables' },
   { value: 'quote', label: 'Quotes' },
   { value: 'code', label: 'Code blocks' },
+  { value: 'rule', label: 'Horizontal rules' },
 ]
+const SPLIT_MODE_VALUES = [...SPLIT_MODES.map(mode => mode.value), 'at']
 export const SPLIT_TARGETS = [
   { value: 100, label: 'Short · about 100 words' },
   { value: 180, label: 'Medium · about 180 words' },
@@ -55,8 +58,8 @@ export const DEFAULT_PRESENTATION_SETTINGS = {
   splitMode: 'headings',    // preserve the established heading-based presentation by default
   splitModeExplicit: false,
   splitLevel: 2,          // headings up to this level start a slide
-  splitTriggers: ['heading', 'list', 'table', 'quote', 'code'],
-  splitRules: false,      // a `---` line also starts a slide
+  splitLevels: [1, 2],   // custom mode: any combination of heading levels
+  splitTriggers: [],     // custom mode: any combination of non-heading block types
   splitTargetWords: 180,  // target for smart and word-count splitting; blocks stay intact
   zoom: 'last',           // default text size: 'last' (last used) or a number
   theme: '',              // '' = last theme used in a presentation
@@ -80,12 +83,27 @@ export function normalizePresentationSettings(raw) {
   // Smart was the old out-of-box value and got auto-saved for many users. Move that
   // legacy default to headings, while retaining a mode explicitly picked going forward.
   const splitModeExplicit = s.splitModeExplicit === true
+  let splitMode = pick(s.splitModeExplicit === true ? s.splitMode : s.splitMode === 'smart' ? d.splitMode : s.splitMode, SPLIT_MODE_VALUES, d.splitMode)
+  // Migrate the previous single-point custom setting to the new combination mode.
+  if (splitMode === 'at') splitMode = 'custom'
+  const splitTriggers = Array.isArray(s.splitTriggers) ? [...new Set(s.splitTriggers.filter(value => SPLIT_CUSTOM_TRIGGERS.some(option => option.value === value)))] : []
+  const splitLevels = Array.isArray(s.splitLevels)
+    ? [...new Set(s.splitLevels.map(Number).filter(value => SPLIT_CUSTOM_LEVELS.some(option => option.value === value)))].sort((a, b) => a - b)
+    : [...d.splitLevels]
+  if (!splitTriggers.length && s.splitAt && s.splitAt !== 'heading') {
+    if (SPLIT_CUSTOM_TRIGGERS.some(option => option.value === s.splitAt)) splitTriggers.push(s.splitAt)
+  }
+  if (!Array.isArray(s.splitLevels) && s.splitAt === 'heading') splitLevels.splice(0, splitLevels.length, Number(s.splitLevel) || d.splitLevel)
+  if (s.splitRules === true) {
+    if (!splitTriggers.includes('rule')) splitTriggers.push('rule')
+    if (!s.splitAt) splitMode = 'custom'
+  }
   return {
-    splitMode: pick(s.splitModeExplicit === true ? s.splitMode : s.splitMode === 'smart' ? d.splitMode : s.splitMode, SPLIT_MODES.map(mode => mode.value), d.splitMode),
+    splitMode,
     splitModeExplicit,
     splitLevel: pick(Number(s.splitLevel), SPLIT_LEVELS.map(level => level.value), d.splitLevel),
-    splitTriggers: Array.isArray(s.splitTriggers) ? [...new Set(s.splitTriggers.filter(value => SPLIT_TRIGGERS.some(trigger => trigger.value === value)))] : [...d.splitTriggers],
-    splitRules: s.splitRules === true,
+    splitLevels,
+    splitTriggers,
     splitTargetWords: pick(Number(s.splitTargetWords), SPLIT_TARGETS.map(target => target.value), d.splitTargetWords),
     zoom: s.zoom === 'last' || s.zoom == null ? 'last' : clampZoom(s.zoom),
     theme: typeof s.theme === 'string' ? s.theme : d.theme,
@@ -108,4 +126,4 @@ export function savePresentationSettings(settings) {
   try { localStorage.setItem(PRESENTATION_SETTINGS_KEY, JSON.stringify(settings)) } catch { /* storage is optional */ }
 }
 export const inkColor = id => (INK_COLORS.find(color => color.id === id) ?? INK_COLORS[0]).value
-export const splitOptions = settings => ({ mode: settings.splitMode, level: settings.splitLevel, triggers: settings.splitTriggers, rules: settings.splitRules, targetWords: settings.splitTargetWords })
+export const splitOptions = settings => ({ mode: settings.splitMode, level: settings.splitLevel, splitLevels: settings.splitLevels, splitTriggers: settings.splitTriggers, targetWords: settings.splitTargetWords })
