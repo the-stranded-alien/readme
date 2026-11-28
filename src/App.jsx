@@ -29,8 +29,9 @@ import {
 } from './icons'
 import { IconStyleContext } from './icons'
 import Oneko, { ONEKO_SKINS } from 'oneko'
-import { addSnapshot, readAllHistory, readDailyNotes, readHistory, readSyncFolder, readSyncState, readWorkspace, writeDailyNotes, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
-import { canSyncToFolder, existsInFolder, folderPermission, readFolder, removeFromFolder, syncPath, writeAttachmentsToFolder, writeToFolder } from './folderSync'
+import { addSnapshot, readAllHistory, readDailyNotes, readDashboards, readHistory, readSyncFolder, readSyncState, readWorkspace, writeDailyNotes, writeDashboards, writeSyncFolder, writeSyncState, writeWorkspace } from './workspaceDb'
+import { canSyncToFolder, existsInFolder, folderPermission, readFolder, readWorkspaceData, removeFromFolder, syncPath, writeAttachmentsToFolder, writeToFolder, writeWorkspaceData } from './folderSync'
+import { decodeWorkspaceSyncData, encodeWorkspaceSyncData, mergeWorkspaceSyncData } from './workspaceSyncData'
 import { analyzeDocument, applyQualityFix, extractHeadings } from './documentAnalysis'
 import { FILE_DRAG_TYPE, fileLinkTitle, fuzzyScore, makeDuplicateFileName, relativeFileLink, resolveFileLink, MAX_FOLDER_DEPTH, cleanFileStem, folderDepth, splitFileName } from './fileUtils'
 import FileDiffView from './components/FileDiffView'
@@ -43,6 +44,7 @@ import PreviewEditTools from './components/PreviewEditTools'
 import PickerDropdown from './components/PickerDropdown'
 import LibraryView from './components/LibraryView'
 import DailyNotesDialog from './components/DailyNotesDialog'
+import DashboardDialog from './components/DashboardDialog'
 import PropertiesDialog from './components/PropertiesDialog'
 import ImagesDialog from './components/ImagesDialog'
 import { addTags, documentInfo, readFrontMatter, writeFrontMatter } from './library'
@@ -2761,6 +2763,7 @@ function WritingGoal({ words, goal, sessionWords, activeMs, onGoalChange }) {
 
 // ── App ────────────────────────────────────────────────────────
 export default function App() {
+  const [readerTooltipHandlers, readerTooltip] = useToolbarTooltip()
   const [theme, setTheme] = useState(() => {
     // A default theme chosen in Settings wins over the last-used one on every launch.
     let preferred = ''
@@ -2779,7 +2782,7 @@ export default function App() {
     () => localStorage.getItem('readme-high-contrast') === 'true'
   )
   const [appSettings, setAppSettings] = useState(() => {
-    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '', embedImages: false, defaultDocStyle: 'readme', workspaceSyncDisabled: false, workspaceAutosaveMs: 300, recoverySnapshotMinutes: 10 }
+    const defaults = { hideAi: false, lite: false, extraThemes: false, defaultTheme: '', embedImages: false, defaultDocStyle: 'readme', workspaceSyncDisabled: false, syncWorkspaceData: true, workspaceAutosaveMs: 300, recoverySnapshotMinutes: 10 }
     try { return { ...defaults, ...JSON.parse(localStorage.getItem('readme-app-settings') || '{}') } } catch { return defaults }
   })
   const updateAppSetting = useCallback((key, value) => setAppSettings(current => ({ ...current, [key]: value })), [])
@@ -2858,6 +2861,26 @@ export default function App() {
     let live = true
     readDailyNotes().then(value => { if (live) { dailyNotesRef.current = value; setDailyNotes(value) } }).catch(() => {}).finally(() => { if (live) setDailyNotesReady(true) })
     return () => { live = false }
+  }, [])
+  const [dashboards, setDashboards] = useState([])
+  const dashboardsRef = useRef([])
+  const [dashboardsReady, setDashboardsReady] = useState(false)
+  useEffect(() => {
+    let live = true
+    readDashboards().then(value => { if (live) { dashboardsRef.current = value; setDashboards(value) } }).catch(() => {}).finally(() => { if (live) setDashboardsReady(true) })
+    return () => { live = false }
+  }, [])
+  const workspaceDataReady = dailyNotesReady && dashboardsReady
+  const workspaceDataReadyRef = useRef(false)
+  const workspaceDataReadyWaitersRef = useRef([])
+  useEffect(() => {
+    if (!workspaceDataReady) return
+    workspaceDataReadyRef.current = true
+    workspaceDataReadyWaitersRef.current.splice(0).forEach(resolve => resolve())
+  }, [workspaceDataReady])
+  const waitForWorkspaceData = useCallback(() => {
+    if (workspaceDataReadyRef.current) return Promise.resolve()
+    return new Promise(resolve => workspaceDataReadyWaitersRef.current.push(resolve))
   }, [])
   const [annotationOpen, setAnnotationOpen] = useState(null)
   const [annotationText, setAnnotationText] = useState('')
@@ -3047,6 +3070,7 @@ export default function App() {
   ], [files, closedFiles])
   const tasksDueCount = useMemo(() => allTasks.filter(task => !task.checked && task.due && daysUntil(task.due) <= 0).length + agendaDocuments.filter(doc => doc.due && daysUntil(doc.due) <= 0).length, [allTasks, agendaDocuments])
   const [tasksOpen, setTasksOpen] = useState(false)
+  const [dashboardsOpen, setDashboardsOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const graphFiles = useMemo(() => [...files, ...closedFiles.map(entry => ({ ...entry.file, closed: true }))], [files, closedFiles])
   const [writingStats, setWritingStats] = useState({})
@@ -5111,6 +5135,18 @@ export default function App() {
     setFiles(prev => prev.map(file => (file.name.startsWith(`${path}/`) ? move(file) : file)))
     setClosedFiles(prev => prev.map(entry => (entry.file.name.startsWith(`${path}/`) ? { ...entry, file: move(entry.file) } : entry)))
     setEmptyFolders(list => [...new Set(list.map(moveName))])
+    setItemOrder(prev => ({ ...prev, folders: (prev.folders || []).map(moveName) }))
+    setDashboards(prev => {
+      const next = prev.map(item => {
+        const previousPaths = item.folderPaths || []
+        const folderPaths = previousPaths.map(moveName)
+        return folderPaths.some((folder, index) => folder !== previousPaths[index]) ? { ...item, folderPaths, updatedAt: Date.now() } : item
+      })
+      if (next.every((item, index) => item === prev[index])) return prev
+      dashboardsRef.current = next
+      writeDashboards(next).catch(() => {})
+      return next
+    })
     setTreeCollapsed(list => list.map(moveName))
   }, [folderPrompt, markWorkspaceEdit])
   const closeFolder = useCallback(path => {
@@ -5293,11 +5329,15 @@ export default function App() {
   const [syncActivity, setSyncActivity] = useState(() => { try { return JSON.parse(localStorage.getItem('readme-sync-activity') || '[]') } catch { return [] } })
   const syncWrittenRef = useRef(new Map()) // path → content last written to / read from the folder
   const syncPathsRef = useRef(new Map()) // file id → path it was last written to (so renames move the file)
+  const syncMetadataBaseRef = useRef(null)
+  const workspaceSyncDataRef = useRef(null)
+  const applyWorkspaceSyncDataRef = useRef(null)
   const closedFilesRef = useRef(closedFiles)
   useEffect(() => { closedFilesRef.current = closedFiles }, [closedFiles])
   const resetSyncState = useCallback(() => {
     syncWrittenRef.current = new Map()
     syncPathsRef.current = new Map()
+    syncMetadataBaseRef.current = null
     writeSyncState(null).catch(() => {})
   }, [])
   // Files edited both here and in the folder since the last sync: not written until the user picks a version.
@@ -5367,7 +5407,8 @@ export default function App() {
     }
     if (updates.size) setFiles(prev => prev.map(file => (updates.has(file.id) ? { ...file, content: updates.get(file.id) } : file)))
     if (closedUpdates.size) setClosedFiles(prev => prev.map(entry => (closedUpdates.has(entry.file.id) ? { ...entry, file: { ...entry.file, content: closedUpdates.get(entry.file.id) } } : entry)))
-    if (imports.length) setFiles(prev => [...prev, ...imports.map(item => ({ id: createFileId(), ...item }))])
+    const importedFiles = imports.map(item => ({ id: createFileId(), ...item }))
+    if (importedFiles.length) setFiles(prev => [...prev, ...importedFiles])
     if (conflicts.length) {
       setDiskConflicts(current => {
         const next = { ...current }
@@ -5386,7 +5427,7 @@ export default function App() {
         tone: 'warning', duration: 8000,
       })
     }
-    return { imported: imports.length, updated: updates.size + closedUpdates.size, removedIds: removed.map(file => file.id), removedClosedIds }
+    return { imported: importedFiles.length, importedFiles, updated: updates.size + closedUpdates.size, removedIds: removed.map(file => file.id), removedClosedIds }
   }, [takeSnapshot])
   // One sync at a time; a request while one runs queues a single follow-up.
   const syncRunRef = useRef({ running: null, queued: null })
@@ -5400,6 +5441,7 @@ export default function App() {
     const run = (async () => {
       setSyncBusy(true)
       try {
+        if (appSettings.syncWorkspaceData) await waitForWorkspaceData()
         const pulled = await pullFromFolder(handle, options)
         const conflicted = folderConflictIdsRef.current
         // Removed files are closed by a state update that hasn't landed in filesRef yet: never write them back.
@@ -5410,11 +5452,25 @@ export default function App() {
         const beforeWritten = new Map(syncWrittenRef.current)
         const pushed = await writeToFolder(handle, allSyncFiles, syncWrittenRef.current, syncPathsRef.current)
         await writeAttachmentsToFolder(handle, [...attachmentsRef.current.values()], syncWrittenRef.current).catch(() => {})
-        writeSyncState({ name: handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
+        let workspaceDataChanged = false
+        if (appSettings.syncWorkspaceData) {
+          const remoteMetadata = await readWorkspaceData(handle)
+          const syncDocuments = [...filesRef.current, ...closedFilesRef.current.map(entry => entry.file), ...(pulled.importedFiles || [])]
+          const localMetadata = encodeWorkspaceSyncData(workspaceSyncDataRef.current, syncDocuments)
+          const mergedMetadata = mergeWorkspaceSyncData(localMetadata, remoteMetadata, syncMetadataBaseRef.current)
+          const decodedMetadata = decodeWorkspaceSyncData(mergedMetadata, syncDocuments)
+          const localChanged = JSON.stringify(decodedMetadata) !== JSON.stringify(workspaceSyncDataRef.current)
+          const remoteChanged = JSON.stringify(mergedMetadata) !== JSON.stringify(remoteMetadata)
+          workspaceDataChanged = localChanged || remoteChanged
+          if (localChanged) applyWorkspaceSyncDataRef.current?.(decodedMetadata)
+          if (remoteChanged) await writeWorkspaceData(handle, mergedMetadata)
+          syncMetadataBaseRef.current = mergedMetadata
+        }
+        writeSyncState({ name: handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current, metadata: syncMetadataBaseRef.current }).catch(() => {})
         const changedPaths = [...syncWrittenRef.current].filter(([path, value]) => beforeWritten.get(path) !== value).map(([path]) => path)
         const removedNames = [...filesRef.current, ...closedFilesRef.current.map(entry => entry.file)].filter(item => [...pulled.removedIds, ...pulled.removedClosedIds].includes(item.id)).map(item => item.name)
         const skippedFiles = [...filesRef.current, ...closedFilesRef.current.map(entry => entry.file)].filter(item => conflicted.has(item.id)).map(item => item.name)
-        const record = { at: Date.now(), name: handle.name, changed: pulled.imported + pulled.updated + pushed, changedFiles: [...new Set([...changedPaths, ...removedNames])], added: pulled.imported, updated: pulled.updated + pushed, removed: pulled.removedIds.length + pulled.removedClosedIds.length, skipped: skippedFiles.length, skippedFiles, conflicts: skippedFiles.length }
+        const record = { at: Date.now(), name: handle.name, changed: pulled.imported + pulled.updated + pushed + Number(workspaceDataChanged), changedFiles: [...new Set([...changedPaths, ...removedNames, ...(workspaceDataChanged ? ['Workspace data'] : [])])], added: pulled.imported, updated: pulled.updated + pushed + Number(workspaceDataChanged), removed: pulled.removedIds.length + pulled.removedClosedIds.length, skipped: skippedFiles.length, skippedFiles, conflicts: skippedFiles.length }
         setSyncActivity(previous => { const next = [record, ...previous].slice(0, 30); try { localStorage.setItem('readme-sync-activity', JSON.stringify(next)) } catch { /* optional */ } return next })
         setSyncFolder(current => current && { ...current, status: 'connected', error: '', lastSync: record.at })
         return { ...pulled, pushed }
@@ -5432,7 +5488,7 @@ export default function App() {
     })()
     state.running = run
     try { return await run } finally { state.running = null }
-  }, [pullFromFolder])
+  }, [pullFromFolder, appSettings.syncWorkspaceData, waitForWorkspaceData])
   // Delete permanently: removes files from ReadMe (open or closed) and from the sync folder
   // (only copies nobody changed there). Files opened from disk stay on disk. Asks first in the
   // app's own dialog; the toast offers Undo. `folder` deletes a whole folder (and its empty sub-folders).
@@ -5481,7 +5537,7 @@ export default function App() {
       syncWrittenRef.current.delete(path)
       syncPathsRef.current.delete(entry.id)
     }
-    if (synced.length) writeSyncState({ name: syncFolder.handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current }).catch(() => {})
+    if (synced.length) writeSyncState({ name: syncFolder.handle.name, written: syncWrittenRef.current, paths: syncPathsRef.current, metadata: syncMetadataBaseRef.current }).catch(() => {})
     const what = folder ? `folder “${folder}”` : `“${entries[0].file.name}”`
     setToast({
       message: `Deleted ${what}.${keptInFolder ? ` ${keptInFolder === 1 ? 'A copy' : `${keptInFolder} copies`} in the sync folder changed elsewhere, so ${keptInFolder === 1 ? 'it was' : 'they were'} kept.` : ''}`,
@@ -5518,6 +5574,32 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('readme-item-order', JSON.stringify(itemOrder)) } catch { /* optional */ }
   }, [itemOrder])
+  const workspaceSyncData = useMemo(() => ({
+    version: 1,
+    dashboards,
+    dailyNotes,
+    annotations,
+    emptyFolders,
+    customTemplates,
+    readingBookmarks,
+    sectionBookmarks,
+    itemOrder,
+  }), [dashboards, dailyNotes, annotations, emptyFolders, customTemplates, readingBookmarks, sectionBookmarks, itemOrder])
+  workspaceSyncDataRef.current = workspaceSyncData
+  applyWorkspaceSyncDataRef.current = data => {
+    dashboardsRef.current = data.dashboards
+    setDashboards(data.dashboards)
+    writeDashboards(data.dashboards).catch(() => {})
+    dailyNotesRef.current = data.dailyNotes
+    setDailyNotes(data.dailyNotes)
+    writeDailyNotes(data.dailyNotes).catch(() => {})
+    setAnnotations(data.annotations)
+    setEmptyFolders(data.emptyFolders)
+    setCustomTemplates(data.customTemplates)
+    setReadingBookmarks(data.readingBookmarks)
+    setSectionBookmarks(data.sectionBookmarks)
+    setItemOrder(data.itemOrder)
+  }
   // Drag-and-drop order, shared by the Files panel and the Library. A drop reorders what was
   // shown (`displayed`, in on-screen order); those keys then come first in the saved order and
   // everything else keeps its relative order (items are only ever compared with their neighbours
@@ -5796,7 +5878,7 @@ export default function App() {
   // Reconnect the saved folder once the workspace has loaded (so its files aren't mistaken for new ones).
   const syncStartedRef = useRef(false)
   useEffect(() => {
-    if (!workspaceReady || syncStartedRef.current) return undefined
+    if (!workspaceReady || !workspaceDataReady || syncStartedRef.current) return undefined
     syncStartedRef.current = true
     let cancelled = false
     readSyncFolder().then(async handle => {
@@ -5805,13 +5887,14 @@ export default function App() {
       if (saved?.name === handle.name && saved.written instanceof Map && saved.paths instanceof Map) {
         syncWrittenRef.current = saved.written
         syncPathsRef.current = saved.paths
+        syncMetadataBaseRef.current = saved.metadata ?? null
       }
       const permission = await folderPermission(handle).catch(() => 'denied')
       setSyncFolder({ handle, name: handle.name, status: permission === 'granted' ? 'connected' : 'needs-permission', error: '', lastSync: null })
       if (permission === 'granted') runFolderSync(handle, { first: true })
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [workspaceReady, runFolderSync])
+  }, [workspaceReady, workspaceDataReady, runFolderSync])
   const connectSyncFolder = useCallback(async () => {
     try {
       const handle = await window.showDirectoryPicker({ id: 'readme-sync', mode: 'readwrite' })
@@ -5844,7 +5927,7 @@ export default function App() {
     if (!syncHandle) return
     const timer = setTimeout(() => runFolderSync(syncHandle), 1200)
     return () => clearTimeout(timer)
-  }, [files, closedFiles, syncHandle, runFolderSync, syncNudge])
+  }, [files, closedFiles, workspaceSyncData, appSettings.syncWorkspaceData, syncHandle, runFolderSync, syncNudge])
   useEffect(() => {
     if (!syncHandle) return
     const onFocus = () => runFolderSync(syncHandle)
@@ -5998,6 +6081,15 @@ export default function App() {
     setDailyNotes(next)
     writeDailyNotes(next).catch(() => {})
   }, [])
+  const commitDashboards = useCallback(update => {
+    const next = update(dashboardsRef.current)
+    dashboardsRef.current = next
+    setDashboards(next)
+    writeDashboards(next).catch(() => {})
+  }, [])
+  const createDashboard = useCallback(dashboard => commitDashboards(prev => [...prev, dashboard]), [commitDashboards])
+  const updateDashboard = useCallback((id, changes) => commitDashboards(prev => prev.map(item => item.id === id ? { ...item, ...changes, updatedAt: Date.now() } : item)), [commitDashboards])
+  const deleteDashboard = useCallback(id => commitDashboards(prev => prev.filter(item => item.id !== id)), [commitDashboards])
   const addDailyNote = useCallback(entry => commitDailyNotes(prev => [...prev, { ...entry, id: createFileId(), createdAt: Date.now(), done: false }]), [commitDailyNotes])
   const updateDailyNote = useCallback((id, changes) => commitDailyNotes(prev => prev.map(entry => entry.id === id ? { ...entry, ...changes, updatedAt: Date.now() } : entry)), [commitDailyNotes])
   const deleteDailyNote = useCallback(id => commitDailyNotes(prev => prev.filter(entry => entry.id !== id)), [commitDailyNotes])
@@ -6398,6 +6490,7 @@ ${fontCss}
     ...(activeFile ? [{ id: 'preview-edit', label: previewEditOn ? 'Stop editing in the preview' : 'Edit in preview', hint: 'View', icon: Pencil, run: () => { setPreviewEditOn(on => !on); if (view === 'editor') setView('preview') } }] : []),
     { id: 'library', label: 'Library: all documents', hint: 'View', icon: Library, run: () => setLibraryOpen(true) },
     { id: 'check-links', label: 'Check workspace links…', hint: 'Workspace', icon: Link2, run: () => setLinkCheckOpen(true) },
+    { id: 'dashboards', label: 'Document dashboards…', hint: 'Workspace', icon: LayoutTemplate, run: () => setDashboardsOpen(true) },
     { id: 'recovery', label: 'Recovery & unsaved changes…', hint: 'Workspace', icon: HardDrive, run: openRecovery },
     { id: 'tour', label: 'Take the tour', hint: 'Help', icon: Sparkles, run: startTour },
     ...(activeFile ? [{ id: 'doc-style', label: 'Document style…', hint: 'Document', icon: Palette, run: () => { if (view === 'editor') setView('split'); setReaderOpen(true) } }] : []),
@@ -6653,6 +6746,7 @@ ${fontCss}
         onToggleFileTree={() => setFileTreeOpen(open => !open)}
         onOpenTasks={() => setTasksOpen(true)}
         onOpenDailyNotes={() => setDailyNotesOpen(true)}
+        onOpenDashboards={() => setDashboardsOpen(true)}
         onOpenLibrary={() => setLibraryOpen(true)}
         tasksDueCount={tasksDueCount}
         searchValue={cmdQuery}
@@ -6960,7 +7054,8 @@ ${fontCss}
               }}
             >
               {/* Preview toolbar */}
-              <div className="no-print shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 surface-toolbar relative reader-preview-toolbar is-icons-only">
+              <div className="no-print shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 surface-toolbar relative reader-preview-toolbar is-icons-only" {...readerTooltipHandlers}
+                onWheel={event => { if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY }}>
                 <div className="flex items-center gap-2 reader-toolbar-left">
                   <button
                     onClick={() => setTocVisible(v => !v)}
@@ -7374,6 +7469,7 @@ ${fontCss}
                   </button>
                 </div>
               </div>
+              {readerTooltip}
 
               {/* Preview body: TOC + content */}
               <div className="flex-1 flex min-h-0 relative">
@@ -7783,6 +7879,10 @@ ${fontCss}
         onSetDocumentDue={(id, value) => updateAgendaProperty(id, 'due', value)}
         onToggleDocumentReminder={(id, value) => updateAgendaProperty(id, 'reminder', value)}
         onClose={() => setTasksOpen(false)} />}
+      {dashboardsOpen && dashboardsReady && <DashboardDialog dashboards={dashboards} documents={linkableFiles} tasks={allTasks}
+        onCreate={createDashboard} onUpdate={updateDashboard} onDelete={deleteDashboard}
+        onOpenDocument={id => { setDashboardsOpen(false); openDocument(id) }}
+        onSetDocumentDue={(id, value) => updateAgendaProperty(id, 'due', value)} onClose={() => setDashboardsOpen(false)} />}
       {linkCheckOpen && <LinkCheckDialog files={[...files, ...closedFiles.map(entry => ({ ...entry.file, closed: true }))]}
         attachmentPaths={[...attachments.keys()]} onOpen={id => { setLinkCheckOpen(false); openDocument(id) }} onClose={() => setLinkCheckOpen(false)} />}
       {recoveryData && <RecoveryDialog files={[...files, ...closedFiles.map(entry => ({ ...entry.file, closed: true }))]}
@@ -7895,24 +7995,25 @@ ${fontCss}
           onHighContrast={value => { if (value !== highContrast) toggleHighContrast() }}
           workspaceExtra={(
             <>
-              <FolderSyncCard supported={canSyncToFolder()} state={syncFolder} disabled={Boolean(appSettings.workspaceSyncDisabled)}
+              <FolderSyncCard supported={canSyncToFolder()} state={syncFolder} disabled={Boolean(appSettings.workspaceSyncDisabled)} syncWorkspaceData={appSettings.syncWorkspaceData !== false}
                 activity={syncActivity}
                 onConnect={connectSyncFolder} onReconnect={reconnectSyncFolder}
                 onSyncNow={() => syncFolder?.handle && runFolderSync(syncFolder.handle)} onDisconnect={disconnectSyncFolder}
-                onToggleDisabled={value => updateAppSetting('workspaceSyncDisabled', value)} />
-              <label className="settings-field recovery-interval-setting">
+                onToggleDisabled={value => updateAppSetting('workspaceSyncDisabled', value)}
+                onToggleWorkspaceData={value => updateAppSetting('syncWorkspaceData', value)} />
+              <label className="settings-field workspace-setting-field recovery-interval-setting">
                 <span className="settings-toggle-text"><strong>Browser autosave</strong><span>Keep edits in this browser automatically, with this short pause after typing.</span></span>
                 <span className="settings-select-wrap"><select className="settings-select" value={appSettings.workspaceAutosaveMs ?? 300} onChange={event => updateAppSetting('workspaceAutosaveMs', Number(event.target.value))} aria-label="Browser autosave delay">
                   <option value={100}>After 0.1 seconds</option><option value={300}>After 0.3 seconds</option><option value={1000}>After 1 second</option><option value={3000}>After 3 seconds</option>
                 </select></span>
               </label>
-              <label className="settings-field recovery-interval-setting">
+              <label className="settings-field workspace-setting-field recovery-interval-setting">
                 <span className="settings-toggle-text"><strong>Recovery snapshot interval</strong><span>Save an earlier version after you pause editing. Browser autosave remains immediate.</span></span>
                 <span className="settings-select-wrap"><select className="settings-select" value={appSettings.recoverySnapshotMinutes ?? 10} onChange={event => updateAppSetting('recoverySnapshotMinutes', Number(event.target.value))} aria-label="Recovery snapshot interval">
                   <option value={0}>Off</option><option value={1}>Every minute</option><option value={5}>Every 5 minutes</option><option value={10}>Every 10 minutes</option><option value={30}>Every 30 minutes</option>
                 </select></span>
               </label>
-              <div className="settings-actions"><button type="button" className="reader-chip" onClick={openRecovery}><History size={12} />Recovery &amp; unsaved changes</button></div>
+              <div className="settings-actions workspace-recovery-actions"><button type="button" className="reader-chip" onClick={openRecovery}><History size={12} />Recovery &amp; unsaved changes</button></div>
             </>
           )}
           petExtra={(

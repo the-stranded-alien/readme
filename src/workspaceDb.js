@@ -44,6 +44,11 @@ export const readDailyNotes = async () => {
   return Array.isArray(value) ? value : []
 }
 export const writeDailyNotes = notes => put(STORE_NAME, 'daily-notes', Array.isArray(notes) ? notes : [])
+export const readDashboards = async () => {
+  const value = await get(STORE_NAME, 'document-dashboards')
+  return Array.isArray(value) ? value : []
+}
+export const writeDashboards = dashboards => put(STORE_NAME, 'document-dashboards', Array.isArray(dashboards) ? dashboards : [])
 
 // ── Version history (per file) ─────────────────────────────────
 export async function readHistory(fileId) {

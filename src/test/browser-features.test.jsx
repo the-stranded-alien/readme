@@ -5,12 +5,15 @@ import { runInNewContext } from 'node:vm'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import App from '../App.jsx'
+import DashboardDialog from '../components/DashboardDialog.jsx'
+import { healthIssues } from '../dashboardHealth.js'
+import { decodeWorkspaceSyncData, encodeWorkspaceSyncData, mergeWorkspaceSyncData } from '../workspaceSyncData.js'
 import { APP_VERSION } from '../version.js'
 import { analyzeDocument, applyQualityFix, checkMarkdownQuality } from '../documentAnalysis.js'
 import { diffLines } from '../documentDiff.js'
 import { fuzzyScore, isModifiedFromDisk, makeDuplicateFileName } from '../fileUtils.js'
 import { autoPair, continueMarkup, deletePair, formatMarkdownTables, imageReferenceMarkdown } from '../editorAssist.js'
-import { addSnapshot, readHistory, readWorkspace, writeWorkspace } from '../workspaceDb.js'
+import { addSnapshot, readDashboards, readHistory, readWorkspace, writeWorkspace } from '../workspaceDb.js'
 
 function installApp(root = document.body) {
   return render(<App />, { container: root === document.body ? undefined : root })
@@ -76,10 +79,107 @@ describe('advanced browser features', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings', exact: true }))
     const workspace = await screen.findByRole('region', { name: 'Workspace' })
     expect(within(workspace).getByText('Use a device-linked drive folder')).toBeInTheDocument()
+    const metadataSync = within(workspace).getByRole('switch', { name: /Sync workspace data/ })
+    expect(metadataSync).toBeChecked()
+    fireEvent.click(metadataSync)
+    expect(metadataSync).not.toBeChecked()
+    expect(within(workspace).getByText(/Workspace data is no longer read from or written to the sync folder/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Storage', exact: true }))
     const storage = screen.getByRole('region', { name: 'Storage' })
     expect(within(storage).getByText('Use a device-linked drive folder')).toBeInTheDocument()
     expect(within(storage).getByText(/local folder provided by that app/)).toBeInTheDocument()
+  })
+
+  it('creates a project dashboard and saves selected documents', async () => {
+    installApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Open document dashboards' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Document dashboards' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'New dashboard name' }), { target: { value: 'Launch project' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create dashboard' }))
+    expect(await within(dialog).findByRole('textbox', { name: 'Dashboard name' })).toHaveValue('Launch project')
+    const checkboxes = within(dialog).getAllByRole('checkbox')
+    if (checkboxes.length) fireEvent.click(checkboxes[0])
+    await waitFor(async () => expect((await readDashboards())[0]?.title).toBe('Launch project'))
+    expect(await readDashboards()).toHaveLength(1)
+    expect((await readDashboards())[0].documentIds).toHaveLength(1)
+  })
+
+  it('flags missing titles, heading jumps, long sections and older dates in dashboard health', () => {
+    const file = { id: 'health', name: 'plan.md', content: `## Overview\n#### Detail\nDate: 2020-01-02\n\n${'word '.repeat(1200)}` }
+    const messages = healthIssues(file).map(issue => issue.message)
+    expect(messages).toContain('No document title or H1 heading.')
+    expect(messages.some(message => message.includes('Heading level jumps'))).toBe(true)
+    expect(messages.some(message => message.includes('words.'))).toBe(true)
+    expect(messages).toContain('Review the older date 2020-01-02.')
+  })
+
+  it('merges workspace sync changes and propagates deletions', () => {
+    const base = {
+      dashboards: [{ id: 'project', title: 'Project', createdAt: 1 }],
+      dailyNotes: [{ id: 'old-note', text: 'Keep this', createdAt: 1 }],
+      annotations: [], customTemplates: [], emptyFolders: ['Archive'],
+      readingBookmarks: { docA: { progress: 10 }, docB: { progress: 20 } }, sectionBookmarks: {}, itemOrder: {},
+    }
+    const local = {
+      ...base,
+      dashboards: [{ id: 'project', title: 'Renamed project', createdAt: 1, updatedAt: 20 }],
+      dailyNotes: [{ id: 'local-note', text: 'From this device', createdAt: 30 }],
+      emptyFolders: [], readingBookmarks: { docA: { progress: 25 } },
+    }
+    const remote = {
+      ...base,
+      dailyNotes: [...base.dailyNotes, { id: 'remote-note', text: 'From another device', createdAt: 40 }],
+      emptyFolders: ['Archive', 'Drafts'], readingBookmarks: { docA: { progress: 10 }, docB: { progress: 20 } },
+    }
+    const merged = mergeWorkspaceSyncData(local, remote, base)
+    expect(merged.dashboards[0].title).toBe('Renamed project')
+    expect(merged.dailyNotes.map(note => note.id)).toEqual(expect.arrayContaining(['local-note', 'remote-note']))
+    expect(merged.emptyFolders).toEqual(['Drafts'])
+    expect(merged.readingBookmarks).toEqual({ docA: { progress: 25 } })
+  })
+
+  it('stores synced document references as paths across devices', () => {
+    const data = {
+      version: 1,
+      dashboards: [{ id: 'project', title: 'Project', documentIds: ['device-a-id'], excludedDocumentIds: [] }],
+      dailyNotes: [{ id: 'note', text: 'Thought', organizedTo: 'device-a-id' }],
+      annotations: [{ id: 'comment', fileId: 'device-a-id', quote: 'Highlighted text' }],
+      customTemplates: [], emptyFolders: [], readingBookmarks: { 'device-a-id': { progress: 20 } },
+      sectionBookmarks: { 'device-a-id': ['intro'] }, itemOrder: { files: ['device-a-id'], folders: [] },
+    }
+    const encoded = encodeWorkspaceSyncData(data, [{ id: 'device-a-id', name: 'Projects/Plan.md' }])
+    expect(encoded.dashboards[0].documentPaths).toEqual(['Projects/Plan.md'])
+    const decoded = decodeWorkspaceSyncData(encoded, [{ id: 'device-b-id', name: 'Projects/Plan.md' }])
+    expect(decoded.dashboards[0].documentIds).toEqual(['device-b-id'])
+    expect(decoded.dailyNotes[0].organizedTo).toBe('device-b-id')
+    expect(decoded.annotations[0].fileId).toBe('device-b-id')
+    expect(decoded.readingBookmarks['device-b-id']).toEqual({ progress: 20 })
+  })
+
+  it('updates saved workspace references when a document is renamed', () => {
+    const encoded = encodeWorkspaceSyncData({
+      dashboards: [{ id: 'project', documentIds: ['doc-id'], documentPaths: ['Old/Plan.md'], excludedDocumentIds: [] }],
+      dailyNotes: [{ id: 'note', organizedTo: 'doc-id', organizedToPath: 'Old/Plan.md' }],
+      annotations: [{ id: 'comment', fileId: 'doc-id', filePath: 'Old/Plan.md' }],
+    }, [{ id: 'doc-id', name: 'New/Plan.md' }])
+    expect(encoded.dashboards[0].documentPaths).toEqual(['New/Plan.md'])
+    expect(encoded.dailyNotes[0].organizedToPath).toBe('New/Plan.md')
+    expect(encoded.annotations[0].filePath).toBe('New/Plan.md')
+  })
+
+  it('adds dashboard folders and sets deadlines with a clear healthy status', () => {
+    const documents = [{ id: 'plan', name: 'Projects/Plan.md', content: '---\ntitle: Plan\n---\n# Plan\n' }]
+    const dashboard = { id: 'dash-1', title: 'Project', documentIds: [], folderPaths: [] }
+    const onUpdate = vi.fn()
+    const onSetDocumentDue = vi.fn()
+    const view = render(<DashboardDialog dashboards={[dashboard]} documents={documents} tasks={[]} onCreate={vi.fn()} onUpdate={onUpdate} onDelete={vi.fn()} onOpenDocument={vi.fn()} onSetDocumentDue={onSetDocumentDue} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Projects' }))
+    expect(onUpdate).toHaveBeenCalledWith('dash-1', expect.objectContaining({ folderPaths: ['Projects'] }))
+    view.rerender(<DashboardDialog dashboards={[{ ...dashboard, folderPaths: ['Projects'] }]} documents={documents} tasks={[]} onCreate={vi.fn()} onUpdate={onUpdate} onDelete={vi.fn()} onOpenDocument={vi.fn()} onSetDocumentDue={onSetDocumentDue} onClose={vi.fn()} />)
+    expect(screen.getByText('Everything looks good')).toBeInTheDocument()
+    expect(screen.getByText('Checked 1 selected document')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Deadline for Projects/Plan.md'), { target: { value: '2026-12-15' } })
+    expect(onSetDocumentDue).toHaveBeenCalledWith('plan', '2026-12-15')
   })
 
   it('opens and saves a file through the File System Access API', async () => {

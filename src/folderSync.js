@@ -3,6 +3,7 @@
 
 const TEXT_FILE = /\.(md|markdown|mdx|txt)$/i
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build'])
+export const WORKSPACE_DATA_FILE = 'ReadMe Workspace Data.json'
 
 export const canSyncToFolder = () => typeof window !== 'undefined' && 'showDirectoryPicker' in window
 
@@ -69,6 +70,26 @@ export async function writeAttachmentsToFolder(root, records, written) {
     count += 1
   }
   return count
+}
+
+/** Workspace metadata lives beside, but outside, the Markdown import/sync file set. */
+export async function readWorkspaceData(root) {
+  try {
+    const handle = await root.getFileHandle(WORKSPACE_DATA_FILE)
+    const text = await (await handle.getFile()).text()
+    const value = JSON.parse(text)
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null
+  } catch (error) {
+    if (error?.name === 'NotFoundError') return null
+    throw error
+  }
+}
+
+export async function writeWorkspaceData(root, data) {
+  const handle = await root.getFileHandle(WORKSPACE_DATA_FILE, { create: true })
+  const writable = await handle.createWritable()
+  await writable.write(`${JSON.stringify(data, null, 2)}\n`)
+  await writable.close()
 }
 
 /** True when the folder still has a file at this path (false only when it is really gone). */

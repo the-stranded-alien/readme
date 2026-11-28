@@ -12,7 +12,7 @@ export function useHoverTooltip() {
     const run = () => {
       const rect = target.getBoundingClientRect()
       shownRef.current = true
-      setTip({ text: target.dataset.tip, x: rect.left + rect.width / 2, y: rect.bottom + 7 })
+      setTip({ text: target.dataset.tip || target.dataset.tooltip, x: rect.left + rect.width / 2, y: rect.bottom + 7 })
     }
     if (immediate || shownRef.current) run()
     else timerRef.current = setTimeout(run, 350)
@@ -25,9 +25,9 @@ export function useHoverTooltip() {
   }, [])
   useEffect(() => () => clearTimeout(timerRef.current), [])
   const handlers = {
-    onPointerOver: event => { const target = event.target.closest?.('[data-tip]'); if (target && event.currentTarget.contains(target)) show(target) },
-    onPointerOut: event => { const target = event.target.closest?.('[data-tip]'); if (target && !target.contains(event.relatedTarget)) hide() },
-    onFocus: event => { const target = event.target.closest?.('[data-tip]'); if (target?.matches(':focus-visible')) show(target, true) },
+    onPointerOver: event => { const target = event.target.closest?.('[data-tip],[data-tooltip]'); if (target && event.currentTarget.contains(target)) show(target) },
+    onPointerOut: event => { const target = event.target.closest?.('[data-tip],[data-tooltip]'); if (target && !target.contains(event.relatedTarget)) hide() },
+    onFocus: event => { const target = event.target.closest?.('[data-tip],[data-tooltip]'); if (target?.matches(':focus-visible')) show(target, true) },
     onBlur: hide,
     onPointerDown: hide,
     onScroll: hide,

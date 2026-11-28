@@ -64,7 +64,7 @@ export function ThemePicker({ themes, value, onChange, extraThemes, onExtraTheme
 }
 
 /** "Sync to a folder" controls (Settings → Workspace). */
-export function FolderSyncCard({ supported, state, disabled, onConnect, onReconnect, onSyncNow, onDisconnect, onToggleDisabled, activity = [] }) {
+export function FolderSyncCard({ supported, state, disabled, syncWorkspaceData = true, onConnect, onReconnect, onSyncNow, onDisconnect, onToggleDisabled, onToggleWorkspaceData, activity = [] }) {
   return (
     <div className="folder-sync" role="group" aria-label="Sync to a folder">
       <div className="folder-sync-head">
@@ -115,6 +115,14 @@ export function FolderSyncCard({ supported, state, disabled, onConnect, onReconn
           </div>
         </>
       )}
+      {onToggleWorkspaceData && <SettingsToggle
+        label="Sync workspace data"
+        description={syncWorkspaceData
+          ? 'Projects, Daily Notes, comments, highlights, templates, bookmarks and folder structure sync in a separate data file. Tasks and deadlines stored in Markdown sync with their documents.'
+          : 'Workspace data is no longer read from or written to the sync folder. Any earlier copy remains there; Markdown documents and their tasks, deadlines and image attachments still sync.'}
+        checked={syncWorkspaceData}
+        onChange={onToggleWorkspaceData}
+      />}
       <details className="folder-sync-activity">
         <summary>Sync activity {activity.length ? `(${activity.length})` : ''}</summary>
         {activity.length ? <ol>{activity.slice(0, 10).map((item, index) => <li key={`${item.at}-${index}`}>

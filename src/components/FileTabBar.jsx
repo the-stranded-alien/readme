@@ -4,7 +4,7 @@ import { shortcut } from '../platform'
 import { useHoverTooltip } from '../useHoverTooltip'
 import { FILE_LABEL_COLORS, TAB_DRAG_TYPE, fuzzyScore, isDiskBacked, isModifiedFromDisk, labelColor, cleanFileStem, splitFileName } from '../fileUtils'
 import {
-  Check, Command, CopyPlus, Download, FilePlus, FileText, GitCompare, HardDrive, FolderTree, Library, ListChecks, ListTree,
+  Check, Command, CopyPlus, Download, FilePlus, FileText, GitCompare, HardDrive, FolderTree, Library, ListChecks, ListTree, LayoutTemplate,
   BookOpenText, Pencil, Pin, PinOff, RotateCcw, Search, Trash2, X, XCircle,
 } from '../icons'
 
@@ -214,7 +214,7 @@ function FileSwitcher({ files, activeFileId, recentIds, onSelect, onClose, ancho
 export default function FileTabBar({
   files, activeFileId, recentIds, canReopen,
   onSelect, onClose, onCreate, onRename, onDuplicate, onCompare, onReorder, onTogglePin, onSetColor,
-  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, onDelete, fileTreeOpen, onToggleFileTree, onOpenTasks, onOpenDailyNotes, onOpenLibrary, tasksDueCount = 0,
+  onCloseOthers, onCloseToRight, onRevealOutline, onDownload, onReopenClosed, onDelete, fileTreeOpen, onToggleFileTree, onOpenTasks, onOpenDailyNotes, onOpenDashboards, onOpenLibrary, tasksDueCount = 0,
   searchValue, onSearchChange, onSearchFocus, onOpenCommandPalette,
 }) {
   // Labels for the small duplicate / close icons, in the app's tooltip style (the strip scrolls, so CSS tooltips would be clipped).
@@ -504,6 +504,13 @@ export default function FileTabBar({
             data-tip="Daily notes. Capture thoughts and tasks, then add them to a document later."
             aria-label="Open daily notes">
             <BookOpenText size={14} />
+          </button>
+        )}
+        {onOpenDashboards && (
+          <button type="button" onClick={onOpenDashboards} className="file-tabs-command-button file-tabs-dashboards"
+            data-tip="Document dashboards. Group project documents, tasks, deadlines and health checks."
+            aria-label="Open document dashboards">
+            <LayoutTemplate size={14} />
           </button>
         )}
         {onOpenTasks && <span className="file-tabs-task-divider" aria-hidden="true" />}

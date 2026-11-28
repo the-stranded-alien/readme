@@ -5,9 +5,18 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '3.8'
+export const APP_VERSION = '3.9'
 
 export const RELEASES = [
+  {
+    version: '3.9',
+    date: '2026-11-28',
+    notes: [
+      'Project dashboards collect documents, tasks, deadlines, links and document health checks in one place.',
+      'Workspace sync now carries projects, Daily Notes, comments, highlights, templates, bookmarks and folder structure, with a setting to opt out.',
+      'Improved dashboard layouts, Workspace settings alignment, and narrow-screen toolbar scrolling and tooltips.',
+    ],
+  },
   {
     version: '3.8',
     date: '2026-11-28',
