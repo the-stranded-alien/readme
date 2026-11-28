@@ -5,9 +5,17 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '3.6'
+export const APP_VERSION = '3.7'
 
 export const RELEASES = [
+  {
+    version: '3.7',
+    date: '2026-11-28',
+    notes: [
+      'Smart split uses headings when present and groups heading-free documents at complete Markdown block boundaries, keeping lists, tables, code blocks and speaker notes intact.',
+      'Choose Smart split, headings, content blocks, word count or one slide in the presentation toolbar or Settings → Presentation.',
+    ],
+  },
   {
     version: '3.6',
     date: '2026-11-27',

@@ -1,6 +1,6 @@
 import { SettingsToggle } from './SettingsDialog'
 import {
-  AUTO_ADVANCE_SECONDS, FADE_SECONDS, INK_COLORS, PEN_WIDTHS, SPLIT_LEVELS, ZOOM_CHOICES,
+  AUTO_ADVANCE_SECONDS, FADE_SECONDS, INK_COLORS, PEN_WIDTHS, SPLIT_LEVELS, SPLIT_MODES, SPLIT_TARGETS, ZOOM_CHOICES,
 } from '../presentationSettings'
 
 function Field({ label, description, children }) {
@@ -42,10 +42,15 @@ export default function PresentationSettings({ settings, onChange, themes }) {
   return (
     <>
       <h4 className="settings-subhead">Slides</h4>
-      <Field label="New slide at" description="Which headings start a new slide.">
-        <Select label="New slide at" value={settings.splitLevel} onChange={value => set('splitLevel', Number(value))}
-          options={SPLIT_LEVELS} />
+      <Field label="Slide splitting" description="Choose how to divide a document into slides. Smart split uses headings when present, then falls back to complete content blocks.">
+        <Select label="Slide splitting" value={settings.splitMode} onChange={value => set('splitMode', value)} options={SPLIT_MODES} />
       </Field>
+      {['smart', 'headings'].includes(settings.splitMode) && <Field label="New slide at" description="Heading level that starts a new slide.">
+        <Select label="New slide at" value={settings.splitLevel} onChange={value => set('splitLevel', Number(value))} options={SPLIT_LEVELS} />
+      </Field>}
+      {['smart', 'length'].includes(settings.splitMode) && <Field label="Target slide length" description={`${settings.splitMode === 'smart' ? 'Used when a document has no headings. ' : ''}An approximate target; lists, tables and code blocks stay intact, so a slide may exceed it.`}>
+        <Select label="Target slide length" value={settings.splitTargetWords} onChange={value => set('splitTargetWords', Number(value))} options={SPLIT_TARGETS} />
+      </Field>}
       <SettingsToggle label="Break at horizontal rules" description="A --- line on its own also starts a new slide."
         checked={settings.splitRules} onChange={value => set('splitRules', value)} />
       <Field label="Auto-advance" description="Move to the next slide automatically. Pause it from the toolbar.">

@@ -344,7 +344,7 @@ Rules learned the hard way:
 
 - **Settings live in one normalised object** (`src/presentationSettings.js`: defaults, allowed values, `normalize…`), stored under a `readme-` key so backups include it. Settings → Presentation edits it; the slide toolbar changes things for the current session only.
 - **The presentation has its own theme.** It starts in the default presentation theme (or the last one used in a presentation) and the app's theme comes back on exit.
-- **Slide breaks are configurable** (heading level 1–6, optional `---` after a blank line). Every helper that maps headings to slides takes the same split options.
+- **Slide splitting is configurable** (smart, headings, semantic content blocks, approximate word count, or one slide; heading level 1–6 and optional `---` breaks). Smart splitting uses headings when present and otherwise groups complete Markdown blocks, keeping lists, tables, quotes and fenced code intact. Every helper that maps headings to slides takes the same normalized options.
 - **Pen and laser are drawn on a canvas over the stage** that only takes the pointer while the pen is on. Strokes belong to a slide; fading ink is removed after its time, permanent ink stays until cleared. The toolbar sits above the canvas and stays usable.
 - **Keys keep working when focus falls out.** If the focused control is removed, a window-level listener still handles keys whose target is `body`.
 - **Escape unwinds one layer at a time:** blank screen → active tool → exit.
@@ -507,7 +507,7 @@ Target: **zero axe violations** in every view, in every theme, with and without 
 
 ### Real-browser checks (Playwright + real Chrome, headless)
 
-Keep reusable browser checks in `scripts/` and run `npm run test:browser` against real Chrome. The smoke script starts a local Vite server and covers app boot, saved searches, Files drawer reordering, viewport-clamped closed-file options, and Library overflow at 390px. Expand it alongside the product's functional surface; keep the broader manual checklist below:
+Keep reusable browser checks in `scripts/` and run `npm run test:browser` against real Chrome. The smoke script builds the production bundle, serves that bundle with Vite preview, and covers app boot, saved searches, the Recovery dialog, Files drawer reordering, viewport-clamped closed-file options, and Library overflow at 390px. Expand it alongside the product's functional surface; keep the broader manual checklist below:
 
 1. **Visual / accessibility sweep:**
    - every view in Light and Dark, with no console errors, no icon problems and no horizontal scroll, plus a full axe run;
@@ -533,6 +533,8 @@ Techniques that made this possible:
   This exercises the actual sync code; only the native pickers stay untested and need a manual check.
 - Seed state with `addInitScript`, guarded by a `sessionStorage` flag so reloads keep their state.
 - Collect `pageerror` and console errors during every run and treat them as failures.
+- **A failed or incomplete verification is a hard stop. Never commit or push a deploy while lint, production build, production-preview browser smoke, or required feature checks fail. Fix the cause, rerun every failed check, and confirm the app loads without a blank screen or uncaught browser errors before pushing.** A successful dev-server run alone does not qualify; exercise the built production bundle.
+- Before shipping React changes, inspect callback and memo dependency arrays for references to `const` bindings declared later in the component. Dependency arrays evaluate during render; referencing a later binding can trigger a temporal-dead-zone `ReferenceError` and blank the entire app even when the callback body never runs. Keep dependencies declared first, and exercise new dialogs/actions in the production smoke path.
 - Open every anchored menu near both horizontal viewport edges and confirm the whole menu remains visible; check long menus against the bottom edge too.
 - Take screenshots of anything visual and **look at them**. The squeezed presenter notes and a mid-row "CLOSED" tag were only caught that way.
 
@@ -556,7 +558,7 @@ Pitfalls:
 
 ## 14. Working agreement (for agents)
 
-- Implement → verify in real Chrome → lint, tests, build → report what was verified and what wasn't, honestly.
+- Implement → lint and build → verify the production bundle in real Chrome, including the changed feature → run relevant tests → only then commit/push when asked. A failing check blocks deployment until fixed and rerun.
 - **Commit and push only when the user asks.** Work in small batches; when the user asks for batches, push after each verified batch.
 - Don't make changes the user didn't ask for. If you spot problems, list them as suggestions.
 - Respect explicit constraints (for example: don't modify the code editor component; keep the simple editor as the default).
@@ -578,5 +580,6 @@ Pitfalls:
 - [ ] No horizontal scroll at 390px. Header doesn't overlap at 900–1280px. Reduced motion is respected.
 - [ ] Zero axe violations in every theme, with and without high contrast. No console errors.
 - [ ] `eslint .` is clean, `vitest run` passes, `vite build` succeeds, the browser scripts pass, and screenshots have been reviewed.
+- [ ] The built production preview starts without a blank screen or browser errors; any failed lint, build, smoke, or required feature check blocks the push until fixed and rerun.
 - [ ] Help, the shortcuts sheet and the About text are updated for new features.
 - [ ] The version in `src/version.js` is bumped and a `RELEASES` entry (date + meaningful changes only) is added.

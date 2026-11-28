@@ -2132,6 +2132,9 @@ button[data-tooltip]:not(:focus-visible)::after {
   border-bottom: 1px solid var(--border-light);
 }
 .file-tree-header-actions { display: inline-flex; gap: 2px; }
+.file-tree-header { line-height: 1; }
+.file-tree-header > span:first-child { display: inline-flex; align-items: center; min-height: 22px; line-height: 1; }
+.file-tree-header-actions { align-items: center; }
 .file-tree-header-actions button, .file-tree-actions button {
   display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px;
   border: 0; background: transparent; color: var(--text-4); cursor: pointer;
@@ -3384,6 +3387,16 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 
 /* Presentation: download menu (opens upwards from the toolbar). */
 .presentation-export { position: relative; display: inline-flex; }
+.presentation-split { position: relative; display: inline-flex; }
+.presentation-split-popover {
+  position: absolute; z-index: 10; left: 0; bottom: calc(100% + 10px);
+  display: grid; gap: 10px; width: min(280px, calc(100vw - 28px)); padding: 12px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--bg-preview); color: var(--text-1); box-shadow: var(--shadow-xl);
+}
+.presentation-split-popover > label:not(.presentation-split-rule) { display: grid; gap: 5px; font-size: 11.5px; font-weight: 600; }
+.presentation-split-popover .settings-select { width: 100%; min-width: 0; }
+.presentation-split-rule { display: flex; align-items: center; gap: 7px; color: var(--text-2); font-size: 11.5px; font-weight: 500; }
+.presentation-split-rule input { accent-color: var(--accent); }
 .presentation-export-menu { position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%); min-width: 190px; padding: 6px; border-radius: 12px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-xl); display: grid; gap: 2px; z-index: 6; }
 .presentation-controls .presentation-export-menu button { width: 100%; height: 34px; justify-content: space-between; gap: 12px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: var(--text-1); }
 .presentation-export-ext { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
@@ -3636,6 +3649,15 @@ li.pe-editor.is-rich > .pe-text { display: inline-block; width: calc(100% - 24px
 .file-tabs-compare-control:has(+ .file-tabs-tasks) { border-right: 0; padding-right: 0; margin-right: 0; }
 .file-tabs-search-region .file-tabs-tasks { position: relative; margin-right: 9px; }
 .file-tabs-search-region .file-tabs-tasks::after { content: ''; position: absolute; right: -9px; top: 3px; bottom: 3px; width: 1px; background: var(--border-strong); }
+.agenda-mode button {
+  flex: 0 0 auto;
+  padding-inline: 12px;
+  white-space: nowrap;
+}
+.agenda-mode button:hover:not(.is-active) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
 /* Library */
 .library-panel { display: flex; flex-direction: column; width: min(1180px, calc(100vw - 32px)); height: min(860px, calc(100vh - 32px)); border-radius: 18px; background: var(--bg-preview); border: 1px solid var(--border); box-shadow: var(--shadow-xl); overflow: hidden; }

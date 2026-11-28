@@ -11,6 +11,18 @@ export const SPLIT_LEVELS = [
   { value: 2, label: 'Headings 1 & 2' },
   { value: 1, label: 'Heading 1' },
 ]
+export const SPLIT_MODES = [
+  { value: 'smart', label: 'Smart split' },
+  { value: 'headings', label: 'By headings' },
+  { value: 'blocks', label: 'By content blocks' },
+  { value: 'length', label: 'By word count' },
+  { value: 'single', label: 'One slide' },
+]
+export const SPLIT_TARGETS = [
+  { value: 100, label: 'Short · about 100 words' },
+  { value: 180, label: 'Medium · about 180 words' },
+  { value: 280, label: 'Long · about 280 words' },
+]
 export const INK_COLORS = [
   { id: 'red', label: 'Red', value: '#ef4444' },
   { id: 'amber', label: 'Amber', value: '#f59e0b' },
@@ -32,8 +44,10 @@ export const ZOOM_CHOICES = Array.from(
 )
 
 export const DEFAULT_PRESENTATION_SETTINGS = {
+  splitMode: 'smart',       // use headings when present; otherwise group semantic blocks
   splitLevel: 2,          // headings up to this level start a slide
   splitRules: false,      // a `---` line also starts a slide
+  splitTargetWords: 180,  // target for smart and word-count splitting; blocks stay intact
   zoom: 'last',           // default text size: 'last' (last used) or a number
   theme: '',              // '' = last theme used in a presentation
   showContents: false,    // open the contents panel when a presentation starts
@@ -54,8 +68,10 @@ export function normalizePresentationSettings(raw) {
   const d = DEFAULT_PRESENTATION_SETTINGS
   const colorIds = INK_COLORS.map(color => color.id)
   return {
+    splitMode: pick(s.splitMode, SPLIT_MODES.map(mode => mode.value), d.splitMode),
     splitLevel: pick(Number(s.splitLevel), SPLIT_LEVELS.map(level => level.value), d.splitLevel),
     splitRules: s.splitRules === true,
+    splitTargetWords: pick(Number(s.splitTargetWords), SPLIT_TARGETS.map(target => target.value), d.splitTargetWords),
     zoom: s.zoom === 'last' || s.zoom == null ? 'last' : clampZoom(s.zoom),
     theme: typeof s.theme === 'string' ? s.theme : d.theme,
     showContents: s.showContents === true,
@@ -77,4 +93,4 @@ export function savePresentationSettings(settings) {
   try { localStorage.setItem(PRESENTATION_SETTINGS_KEY, JSON.stringify(settings)) } catch { /* storage is optional */ }
 }
 export const inkColor = id => (INK_COLORS.find(color => color.id === id) ?? INK_COLORS[0]).value
-export const splitOptions = settings => ({ level: settings.splitLevel, rules: settings.splitRules })
+export const splitOptions = settings => ({ mode: settings.splitMode, level: settings.splitLevel, rules: settings.splitRules, targetWords: settings.splitTargetWords })
