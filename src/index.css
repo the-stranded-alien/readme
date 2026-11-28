@@ -2284,7 +2284,7 @@ button[data-tooltip]:not(:focus-visible)::after {
 .ai-writing-banner span { flex: 1; }
 .ai-writing-banner button { height: 26px; padding: 0 12px; border-radius: 7px; font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--bg-preview); color: var(--text-1); }
 
-/* ── Pending set 1 ────────────────────────────────────────── */
+/* Reader toolbar stays icon-only in every view; tooltips name each action. */
 .reader-preview-toolbar.is-icons-only .reader-toolbar-label { display: none !important; }
 .fmt-btn-ai { color: var(--accent); }
 .fmt-btn-ai:hover { background: var(--accent-soft); }
@@ -2608,7 +2608,34 @@ html.lite-mode *, html.lite-mode *::before, html.lite-mode *::after { animation:
 .annotation-colors { display: flex; gap: 6px; }
 .annotation-color { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--bg-preview); box-shadow: 0 0 0 1px var(--border-strong); cursor: pointer; }
 .annotation-color.is-active { box-shadow: 0 0 0 2px var(--accent); }
+.annotation-color-none { display: inline-grid; place-items: center; width: auto; min-width: 34px; padding: 0 6px; border-radius: 999px; background: var(--bg-editor); color: var(--text-3); font-size: 9px; font-weight: 600; }
 .annotation-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; vertical-align: middle; }
+.annotation-filters { display: flex; flex-wrap: wrap; gap: 5px; }
+.annotation-filters button { padding: 4px 7px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--bg-editor); color: var(--text-3); font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.annotation-filters button.is-active { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent); }
+.annotation-color-filters { align-items: center; }
+.annotation-filters button.annotation-filter-swatch { width: 22px; height: 22px; min-width: 22px; padding: 0; border: 2px solid var(--bg-preview); border-radius: 50%; background: var(--filter-color); box-shadow: 0 0 0 1px var(--border-strong); }
+.annotation-filters button.annotation-filter-swatch.is-active { box-shadow: 0 0 0 2px var(--accent); }
+.annotation-filters button.annotation-filter-none { padding-inline: 8px; }
+.annotation-filter-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.annotation-filter-row .annotation-filters { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; }
+.annotation-filter-row .annotation-filters button { flex: 0 0 auto; white-space: nowrap; }
+.annotation-filter-row .annotation-color-dropdown { flex: 0 1 145px; width: 145px; min-width: 112px; height: 30px; padding: 0 8px; border-radius: 8px; font-size: 11px; }
+.annotation-dropdown-swatch { display: block; width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 0 1px var(--border-strong); }
+@media (max-width: 420px) {
+  .annotation-filter-row { flex-wrap: wrap; }
+  .annotation-filter-row .annotation-filters { flex-basis: 100%; }
+}
+.annotation-review-card { padding: 8px; border-radius: 9px; background: var(--bg-editor); color: var(--text-2); font-size: 11px; }
+.annotation-review-card.is-resolved { opacity: .75; }
+.annotation-review-quote { display: block; width: 100%; border: 0; background: none; color: inherit; font-size: inherit; text-align: left; cursor: pointer; }
+.annotation-review-comment { display: block; margin-top: 5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.annotation-review-actions { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
+.annotation-review-status { margin-right: auto; color: var(--accent); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.annotation-review-status.is-resolved { color: var(--text-4); }
+.annotation-review-actions button { padding: 2px 0; border: 0; background: none; color: var(--text-3); font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.annotation-review-actions button:hover { color: var(--accent); }
+.annotation-review-actions button.is-danger:hover { color: #dc2626; }
 
 /* ── Compare: scrolling + editing ─────────────────────────── */
 .diff-panes { overflow: hidden; }
@@ -3273,8 +3300,41 @@ html.high-contrast .app-toast-action { color: var(--text-1); border-color: var(-
 .presenter-next { flex: 1; text-align: center; color: var(--text-2); }
 .presenter-notes.rm-prose { max-width: none; width: auto; margin: 0; align-self: stretch; box-sizing: border-box; }
 
-/* Highlights and notes popover: close button in the corner. */
-.annotation-close { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; justify-content: center; }
+/* Comment and highlight popovers share a consistently positioned close control. */
+.annotation-popover { display: flex; flex-direction: column; box-sizing: border-box; max-height: min(78vh, 680px); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 0 8px 14px 14px !important; scrollbar-gutter: stable; }
+.annotation-popover-content { display: flex; flex-direction: column; min-width: 0; }
+.annotation-close { position: static; display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; margin: 0; padding: 0 !important; border-radius: 8px; background: var(--bg-editor); }
+.annotation-close:hover { background: var(--accent-soft); color: var(--accent); }
+.annotation-popover-title { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 8px 0; background: var(--bg-preview); font-size: 13px; }
+.annotation-popover-content { max-height: none; overflow: visible; overscroll-behavior: auto; padding: 0; }
+.annotation-popover-content > .annotation-popover-title { margin: 0; }
+.annotation-selected-text { max-height: 140px; overflow: auto; padding: 10px 11px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--bg-editor); color: var(--text-2); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.annotation-comment-input { box-sizing: border-box; width: 100%; min-height: 92px; resize: vertical; padding: 10px 11px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--bg-editor); color: var(--text-1); font: inherit; font-size: 12px; line-height: 1.5; }
+.annotation-comment-input:focus { border-color: var(--accent-border); box-shadow: 0 0 0 2px var(--accent-soft); }
+.annotation-compose-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.annotation-compose-actions > button { flex: 0 0 auto; }
+.annotation-review-list { display: grid; gap: 9px; min-height: 40px; overflow: visible; padding: 1px 2px 2px 1px; }
+.annotation-review-card { display: grid; gap: 8px; padding: 11px; border: 1px solid var(--border-light); border-radius: 11px; background: var(--bg-editor); color: var(--text-2); font-size: 12px; }
+.annotation-review-card.is-resolved { opacity: .82; }
+.annotation-comment-card { border-left: 3px solid var(--annotation-kind-color); background: color-mix(in srgb, var(--annotation-kind-color) 5%, var(--bg-editor)); }
+.annotation-comment-card .annotation-review-selected-text { border-left-color: var(--annotation-kind-color); }
+.annotation-highlight-card { border-left: 3px solid var(--annotation-kind-color); }
+.annotation-highlight-card .annotation-review-selected-text { padding: 7px 9px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--annotation-kind-color) 18%, var(--bg-editor)); }
+.annotation-review-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.annotation-color-tag { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: 10px; font-weight: 600; }
+.annotation-color-tag i { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 1px var(--border-strong); }
+.annotation-review-quote { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font-size: inherit; text-align: left; cursor: pointer; }
+.annotation-review-selected-text { display: block; padding-left: 9px; border-left: 2px solid var(--accent-border); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.annotation-review-comment { margin: 0; padding: 9px 10px; border-radius: 8px; background: var(--bg-preview); color: var(--text-1); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.annotation-review-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; margin-top: 1px; }
+.annotation-review-actions button { min-height: 28px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-preview); color: var(--text-2); font-size: 11px; font-weight: 600; cursor: pointer; }
+.annotation-review-actions button:hover { border-color: var(--accent-border); color: var(--accent); }
+.annotation-review-actions button.annotation-action-primary { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent); }
+.annotation-review-actions button.is-danger { border-color: color-mix(in srgb, #dc2626 30%, var(--border)); color: #dc2626; }
+.annotation-review-actions button.is-danger:hover { border-color: #dc2626; background: color-mix(in srgb, #dc2626 9%, var(--bg-preview)); }
+@media (max-width: 520px) {
+  .annotation-popover { max-width: calc(100vw - 16px); max-height: 72vh; }
+}
 
 /* ── Presentation: contents panel, pen and laser, blank screen ── */
 .presentation-body { flex: 1; min-height: 0; display: flex; position: relative; }

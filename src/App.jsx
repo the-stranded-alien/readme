@@ -1249,6 +1249,9 @@ const ANNOTATION_COLORS = [
   { id: 'pink', label: 'Pink', swatch: '#f472b6', fill: 'rgba(244, 114, 182, .3)', line: 'rgba(219, 39, 119, .75)' },
   { id: 'purple', label: 'Purple', swatch: '#a78bfa', fill: 'rgba(167, 139, 250, .32)', line: 'rgba(124, 58, 237, .75)' },
   { id: 'orange', label: 'Orange', swatch: '#fb923c', fill: 'rgba(251, 146, 60, .3)', line: 'rgba(234, 88, 12, .75)' },
+  { id: 'teal', label: 'Teal', swatch: '#2dd4bf', fill: 'rgba(45, 212, 191, .3)', line: 'rgba(13, 148, 136, .8)' },
+  { id: 'red', label: 'Red', swatch: '#f87171', fill: 'rgba(248, 113, 113, .28)', line: 'rgba(220, 38, 38, .8)' },
+  { id: 'gray', label: 'Gray', swatch: '#9ca3af', fill: 'rgba(156, 163, 175, .3)', line: 'rgba(75, 85, 99, .8)' },
 ]
 
 const FMT_ACTIONS = [
@@ -2810,22 +2813,35 @@ export default function App() {
   const [annotations, setAnnotations] = useState(() => {
     try { return JSON.parse(localStorage.getItem('readme-annotations') || '[]') } catch { return [] }
   })
-  const [annotationOpen, setAnnotationOpen] = useState(false)
+  const [annotationOpen, setAnnotationOpen] = useState(null)
   const [annotationText, setAnnotationText] = useState('')
   const [annotationNote, setAnnotationNote] = useState('')
+  const [annotationFilter, setAnnotationFilter] = useState('all')
+  const [commentColorFilter, setCommentColorFilter] = useState('all')
+  const [highlightColorFilter, setHighlightColorFilter] = useState('all')
+  const [commentColor, setCommentColor] = useState(null)
   const [annotationColor, setAnnotationColor] = useState(() => localStorage.getItem('readme-annotation-color') || 'yellow')
   useEffect(() => { try { localStorage.setItem('readme-annotation-color', annotationColor) } catch { /* optional */ } }, [annotationColor])
-  // The highlights popover closes with its × button, Escape, or a click (not a hover) anywhere outside it.
-  const annotationControlRef = useRef(null)
+  // Comment and highlight menus each close with their × button, Escape or an outside click.
+  const commentControlRef = useRef(null)
+  const highlightControlRef = useRef(null)
   useEffect(() => {
     if (!annotationOpen) return undefined
-    const onDown = event => { if (!annotationControlRef.current?.contains(event.target)) setAnnotationOpen(false) }
-    const onKey = event => { if (event.key === 'Escape') setAnnotationOpen(false) }
+    const onDown = event => {
+      if (event.target.closest?.('.picker-menu')) return
+      if (!commentControlRef.current?.contains(event.target) && !highlightControlRef.current?.contains(event.target)) setAnnotationOpen(null)
+    }
+    const onKey = event => { if (event.key === 'Escape') setAnnotationOpen(null) }
     document.addEventListener('pointerdown', onDown)
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey) }
   }, [annotationOpen])
   const [selectedQuote, setSelectedQuote] = useState('')
+  const fileAnnotations = useMemo(() => annotations.filter(item => item.fileId === activeFileId), [annotations, activeFileId])
+  const fileComments = useMemo(() => fileAnnotations.filter(item => item.note?.trim()), [fileAnnotations])
+  const fileHighlights = useMemo(() => fileAnnotations.filter(item => !item.note?.trim()), [fileAnnotations])
+  const visibleComments = fileComments.filter(item => (annotationFilter === 'all' || (annotationFilter === 'resolved' ? item.status === 'resolved' : item.status !== 'resolved')) && (commentColorFilter === 'all' || (commentColorFilter === 'none' ? !item.color : item.color === commentColorFilter)))
+  const visibleHighlights = fileHighlights.filter(item => highlightColorFilter === 'all' || (highlightColorFilter === 'none' ? !item.color : item.color === highlightColorFilter))
 
   const activeFile = useMemo(
     () => files.find(f => f.id === activeFileId) ?? null,
@@ -3550,7 +3566,7 @@ export default function App() {
     if (!document.getElementById('readme-highlight-style')) {
       const style = document.createElement('style')
       style.id = 'readme-highlight-style'
-      style.textContent = ANNOTATION_COLORS.map(color => `::highlight(readme-annotations-${color.id}) { background: ${color.fill}; color: inherit; text-decoration: underline; text-decoration-color: ${color.line}; text-decoration-thickness: 1px; }`).join('\n')
+      style.textContent = ANNOTATION_COLORS.map(color => `::highlight(readme-annotations-highlight-${color.id}) { background: ${color.fill}; color: inherit; }\n::highlight(readme-annotations-comment-${color.id}) { background: color-mix(in srgb, ${color.fill} 48%, transparent); color: inherit; text-decoration: underline; text-decoration-style: wavy; text-decoration-color: ${color.line}; text-decoration-thickness: 1px; }`).join('\n')
       document.head.append(style)
     }
     const textNodes = []
@@ -3562,8 +3578,11 @@ export default function App() {
       joined += node.nodeValue || ''
       textNodes.push({ node, start, end: joined.length })
     }
-    const ranges = Object.fromEntries(ANNOTATION_COLORS.map(color => [color.id, []]))
+    const ranges = Object.fromEntries(ANNOTATION_COLORS.flatMap(color => [['highlight-' + color.id, []], ['comment-' + color.id, []]]))
     for (const annotation of annotations.filter(item => item.fileId === activeFileId)) {
+      const colorId = ANNOTATION_COLORS.some(color => color.id === annotation.color) ? annotation.color : annotation.color == null ? null : 'yellow'
+      if (!colorId) continue
+      const kind = annotation.note?.trim() ? 'comment' : 'highlight'
       const quote = annotation.quote
       const offset = quote ? joined.indexOf(quote) : -1
       if (offset < 0) continue
@@ -3574,14 +3593,17 @@ export default function App() {
       const range = document.createRange()
       range.setStart(first.node, offset - first.start)
       range.setEnd(last.node, end - last.start)
-      ranges[ranges[annotation.color] ? annotation.color : 'yellow'].push(range)
+      ranges[`${kind}-${colorId}`].push(range)
     }
     for (const color of ANNOTATION_COLORS) {
-      const name = `readme-annotations-${color.id}`
-      if (ranges[color.id].length) window.CSS.highlights.set(name, new window.Highlight(...ranges[color.id]))
-      else window.CSS.highlights.delete(name)
+      for (const kind of ['highlight', 'comment']) {
+        const key = `${kind}-${color.id}`
+        const name = `readme-annotations-${key}`
+        if (ranges[key].length) window.CSS.highlights.set(name, new window.Highlight(...ranges[key]))
+        else window.CSS.highlights.delete(name)
+      }
     }
-    return () => ANNOTATION_COLORS.forEach(color => window.CSS.highlights.delete(`readme-annotations-${color.id}`))
+    return () => ANNOTATION_COLORS.forEach(color => ['highlight', 'comment'].forEach(kind => window.CSS.highlights.delete(`readme-annotations-${kind}-${color.id}`)))
   }, [annotations, activeFileId, content, view, mobileTab])
 
   const stepSearch = useCallback((dir) => {
@@ -5883,22 +5905,30 @@ export default function App() {
     window.speechSynthesis.speak(utterance)
   }, [speechActive, speechPaused, content])
 
-  const captureSelection = useCallback(() => {
+  const captureSelection = useCallback(mode => {
     const quote = window.getSelection()?.toString().trim()
     if (!quote) return
     setSelectedQuote(quote)
     setAnnotationText(quote)
     setAnnotationNote('')
-    setAnnotationOpen(true)
+    if (mode === 'comment') setCommentColor(null)
+    setAnnotationOpen(mode)
   }, [])
 
-  const saveAnnotation = useCallback(() => {
+  const saveAnnotation = useCallback((noteOverride, colorOverride) => {
     if (!activeFileId || !annotationText.trim()) return
-    setAnnotations(prev => [...prev, { id: createFileId(), fileId: activeFileId, quote: annotationText.trim(), note: annotationNote.trim(), color: annotationColor, headingId: activeHeadingId, progress: readProgress, createdAt: Date.now() }])
+    const note = typeof noteOverride === 'string' ? noteOverride.trim() : annotationNote.trim()
+    const color = colorOverride === undefined ? (note ? commentColor : annotationColor) : colorOverride
+    if (note) setAnnotationFilter('open')
+    setAnnotations(prev => [...prev, { id: createFileId(), fileId: activeFileId, quote: annotationText.trim(), note, ...(note ? { status: 'open' } : {}), color: color || null, headingId: activeHeadingId, progress: readProgress, createdAt: Date.now() }])
     window.getSelection()?.removeAllRanges?.()
     setSelectedQuote('')
-    setAnnotationOpen(false)
-  }, [activeFileId, annotationText, annotationNote, annotationColor, activeHeadingId, readProgress])
+    setAnnotationOpen(null)
+  }, [activeFileId, annotationText, annotationNote, annotationColor, commentColor, activeHeadingId, readProgress])
+
+  const setCommentStatus = useCallback((id, status) => {
+    setAnnotations(prev => prev.map(item => item.id === id ? { ...item, status, resolvedAt: status === 'resolved' ? Date.now() : undefined } : item))
+  }, [])
 
   const handleDownload = useCallback(() => {
     if (!activeFile) return
@@ -6854,7 +6884,7 @@ ${fontCss}
               }}
             >
               {/* Preview toolbar */}
-              <div className={`no-print shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 surface-toolbar relative reader-preview-toolbar${view === 'split' || view === 'focus' ? ' is-icons-only' : ''}`}>
+              <div className="no-print shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 surface-toolbar relative reader-preview-toolbar is-icons-only">
                 <div className="flex items-center gap-2 reader-toolbar-left">
                   <button
                     onClick={() => setTocVisible(v => !v)}
@@ -6948,68 +6978,130 @@ ${fontCss}
                   >
                     {!speechActive ? <Volume2 size={12} /> : speechPaused ? <Play size={12} /> : <Pause size={12} />}
                   </button>
-                  <div className="relative reader-settings-control" ref={annotationControlRef}>
-                    <button
-                      type="button"
-                      onMouseDown={e => e.preventDefault()}
-                      onClick={() => {
-                        if (window.getSelection()?.toString().trim()) captureSelection()
-                        else {
-                          setSelectedQuote('')
-                          setAnnotationText('')
-                          setAnnotationNote('')
-                          setAnnotationOpen(value => !value)
-                        }
-                      }}
-                      data-tooltip={`Highlights and notes (${annotations.filter(item => item.fileId === activeFileId).length})`}
-                      aria-label="Highlights and notes"
-                      className="btn-icon !p-1"
-                      style={{ color: annotationOpen || annotations.some(item => item.fileId === activeFileId) ? 'var(--accent)' : undefined }}
-                    >
+                  <div className="relative reader-settings-control" ref={commentControlRef}>
+                    <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => {
+                      if (window.getSelection()?.toString().trim()) captureSelection('comment')
+                      else {
+                        setSelectedQuote('')
+                        setAnnotationText('')
+                        setAnnotationNote('')
+                        setCommentColor(null)
+                        setAnnotationOpen(value => value === 'comment' ? null : 'comment')
+                      }
+                    }} data-tooltip={`Comments and review (${fileComments.length})`} aria-label="Comments and review"
+                    aria-expanded={annotationOpen === 'comment'} className="btn-icon !p-1"
+                    style={{ color: annotationOpen === 'comment' || fileComments.length ? 'var(--accent)' : undefined }}>
+                      <MessageSquareQuote size={12} />
+                    </button>
+                    {annotationOpen === 'comment' && <div className="reader-popover anim-drop-in no-print annotation-popover" role="dialog"
+                      aria-label={selectedQuote ? 'Add comment to selected text' : 'Review comments'} style={{ right: 0, top: 'calc(100% + 8px)', width: 'min(380px, calc(100vw - 24px))' }}>
+                      {selectedQuote ? <div className="annotation-popover-content space-y-3">
+                        <div className="annotation-popover-title text-xs font-semibold" style={{ color: 'var(--text-1)' }}><span>Comment on selected text</span><button type="button" className="btn-icon annotation-close" onClick={() => setAnnotationOpen(null)} aria-label="Close comments"><X size={14} /></button></div>
+                        <div className="annotation-selected-text">{selectedQuote}</div>
+                        <div className="text-[10.5px] font-semibold" style={{ color: 'var(--text-3)' }}>Highlight color (optional)</div>
+                        <div className="annotation-colors" role="radiogroup" aria-label="Comment highlight color">
+                          <button type="button" role="radio" aria-checked={!commentColor} aria-label="No highlight" title="No highlight"
+                            className={`annotation-color annotation-color-none${!commentColor ? ' is-active' : ''}`} onClick={() => setCommentColor(null)}>None</button>
+                          {ANNOTATION_COLORS.map(color => <button key={color.id} type="button" role="radio" aria-checked={commentColor === color.id} aria-label={color.label}
+                            title={color.label} className={`annotation-color${commentColor === color.id ? ' is-active' : ''}`} style={{ background: color.swatch }}
+                            onClick={() => setCommentColor(color.id)} />)}
+                        </div>
+                        <textarea value={annotationNote} onChange={event => setAnnotationNote(event.target.value)} placeholder="Write a comment…" aria-label="Comment"
+                          className="annotation-comment-input" rows={4} />
+                        <div className="annotation-compose-actions">
+                          <button type="button" className="reader-chip" onClick={() => setAnnotationOpen(null)}>Cancel</button>
+                          <button type="button" className="reader-chip active" disabled={!annotationNote.trim()} onClick={() => saveAnnotation(annotationNote, commentColor)}>Add comment</button>
+                        </div>
+                      </div> : <div className="annotation-popover-content space-y-3">
+                        <div className="annotation-popover-title text-xs font-semibold" style={{ color: 'var(--text-1)' }}><span>Review comments</span><button type="button" className="btn-icon annotation-close" onClick={() => setAnnotationOpen(null)} aria-label="Close comments"><X size={14} /></button></div>
+                        <div className="annotation-filter-row">
+                        <div className="annotation-filters" role="group" aria-label="Filter comments">
+                          {[
+                            ['all', `All (${fileComments.length})`],
+                            ['open', `Open (${fileComments.filter(item => item.status !== 'resolved').length})`],
+                            ['resolved', `Resolved (${fileComments.filter(item => item.status === 'resolved').length})`],
+                          ].map(([value, label]) => <button key={value} type="button" className={annotationFilter === value ? 'is-active' : ''}
+                            aria-pressed={annotationFilter === value} onClick={() => setAnnotationFilter(value)}>{label}</button>)}
+                        </div>
+                        <PickerDropdown label="Comment color" value={commentColorFilter} onChange={setCommentColorFilter} className="annotation-color-dropdown" width={160}
+                          options={[{ value: 'all', label: 'All colors' }, ...ANNOTATION_COLORS.filter(color => fileComments.some(item => item.color === color.id)).map(color => ({ value: color.id, label: color.label, icon: <i className="annotation-dropdown-swatch" style={{ background: color.swatch }} /> })), ...(fileComments.some(item => !item.color) ? [{ value: 'none', label: 'No color' }] : [])]} />
+                        </div>
+                        <div className="annotation-review-list">
+                          {visibleComments.map(item => {
+                            const isResolved = item.status === 'resolved'
+                            const color = ANNOTATION_COLORS.find(option => option.id === item.color)
+                            return <div key={item.id} className={`annotation-review-card annotation-comment-card${isResolved ? ' is-resolved' : ''}`} style={{ '--annotation-kind-color': color?.swatch || 'var(--accent)' }}>
+                              <div className="annotation-review-card-head">
+                                <span className={`annotation-review-status${isResolved ? ' is-resolved' : ''}`}>{isResolved ? 'Resolved comment' : 'Open comment'}</span>
+                                {color && <span className="annotation-color-tag"><i style={{ background: color.swatch }} />{color.label}</span>}
+                              </div>
+                              <button type="button" className="annotation-review-quote" onClick={() => {
+                                if (item.headingId) navigateToHeading(item.headingId)
+                                else previewScrollRef.current?.scrollTo({ top: previewScrollRef.current.scrollHeight * item.progress / 100, behavior: scrollBehavior() })
+                              }}><span className="annotation-review-selected-text">“{item.quote}”</span></button>
+                              {item.note && <p className="annotation-review-comment">{item.note}</p>}
+                              <div className="annotation-review-actions">
+                                <button type="button" className="annotation-action-primary" onClick={() => setCommentStatus(item.id, isResolved ? 'open' : 'resolved')}>{isResolved ? 'Reopen comment' : 'Resolve comment'}</button>
+                                <button type="button" className="is-danger" aria-label="Delete comment" onClick={() => setAnnotations(prev => prev.filter(value => value.id !== item.id))}>Delete</button>
+                              </div>
+                            </div>
+                          })}
+                          {!visibleComments.length && <EmptyState compact icon={MessageSquareWarning}
+                            title={annotationFilter === 'open' ? 'No open comments' : annotationFilter === 'resolved' ? 'No resolved comments' : 'No comments yet'}
+                            text={annotationFilter === 'resolved' ? 'Resolved comments will appear here.' : 'Select text and use the comment icon to start a review.'} />}
+                        </div>
+                      </div>}
+                    </div>}
+                  </div>
+                  <div className="relative reader-settings-control" ref={highlightControlRef}>
+                    <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => {
+                      if (window.getSelection()?.toString().trim()) captureSelection('highlight')
+                      else {
+                        setSelectedQuote('')
+                        setAnnotationText('')
+                        setAnnotationOpen(value => value === 'highlight' ? null : 'highlight')
+                      }
+                    }} data-tooltip={`Highlights (${fileHighlights.length})`} aria-label="Highlights" aria-expanded={annotationOpen === 'highlight'}
+                    className="btn-icon !p-1" style={{ color: annotationOpen === 'highlight' || fileHighlights.length ? 'var(--accent)' : undefined }}>
                       <Highlighter size={12} />
                     </button>
-                    {annotationOpen && (
-                      <div className="reader-popover anim-drop-in no-print" role="dialog" aria-label={selectedQuote ? 'Save highlight or note' : 'Highlights and notes'} style={{ right: 0, top: 'calc(100% + 8px)', width: 300 }}>
-                        <button type="button" className="btn-icon !p-1 annotation-close" onClick={() => setAnnotationOpen(false)}
-                          aria-label="Close highlights and notes" data-tooltip="Close (Esc)">
-                          <X size={12} />
-                        </button>
-                        {selectedQuote ? (
-                          <div className="space-y-2">
-                            <div className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Save highlight or note</div>
-                            <div className="text-[11px] line-clamp-3 rounded p-2" style={{ color: 'var(--text-2)', background: 'var(--bg-editor)' }}>{selectedQuote}</div>
-                            <div className="annotation-colors" role="radiogroup" aria-label="Highlight colour">
-                              {ANNOTATION_COLORS.map(color => (
-                                <button key={color.id} type="button" role="radio" aria-checked={annotationColor === color.id} aria-label={color.label}
-                                  title={color.label} className={`annotation-color${annotationColor === color.id ? ' is-active' : ''}`}
-                                  style={{ background: color.swatch }} onClick={() => setAnnotationColor(color.id)} />
-                              ))}
+                    {annotationOpen === 'highlight' && <div className="reader-popover anim-drop-in no-print annotation-popover" role="dialog"
+                      aria-label={selectedQuote ? 'Choose highlight color' : 'Highlights'} style={{ right: 0, top: 'calc(100% + 8px)', width: 'min(380px, calc(100vw - 24px))' }}>
+                      {selectedQuote ? <div className="annotation-popover-content space-y-3">
+                        <div className="annotation-popover-title text-xs font-semibold" style={{ color: 'var(--text-1)' }}><span>Choose a highlight color</span><button type="button" className="btn-icon annotation-close" onClick={() => setAnnotationOpen(null)} aria-label="Close highlights"><X size={14} /></button></div>
+                        <div className="annotation-selected-text">{selectedQuote}</div>
+                        <div className="annotation-colors" role="radiogroup" aria-label="Highlight color">
+                          {ANNOTATION_COLORS.map(color => <button key={color.id} type="button" role="radio" aria-checked={annotationColor === color.id} aria-label={color.label}
+                            title={color.label} className={`annotation-color${annotationColor === color.id ? ' is-active' : ''}`} style={{ background: color.swatch }}
+                            onClick={() => { setAnnotationColor(color.id); saveAnnotation('', color.id) }} />)}
+                        </div>
+                      </div> : <div className="annotation-popover-content space-y-3">
+                        <div className="annotation-popover-title text-xs font-semibold" style={{ color: 'var(--text-1)' }}><span>Highlights</span><button type="button" className="btn-icon annotation-close" onClick={() => setAnnotationOpen(null)} aria-label="Close highlights"><X size={14} /></button></div>
+                        <div className="annotation-filter-row">
+                        <PickerDropdown label="Highlight color" value={highlightColorFilter} onChange={setHighlightColorFilter} className="annotation-color-dropdown" width={160}
+                          options={[{ value: 'all', label: 'All colors' }, ...ANNOTATION_COLORS.filter(color => fileHighlights.some(item => item.color === color.id)).map(color => ({ value: color.id, label: color.label, icon: <i className="annotation-dropdown-swatch" style={{ background: color.swatch }} /> })), ...(fileHighlights.some(item => !item.color) ? [{ value: 'none', label: 'No color' }] : [])]} />
+                        </div>
+                        <div className="annotation-review-list">
+                          {visibleHighlights.map(item => {
+                            const color = ANNOTATION_COLORS.find(option => option.id === item.color)
+                            return <div key={item.id} className="annotation-review-card annotation-highlight-card" style={{ '--annotation-kind-color': color?.swatch || '#facc15' }}>
+                              <div className="annotation-review-card-head">
+                                <span className="annotation-review-status">Highlight</span>
+                                {color && <span className="annotation-color-tag"><i style={{ background: color.swatch }} />{color.label}</span>}
+                              </div>
+                              <button type="button" className="annotation-review-quote" onClick={() => {
+                                if (item.headingId) navigateToHeading(item.headingId)
+                                else previewScrollRef.current?.scrollTo({ top: previewScrollRef.current.scrollHeight * item.progress / 100, behavior: scrollBehavior() })
+                              }}><span className="annotation-review-selected-text">“{item.quote}”</span></button>
+                              <div className="annotation-review-actions">
+                                <button type="button" className="is-danger" aria-label="Delete highlight" onClick={() => setAnnotations(prev => prev.filter(value => value.id !== item.id))}>Delete</button>
+                              </div>
                             </div>
-                            <textarea value={annotationNote} onChange={e => setAnnotationNote(e.target.value)} placeholder="Add a note (optional)" className="w-full rounded p-2 text-xs outline-none" rows={3} style={{ background: 'var(--bg-editor)', color: 'var(--text-1)', border: '1px solid var(--border)' }} />
-                            <div className="flex justify-end gap-2">
-                              <button className="reader-chip" onClick={() => setAnnotationOpen(false)}>Cancel</button>
-                              <button className="reader-chip active" onClick={saveAnnotation}>Save</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Highlights and notes</div>
-                            <div className="max-h-64 overflow-auto space-y-2">
-                              {annotations.filter(item => item.fileId === activeFileId).map(item => (
-                                <div key={item.id} className="rounded p-2 text-[11px]" style={{ background: 'var(--bg-editor)', color: 'var(--text-2)' }}>
-                                  <button className="text-left w-full" onClick={() => {
-                                    if (item.headingId) navigateToHeading(item.headingId)
-                                    else previewScrollRef.current?.scrollTo({ top: previewScrollRef.current.scrollHeight * item.progress / 100, behavior: scrollBehavior() })
-                                  }}><span className="line-clamp-3"><span className="annotation-dot" style={{ background: (ANNOTATION_COLORS.find(color => color.id === item.color) ?? ANNOTATION_COLORS[0]).swatch }} aria-hidden="true" />“{item.quote}”</span>{item.note && <span className="block mt-1 opacity-80">{item.note}</span>}</button>
-                                  <button className="mt-1 opacity-60 hover:opacity-100" onClick={() => setAnnotations(prev => prev.filter(value => value.id !== item.id))}>Remove</button>
-                                </div>
-                              ))}
-                              {!annotations.some(item => item.fileId === activeFileId) && <EmptyState compact icon={Highlighter} title="No highlights yet" text="Select text in the page, then choose the highlighter to save it here." />}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          })}
+                          {!visibleHighlights.length && <EmptyState compact icon={Highlighter} title={fileHighlights.length ? 'No highlights in this color' : 'No highlights yet'} text={fileHighlights.length ? 'Choose another color or show all colors.' : 'Select text and use the highlighter icon to add one.'} />}
+                        </div>
+                      </div>}
+                    </div>}
                   </div>
                   <button
                     onClick={() =>

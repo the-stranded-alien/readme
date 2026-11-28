@@ -389,21 +389,37 @@ describe('advanced browser features', () => {
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('# Folder import'))
   })
 
-  it('saves selected text as a note and restores a native highlight', async () => {
+  it('saves colored comments and highlights with distinct review entries', async () => {
     const highlights = { set: vi.fn(), delete: vi.fn() }
     vi.stubGlobal('CSS', { highlights })
     window.Highlight = class { constructor(...ranges) { this.ranges = ranges } }
     let selectionText = 'Welcome to ReadMe'
     window.getSelection = vi.fn(() => ({ toString: () => selectionText, removeAllRanges: () => { selectionText = '' } }))
     installApp()
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'Highlights and notes' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Highlights and notes' }))
-    fireEvent.change(await screen.findByPlaceholderText('Add a note (optional)'), { target: { value: 'Review this section' } })
-    fireEvent.click(await screen.findByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(highlights.set).toHaveBeenCalledWith('readme-annotations-yellow', expect.any(window.Highlight)))
-    fireEvent.click(screen.getByRole('button', { name: 'Highlights and notes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Comments and review' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Comments and review' }))
+    fireEvent.change(await screen.findByLabelText('Comment'), { target: { value: 'Review this section' } })
+    fireEvent.click(screen.getByRole('radio', { name: 'Blue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
+    await waitFor(() => expect(highlights.set).toHaveBeenCalledWith('readme-annotations-comment-blue', expect.any(window.Highlight)))
+    fireEvent.click(screen.getByRole('button', { name: 'Comments and review' }))
     expect(await screen.findByText('“Welcome to ReadMe”')).toBeInTheDocument()
     expect(screen.getByText('Review this section')).toBeInTheDocument()
+    expect(document.querySelector('.annotation-comment-card')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Comment color: All colors' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Blue' }))
+    expect(document.querySelectorAll('.annotation-comment-card')).toHaveLength(1)
+    selectionText = 'Features'
+    fireEvent.click(screen.getByRole('button', { name: 'Highlights', exact: true }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Teal' }))
+    await waitFor(() => expect(highlights.set).toHaveBeenCalledWith('readme-annotations-highlight-teal', expect.any(window.Highlight)))
+    fireEvent.click(screen.getByRole('button', { name: 'Highlights', exact: true }))
+    expect(await screen.findByText('“Features”')).toBeInTheDocument()
+    expect(document.querySelector('.annotation-highlight-card')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Highlight color: All colors' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Teal' }))
+    expect(screen.getByRole('button', { name: 'Highlight color: Teal' })).toBeInTheDocument()
   })
 
   it('imports a public Markdown URL with fetch', async () => {
@@ -1480,22 +1496,23 @@ describe('advanced browser features', () => {
     expect(within(within(again).getByRole('radiogroup', { name: 'Pen colour' })).getByRole('radio', { name: 'Blue' })).toBeChecked()
   })
 
-  it('closes the highlights popover with its button and with a click outside', async () => {
+  it('keeps the highlights close control in the heading and closes outside', async () => {
     window.getSelection = vi.fn(() => ({ toString: () => '', removeAllRanges() {} }))
     installApp()
     fireEvent.click(await screen.findByRole('button', { name: 'Preview' }))
-    const open = () => fireEvent.click(screen.getByRole('button', { name: 'Highlights and notes' }))
+    const open = () => fireEvent.click(screen.getByRole('button', { name: 'Highlights', exact: true }))
     open()
-    expect(await screen.findByRole('dialog', { name: 'Highlights and notes' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Close highlights and notes' }))
-    expect(screen.queryByRole('dialog', { name: 'Highlights and notes' })).toBeNull()
+    const popover = await screen.findByRole('dialog', { name: 'Highlights' })
+    expect(within(popover).getByRole('button', { name: 'Close highlights' })).toBeInTheDocument()
+    expect(within(popover).getByRole('button', { name: 'Highlight color: All colors' })).toBeInTheDocument()
+    fireEvent.click(within(popover).getByRole('button', { name: 'Close highlights' }))
+    expect(screen.queryByRole('dialog', { name: 'Highlights' })).toBeNull()
     open()
-    const popover = await screen.findByRole('dialog', { name: 'Highlights and notes' })
     fireEvent.pointerDown(popover) // clicks inside keep it open
     fireEvent.mouseOver(document.body) // hovering out doesn't close it
-    expect(screen.getByRole('dialog', { name: 'Highlights and notes' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Highlights' })).toBeInTheDocument()
     fireEvent.pointerDown(document.querySelector('.book-page'))
-    expect(screen.queryByRole('dialog', { name: 'Highlights and notes' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Highlights' })).toBeNull()
   })
 
   it('ships a Markdown Guide template that covers every supported feature', async () => {

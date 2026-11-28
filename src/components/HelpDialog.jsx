@@ -61,7 +61,7 @@ const HELP_SECTIONS = [
       ['Document styles', 'Aa → Document style gives a document its own design: ReadMe, Classic (book serif, centred title), Modern (bold headings, accent bars, striped tables), Academic (serif, justified text, numbered sections), Notebook (highlighted headings, dashed lines) or Minimal. It is saved in the document (front matter “style:”) and used everywhere: the preview, PDF, Word, standalone HTML, slides and published websites. Settings → Appearance → Default document style sets the style for documents that don’t choose one. The PDF dialog can use another style for one download, and adds an optional cover page (title, subtitle, author, date from the properties) and page header; Word downloads use the same cover and header choices.'],
       ['Reading comfort', 'The Aa button changes the font size, line height, width, font weight and paper tone.'],
       ['Read aloud & spot', 'Listen to the document, and save your reading spot to resume later.'],
-      ['Highlights', 'Select text in the page to highlight it in one of several colours. The highlights list closes with its × button, Escape, or a click outside it.'],
+      ['Comments and review', 'Use the comment icon to attach a comment to selected text; choose an optional highlight colour, or leave it at None. Review open and resolved comments from that menu, then resolve, reopen or delete them. Use the separate highlighter icon to choose a colour and apply a highlight immediately.'],
     ],
   },
   {
