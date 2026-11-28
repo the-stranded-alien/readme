@@ -6,7 +6,7 @@ import { BookOpenText, FilePlus, LayoutTemplate, Settings2 } from '../icons'
  * Template picker rendered in a portal (so toolbars with overflow can't clip
  * it), positioned under `anchorRef` and kept inside the viewport.
  */
-export default function TemplateMenu({ anchorRef, templates, onPick, onBlank, onWriteReadme, onManage, onClose, align = 'right', label = 'Templates' }) {
+export default function TemplateMenu({ anchorRef, templates, onPick, onBlank, onWriteReadme, writeLabel = 'Write a README…', writeDescription = 'Create a README, guide, reference, or notes', onManage, onClose, align = 'right', label = 'Templates' }) {
   const ref = useRef(null)
 
   useLayoutEffect(() => {
@@ -57,7 +57,7 @@ export default function TemplateMenu({ anchorRef, templates, onPick, onBlank, on
       {onWriteReadme && (
         <button type="button" role="menuitem" className="template-menu-item" onClick={() => { onClose(); onWriteReadme() }}>
           <span className="template-menu-icon is-write"><BookOpenText size={14} /></span>
-          <span className="template-menu-text"><strong>Write a README…</strong><span>Describe your project and get a README</span></span>
+          <span className="template-menu-text"><strong>{writeLabel}</strong><span>{writeDescription}</span></span>
         </button>
       )}
       {(onBlank || onWriteReadme) && <div className="template-menu-heading">From a template</div>}

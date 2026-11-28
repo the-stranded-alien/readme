@@ -5,9 +5,18 @@
  * fine; skip small fixes), newest first, keeping every version. `show` (optional) is a command-palette
  * id for the “Show me” button in the What's new card. See Guidelines.md.
  */
-export const APP_VERSION = '3.9'
+export const APP_VERSION = '4.0'
 
 export const RELEASES = [
+  {
+    version: '4.0',
+    date: '2026-11-28',
+    notes: [
+      'Create general purpose Markdown documents with AI, or revise the open document in place with a saved original version.',
+      'Set length, tone, audience, and document type for AI writing; choose a folder and filename for new documents.',
+      'Customize AI summaries with dropdowns for style, length, focus, and format, plus an optional prompt.',
+    ],
+  },
   {
     version: '3.9',
     date: '2026-11-28',

@@ -3,6 +3,7 @@ import { Check, Copy, Crosshair, FilePlus, Languages, Loader2, ScrollText, Spark
 import {
   REVIEW_KINDS, TRANSLATION_LANGUAGES, aiSupport, applyCorrections, detectLanguage, proofread, reviewWriting, summarize, translateMarkdown,
 } from '../onDeviceAi'
+import PickerDropdown from './PickerDropdown'
 
 const TABS = [
   { id: 'summarize', label: 'Summarize', icon: Sparkles, needs: 'summarizer' },
@@ -10,22 +11,21 @@ const TABS = [
   { id: 'proofread', label: 'Proofread', icon: SpellCheck, needs: 'proofreader' },
   { id: 'review', label: 'Review writing', icon: ScrollText, needs: 'languageModel' },
 ]
-const SUMMARY_TYPES = [['key-points', 'Key points'], ['tldr', 'TL;DR'], ['teaser', 'Teaser'], ['headline', 'Headline']]
-const LENGTHS = [['short', 'Short'], ['medium', 'Medium'], ['long', 'Long']]
-
-function Segmented({ label, options, value, onChange, disabled }) {
-  return (
-    <div className="pdf-option" role="radiogroup" aria-label={label}>
-      <span className="pdf-option-label">{label}</span>
-      <div className="pdf-segmented">
-        {options.map(([id, text]) => (
-          <button key={id} type="button" role="radio" aria-checked={value === id} className={value === id ? 'is-active' : ''}
-            onClick={() => onChange(id)} disabled={disabled}>{text}</button>
-        ))}
-      </div>
-    </div>
-  )
-}
+const SUMMARY_TYPES = [
+  { value: 'key-points', label: 'Key points' }, { value: 'tldr', label: 'TL;DR' },
+  { value: 'teaser', label: 'Teaser' }, { value: 'headline', label: 'Headline' },
+]
+const LENGTHS = [
+  { value: 'short', label: 'Short' }, { value: 'medium', label: 'Balanced' }, { value: 'long', label: 'Detailed' },
+]
+const SUMMARY_FOCUS = [
+  { value: 'balanced', label: 'Everything important' }, { value: 'actions', label: 'Actions and next steps' },
+  { value: 'decisions', label: 'Decisions and conclusions' }, { value: 'concepts', label: 'Concepts and definitions' },
+  { value: 'risks', label: 'Risks and open questions' },
+]
+const SUMMARY_FORMATS = [
+  { value: 'markdown', label: 'Markdown' }, { value: 'plain-text', label: 'Plain text' },
+]
 
 /**
  * Summarize / translate / proofread the current document with Chrome's
@@ -45,6 +45,9 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, init
   const [error, setError] = useState('')
   const [summaryType, setSummaryType] = useState('key-points')
   const [summaryLength, setSummaryLength] = useState('medium')
+  const [summaryFocus, setSummaryFocus] = useState('balanced')
+  const [summaryFormat, setSummaryFormat] = useState('markdown')
+  const [summaryPrompt, setSummaryPrompt] = useState('')
   const [summary, setSummary] = useState('')
   const [targetLanguage, setTargetLanguage] = useState(() => (navigator.language || 'en').slice(0, 2) === 'en' ? 'es' : 'en')
   const [sourceLanguage, setSourceLanguage] = useState(null)
@@ -96,7 +99,7 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, init
   const runSummary = () => run(async signal => {
     setSummary('')
     const result = await summarize(markdown, {
-      type: summaryType, length: summaryLength, language: sourceLanguage || 'en', onProgress, onStatus, signal,
+      type: summaryType, length: summaryLength, focus: summaryFocus, format: summaryFormat, prompt: summaryPrompt, language: sourceLanguage || 'en', onProgress, onStatus, signal,
       onChunk: text => { setPreparing(false); setSummary(text) },
     })
     setSummary(result)
@@ -169,10 +172,14 @@ export default function AiToolsDialog({ fileName, markdown, renderMarkdown, init
           )}
           {tab === 'summarize' && supported && (
             <>
-              <div className="ai-options">
-                <Segmented label="Style" options={SUMMARY_TYPES} value={summaryType} onChange={setSummaryType} disabled={busy} />
-                <Segmented label="Length" options={LENGTHS} value={summaryLength} onChange={setSummaryLength} disabled={busy} />
+              <div className="ai-options ai-summary-options">
+                <label><span>Style</span><PickerDropdown value={summaryType} options={SUMMARY_TYPES} onChange={value => { setSummaryType(value); setSummary('') }} label="Summary style" disabled={busy} className="ai-summary-picker" /></label>
+                <label><span>Length</span><PickerDropdown value={summaryLength} options={LENGTHS} onChange={value => { setSummaryLength(value); setSummary('') }} label="Summary length" disabled={busy} className="ai-summary-picker" /></label>
+                <label><span>Focus</span><PickerDropdown value={summaryFocus} options={SUMMARY_FOCUS} onChange={value => { setSummaryFocus(value); setSummary('') }} label="Summary focus" disabled={busy} className="ai-summary-picker" /></label>
+                <label><span>Format</span><PickerDropdown value={summaryFormat} options={SUMMARY_FORMATS} onChange={value => { setSummaryFormat(value); setSummary('') }} label="Summary format" disabled={busy} className="ai-summary-picker" /></label>
               </div>
+              <label className="ai-summary-prompt"><span>Optional prompt</span><textarea value={summaryPrompt} onChange={event => { setSummaryPrompt(event.target.value); setSummary('') }} disabled={busy} rows={2} placeholder="Tell the summary what to focus on or how to present the key information." aria-label="Optional summary prompt" /></label>
+              <p className="ai-hint">Choose a summary style, detail level, focus, and output format. Add a prompt for a specific question or perspective.</p>
               {summary && <div className="ai-result rm-prose">{renderMarkdown(summary)}</div>}
             </>
           )}

@@ -33,7 +33,7 @@ export default function EmptyWorkspace({ templates, canReopen, onNew, onOpen, on
   const actions = [
     { id: 'new', icon: FilePlus, title: 'New blank file', text: 'Start writing from scratch', run: onNew, primary: true },
     { id: 'open', icon: FolderOpen, title: 'Open files', text: 'Markdown files or a whole folder', run: onOpen },
-    ...(onWriteReadme ? [{ id: 'write', icon: BookOpenText, title: 'Write a README', text: 'Describe a project, get a README', run: onWriteReadme }] : []),
+    ...(onWriteReadme ? [{ id: 'write', icon: BookOpenText, title: 'Write a README', text: 'Create a README, guide, reference, or notes', run: onWriteReadme }] : []),
     { id: 'url', icon: Globe, title: 'Import from URL', text: 'Fetch a public .md file', run: onImportUrl },
     // Always five tiles: reopen the last closed tab when there is one, otherwise restore a backup.
     canReopen

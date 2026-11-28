@@ -1346,7 +1346,7 @@ function HighlightPicker({ position, onPick, onClose }) {
   )
 }
 
-function FormattingToolbar({ textareaRef, content, onChange, onOpenTable, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme, aiHidden, aiBusy = false }) {
+function FormattingToolbar({ textareaRef, content, onChange, onOpenTable, onCreateFromTemplate, templates = MD_TEMPLATES, onManageTemplates, onFindReplace, onWriteReadme, aiHidden, aiEditMode = false, aiBusy = false }) {
   const [tplOpen, setTplOpen] = useState(false)
   const tplRef = useRef(null)
   const closeTemplates = useCallback(() => setTplOpen(false), [])
@@ -1433,7 +1433,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onOpenTable, onCrea
 
       <div className="relative shrink-0 ml-2 flex items-center gap-0.5">
         {onWriteReadme && (
-          <button type="button" onClick={onWriteReadme} data-tip={aiHidden ? 'Write a README' : 'Write a README with AI'} aria-label={aiHidden ? 'Write a README' : 'Write a README with AI'} className={`fmt-btn fmt-btn-ai${aiBusy ? ' is-busy' : ''}`}>
+          <button type="button" onClick={onWriteReadme} data-tip={aiHidden || !aiEditMode ? 'Write a README' : 'Edit current document with AI'} aria-label={aiHidden || !aiEditMode ? 'Write a README' : 'Edit current document with AI'} className={`fmt-btn fmt-btn-ai${aiBusy ? ' is-busy' : ''}`}>
             <Sparkles size={13} />
           </button>
         )}
@@ -1456,7 +1456,7 @@ function FormattingToolbar({ textareaRef, content, onChange, onOpenTable, onCrea
           <LayoutTemplate size={13} />
         </button>
         {tplOpen && (
-          <TemplateMenu anchorRef={tplRef} templates={templates} onPick={onCreateFromTemplate} onWriteReadme={onWriteReadme} onManage={onManageTemplates} onClose={closeTemplates} />
+          <TemplateMenu anchorRef={tplRef} templates={templates} onPick={onCreateFromTemplate} onWriteReadme={onWriteReadme} writeLabel={aiEditMode && !aiHidden ? 'Edit current document with AI…' : 'Write a README…'} writeDescription={aiEditMode && !aiHidden ? 'Revise the open Markdown document' : 'Create a README, guide, reference, or notes'} onManage={onManageTemplates} onClose={closeTemplates} />
         )}
       </div>
     </div>
@@ -3091,6 +3091,14 @@ export default function App() {
   const [emptyFolders, setEmptyFolders] = useState(() => {
     try { const list = JSON.parse(localStorage.getItem('readme-empty-folders') || '[]'); return Array.isArray(list) ? list.filter(item => typeof item === 'string') : [] } catch { return [] }
   })
+  const documentFolders = useMemo(() => {
+    const paths = new Set(emptyFolders)
+    for (const file of [...files, ...closedFiles.map(entry => entry.file)]) {
+      const parts = file.name.split('/').slice(0, -1)
+      parts.forEach((_part, index) => paths.add(parts.slice(0, index + 1).join('/')))
+    }
+    return [...paths].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  }, [emptyFolders, files, closedFiles])
   useEffect(() => { try { localStorage.setItem('readme-empty-folders', JSON.stringify(emptyFolders)) } catch { /* storage is optional */ } }, [emptyFolders])
   useEffect(() => {
     const onStorage = event => {
@@ -4850,24 +4858,24 @@ export default function App() {
 
   // ── Write a README from a description ───────────────────────
   const [writeReadmeOpen, setWriteReadmeOpen] = useState(false)
+  const [readmeDialogMode, setReadmeDialogMode] = useState('write')
+  const openReadmeDialog = useCallback((mode = 'write') => { setReadmeDialogMode(mode); setWriteReadmeOpen(true) }, [])
   const [dailyNotesOpen, setDailyNotesOpen] = useState(false)
   const [readmeWriting, setReadmeWriting] = useState(null) // { fileId, preparing, progress }
   const readmeAbortRef = useRef(null)
   const readmeQuickRef = useRef(false) // "Use quick version": skip the AI and use the generator
   const [aiWriterSupported] = useState(() => canWriteWithAi())
   const aiWriter = aiWriterSupported && !hideAi
-  const handleWriteReadme = useCallback(async prompt => {
+  const handleWriteReadme = useCallback(async ({ prompt, options, folder = '', fileName: requestedFileName = 'README.md' }) => {
     readmeAbortRef.current?.abort()
     const controller = new AbortController()
     readmeAbortRef.current = controller
     readmeQuickRef.current = false
     const id = createFileId()
     markWorkspaceEdit()
-    setFiles(prev => {
-      const taken = new Set(prev.map(file => file.name.toLowerCase()))
-      const name = taken.has('readme.md') ? makeDuplicateFileName('README.md', prev.map(file => file.name)) : 'README.md'
-      return [...prev, { id, name, content: '' }]
-    })
+    const fileStem = cleanFileStem(String(requestedFileName).replace(/\.md$/i, '')) || 'README'
+    const requestedPath = [folder, `${fileStem}.md`].filter(Boolean).join('/')
+    setFiles(prev => [...prev, { id, name: uniqueName(requestedPath, [...prev.map(file => file.name), ...closedFiles.map(entry => entry.file.name)]), content: '' }])
     setActiveFileId(id)
     setActiveHeadingId(null)
     if (view === 'editor' || view === 'preview') setView('split')
@@ -4896,29 +4904,30 @@ export default function App() {
       if (aiWriter) {
         try {
           const text = await writeReadmeWithAi(prompt, {
+            options,
             signal: controller.signal,
             onStatus: status => setReadmeWriting(current => current && { ...current, preparing: status === 'preparing' }),
             onProgress: loaded => setReadmeWriting(current => current && { ...current, progress: loaded < 1 ? loaded : null }),
             onChunk: partial => { setReadmeWriting(current => current && { ...current, preparing: false, progress: null, streaming: true }); schedule(partial) },
           })
           clearTimeout(timer)
-          write(text.trim() ? `${text.trim()}\n` : readmeFromPrompt(prompt))
+          write(text.trim() ? `${text.trim()}\n` : readmeFromPrompt(prompt, options))
         } catch (error) {
           if (error?.name === 'AbortError' && readmeQuickRef.current) {
             // The user chose the quick version while the AI was still getting ready.
             clearTimeout(timer)
             setReadmeWriting(current => current && { ...current, ai: false, preparing: false, progress: null })
-            await reveal(readmeFromPrompt(prompt), new AbortController().signal)
+            await reveal(readmeFromPrompt(prompt, options), new AbortController().signal)
             setToast({ message: 'README ready — edit it like any other file.', tone: 'success' })
             return
           }
           if (error?.name === 'AbortError') throw error
           clearTimeout(timer)
           setToast({ message: 'The on-device AI writer is unavailable right now, so the README was generated from your description.', tone: 'warning', duration: 5000 })
-          await reveal(readmeFromPrompt(prompt))
+          await reveal(readmeFromPrompt(prompt, options))
         }
       } else {
-        await reveal(readmeFromPrompt(prompt))
+        await reveal(readmeFromPrompt(prompt, options))
       }
       if (!controller.signal.aborted) setToast({ message: 'README ready — edit it like any other file.', tone: 'success' })
     } catch {
@@ -4929,7 +4938,39 @@ export default function App() {
       if (readmeAbortRef.current === controller) readmeAbortRef.current = null
       setReadmeWriting(current => (current?.fileId === id ? null : current))
     }
-  }, [aiWriter, markWorkspaceEdit, view])
+  }, [aiWriter, markWorkspaceEdit, view, closedFiles])
+  const handleEditDocumentWithAi = useCallback(async ({ prompt, options }) => {
+    if (!activeFile || !aiWriter) return
+    const target = activeFile
+    const original = target.content
+    readmeAbortRef.current?.abort()
+    const controller = new AbortController()
+    readmeAbortRef.current = controller
+    readmeQuickRef.current = false
+    setReadmeWriting({ fileId: target.id, mode: 'edit', preparing: false, progress: null, streaming: false, ai: true })
+    try {
+      const revised = await writeReadmeWithAi(prompt, {
+        mode: 'edit', existingContent: original, options, signal: controller.signal,
+        onStatus: status => setReadmeWriting(current => current?.fileId === target.id ? { ...current, preparing: status === 'preparing' } : current),
+        onProgress: loaded => setReadmeWriting(current => current?.fileId === target.id ? { ...current, progress: loaded < 1 ? loaded : null } : current),
+        onChunk: () => setReadmeWriting(current => current?.fileId === target.id ? { ...current, preparing: false, progress: null, streaming: true } : current),
+      })
+      if (controller.signal.aborted) return
+      const content = revised.trim() ? `${revised.trim()}\n` : original
+      if (content !== original) {
+        await takeSnapshot(target.id, original, 'Before AI edit')
+        markWorkspaceEdit()
+        setFiles(prev => prev.map(file => file.id === target.id ? { ...file, content } : file))
+      }
+      setToast({ message: 'AI edit applied. Your original version is in document history.', tone: 'success' })
+    } catch (error) {
+      if (error?.name !== 'AbortError') setToast({ message: 'The on-device AI could not edit this document. Your original content is unchanged.', tone: 'warning', duration: 6000 })
+      else setToast({ message: 'AI edit stopped. Your original content is unchanged.', tone: 'info' })
+    } finally {
+      if (readmeAbortRef.current === controller) readmeAbortRef.current = null
+      setReadmeWriting(current => (current?.fileId === target.id ? null : current))
+    }
+  }, [activeFile, aiWriter, takeSnapshot, markWorkspaceEdit])
   useEffect(() => () => readmeAbortRef.current?.abort(), [])
 
   // ── Backup / restore ─────────────────────────────────────────
@@ -6514,7 +6555,8 @@ ${fontCss}
     ] : []),
     ...(activeFile ? [{ id: 'present', label: 'Present as slides', hint: 'Reader', icon: Presentation, run: () => openPresentation() }] : []),
     { id: 'file-tree', label: fileTreeOpen ? 'Hide file tree' : 'Show file tree', hint: 'Files', icon: FolderTree, run: () => setFileTreeOpen(open => !open) },
-    { id: 'write-readme', label: 'Write a README from a description…', hint: aiWriter ? 'AI' : 'Generator', icon: BookOpenText, run: () => setWriteReadmeOpen(true) },
+    { id: 'write-readme', label: 'Write a README, guide, or reference with AI…', hint: aiWriter ? 'AI' : 'Generator', icon: BookOpenText, run: () => openReadmeDialog('write') },
+    ...(activeFile && aiWriter ? [{ id: 'edit-document-ai', label: 'Edit current document with AI…', hint: 'On-device', icon: Sparkles, run: () => openReadmeDialog('edit') }] : []),
     { id: 'templates', label: 'Manage templates…', hint: 'Templates', icon: LayoutTemplate, run: () => setTemplatesOpen(true) },
     { id: 'settings', label: 'Settings…', hint: 'App', icon: Settings, run: () => setSettingsOpen('workspace') },
     { id: 'storage', label: 'Storage & backup…', hint: 'Settings', icon: HardDrive, run: () => setSettingsOpen('storage') },
@@ -6548,7 +6590,7 @@ ${fontCss}
     ] : []),
   ], [
     handleNewFile, appInstall.status, handleInstallApp, previewEditOn, activeFileId, startTour, handleOpenDiskFiles, handleImportUrl, readerPrefs.width, highContrast, theme, isDark,
-    toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload,
+    toggleTheme, toggleHighContrast, syncScroll, activeFile, files.length, view, handleDownload, openReadmeDialog,
     handleExportHtml, handleExportConfluence, handleCopyConfluence, handleExportSlides, openTableEditor, openPdfDialog, handleExportDocx, handleCopyShareLink, handleExportZip, canReopen, handleReopenClosed, handleTogglePin, handleCloseOthers,
     headings.length, focusSection, exitSectionFocus, startSectionFocus, content, handleFormatTables, openRecovery,
     openHistory, takeSnapshot, handleBackup, fileTreeOpen, aiAvailable, canSummarize, toggleSummary, aiWriter, hideAi, appSettings.extraThemes, activeFont.label, cycleDocFont, handleSaveInPlace, isFullscreen, keepAwake, toggleFullscreen, openPresentation,
@@ -6644,7 +6686,7 @@ ${fontCss}
           <div className="flex items-center gap-1 justify-self-end shrink-0">
             <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt,.docx,.html,.htm" multiple className="hidden"
               onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
-            <NewFileButton onNew={handleNewFile} onTemplate={handleCreateFromTemplate} templates={allTemplates} onManageTemplates={() => setTemplatesOpen(true)} onWriteReadme={() => setWriteReadmeOpen(true)} />
+            <NewFileButton onNew={handleNewFile} onTemplate={handleCreateFromTemplate} templates={allTemplates} onManageTemplates={() => setTemplatesOpen(true)} onWriteReadme={() => openReadmeDialog('write')} />
             <UploadMenuButton onOpen={handleOpenDiskFiles} onImportUrl={handleImportUrl} />
             <DownloadMenuButton
               disabled={!activeFile}
@@ -6815,7 +6857,7 @@ ${fontCss}
             onReopen={handleReopenClosed}
             onRestore={() => restoreInputRef.current?.click()}
             onTemplate={handleCreateFromTemplate}
-            onWriteReadme={() => setWriteReadmeOpen(true)}
+            onWriteReadme={() => openReadmeDialog('write')}
             onTour={startTour}
           />
         ) : (
@@ -6838,7 +6880,8 @@ ${fontCss}
                 templates={allTemplates}
                 onManageTemplates={() => setTemplatesOpen(true)}
                 onFindReplace={() => { setFindOpen(true); setFindKey(k => k + 1) }}
-                onWriteReadme={() => setWriteReadmeOpen(true)}
+                onWriteReadme={() => openReadmeDialog(activeFile ? 'edit' : 'write')}
+                aiEditMode={Boolean(activeFile && aiWriter)}
                 aiHidden={hideAi}
                 aiBusy={Boolean(readmeWriting)}
                 content={content}
@@ -6904,9 +6947,9 @@ ${fontCss}
                       ? `Downloading the on-device model… ${Math.round(readmeWriting.progress * 100)}%`
                       : readmeWriting.preparing
                         ? 'Preparing the on-device writer… the first use downloads it, which can take a few minutes.'
-                        : 'Writing your README…'}
+                        : readmeWriting.mode === 'edit' ? 'Editing your document…' : 'Writing your document…'}
                   </span>
-                  {readmeWriting.ai && !readmeWriting.streaming && (
+                  {readmeWriting.ai && readmeWriting.mode !== 'edit' && !readmeWriting.streaming && (
                     <button type="button" onClick={() => { readmeQuickRef.current = true; readmeAbortRef.current?.abort() }}
                       title="Skip the AI and build the README from your description now">Use quick version</button>
                   )}
@@ -8043,7 +8086,9 @@ ${fontCss}
       )}
 
       {writeReadmeOpen && (
-        <WriteReadmeDialog withAi={aiWriter} aiHidden={hideAi} onGenerate={handleWriteReadme} onClose={() => setWriteReadmeOpen(false)} />
+        <WriteReadmeDialog withAi={aiWriter} aiHidden={hideAi} document={activeFile} folders={documentFolders} initialMode={readmeDialogMode}
+          onGenerate={request => request.mode === 'edit' ? handleEditDocumentWithAi(request) : handleWriteReadme(request)}
+          onClose={() => setWriteReadmeOpen(false)} />
       )}
 
       {templatesOpen && (

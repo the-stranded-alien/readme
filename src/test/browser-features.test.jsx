@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import App from '../App.jsx'
 import DashboardDialog from '../components/DashboardDialog.jsx'
+import WriteReadmeDialog from '../components/WriteReadmeDialog.jsx'
 import { healthIssues } from '../dashboardHealth.js'
 import { decodeWorkspaceSyncData, encodeWorkspaceSyncData, mergeWorkspaceSyncData } from '../workspaceSyncData.js'
 import { APP_VERSION } from '../version.js'
@@ -2045,11 +2046,31 @@ describe('advanced browser features', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New file options' }))
     fireEvent.click(within(await screen.findByRole('menu', { name: 'New file' })).getByRole('menuitem', { name: /Write a README/ }))
     const dialog = await screen.findByRole('dialog', { name: 'Write a README' })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Project description' }), { target: { value: 'A Python CLI tool called PhotoSort for renaming photos by date' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Document brief' }), { target: { value: 'A Python CLI tool called PhotoSort for renaming photos by date' } })
     fireEvent.click(within(dialog).getByRole('button', { name: /Write README/ }))
     await waitFor(() => expect(screen.getByRole('tab', { selected: true })).toHaveAttribute('aria-label', 'README.md'))
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toContain('pip install -r requirements.txt'), { timeout: 4000 })
     expect(document.querySelector('.rm-prose h1')).toHaveTextContent('PhotoSort')
+  })
+
+  it('writes general purpose Markdown and lets the New menu choose a folder and filename', async () => {
+    const { readmeFromPrompt } = await import('../onDeviceAi.js')
+    const notes = readmeFromPrompt('A field guide to identifying native garden birds', { documentType: 'guide', length: 'short' })
+    expect(notes).toMatch(/^# Field Guide To Identifying Native Garden Birds\n\nA field guide/)
+    expect(notes).not.toContain('## Installation')
+
+    const onGenerate = vi.fn()
+    render(<WriteReadmeDialog withAi={false} folders={['Research', 'Research/Interviews']} onGenerate={onGenerate} onClose={vi.fn()} />)
+    const dialog = screen.getByRole('dialog', { name: 'Write a README' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Document brief' }), { target: { value: 'A field guide to native garden birds' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'README file name' }), { target: { value: 'Bird guide.md' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save folder: Workspace root' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Research' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Write README' }))
+    expect(onGenerate).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'write', prompt: 'A field guide to native garden birds', folder: 'Research', fileName: 'Bird guide.md',
+      options: expect.objectContaining({ length: 'medium', tone: 'neutral', audience: 'general', documentType: 'auto' }),
+    }))
   })
 
   it('streams a README from the on-device AI writer into a new file', async () => {
@@ -2065,7 +2086,7 @@ describe('advanced browser features', () => {
     fireEvent.click(within(await screen.findByRole('menu', { name: 'New file' })).getByRole('menuitem', { name: /Write a README/ }))
     const dialog = await screen.findByRole('dialog', { name: 'Write a README' })
     expect(dialog).toHaveTextContent('on-device AI')
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Project description' }), { target: { value: 'A space game called Orbit' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Document brief' }), { target: { value: 'A space game called Orbit' } })
     fireEvent.click(within(dialog).getByRole('button', { name: /Write README/ }))
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toBe('# Orbit\n\nA tiny space game.\n\n## Features\n\n- Planets\n'), { timeout: 4000 })
     expect(document.querySelector('.rm-prose h1')).toHaveTextContent('Orbit')
@@ -2077,7 +2098,7 @@ describe('advanced browser features', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New file options' }))
     fireEvent.click(within(await screen.findByRole('menu', { name: 'New file' })).getByRole('menuitem', { name: /Write a README/ }))
     const dialog = await screen.findByRole('dialog', { name: 'Write a README' })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Project description' }), { target: { value: 'A Go service called Relay that forwards webhooks' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Document brief' }), { target: { value: 'A Go service called Relay that forwards webhooks' } })
     fireEvent.click(within(dialog).getByRole('button', { name: /Write README/ }))
     fireEvent.click(await screen.findByRole('button', { name: 'Use quick version' }))
     await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toMatch(/^# Relay\n\n> Relay is a Go service/), { timeout: 4000 })
@@ -2101,10 +2122,56 @@ describe('advanced browser features', () => {
     expect(within(dialog).getAllByRole('tab')).toHaveLength(4)
   })
 
-  it('opens Write a README from the editor toolbar', async () => {
+  it('summarizes with dropdown preferences and an optional custom prompt', async () => {
+    let sessionOptions
+    vi.stubGlobal('Summarizer', {
+      availability: async () => 'available',
+      create: async options => {
+        sessionOptions = options
+        return { summarize: async () => 'Key information for the requested focus.', destroy() {} }
+      },
+    })
     installApp()
-    fireEvent.click(await screen.findByRole('button', { name: 'Write a README with AI' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'AI tools' }))
+    const dialog = await screen.findByRole('dialog', { name: 'AI tools' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Summary style: Key points' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'TL;DR' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Summary length: Balanced' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Detailed' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Summary focus: Everything important' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Actions and next steps' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Summary format: Markdown' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Plain text' }))
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Optional summary prompt' }), { target: { value: 'Emphasize dates and decisions.' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Summarize' }))
+    expect(await within(dialog).findByText('Key information for the requested focus.')).toBeInTheDocument()
+    expect(sessionOptions).toMatchObject({ type: 'tldr', length: 'long', format: 'plain-text' })
+    expect(sessionOptions.sharedContext).toContain('action items')
+    expect(sessionOptions.sharedContext).toContain('Emphasize dates and decisions.')
+  })
+
+  it('opens the README writer from the editor toolbar when on-device AI is unavailable', async () => {
+    installApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write a README' }))
     expect(await screen.findByRole('dialog', { name: 'Write a README' })).toBeInTheDocument()
+  })
+
+  it('edits the current document from the editor toolbar with the on-device writer', async () => {
+    vi.stubGlobal('Writer', {
+      availability: async () => 'available',
+      create: async () => ({
+        async *writeStreaming() { yield '# A clearer title\n\nA tighter explanation.' },
+        destroy() {},
+      }),
+    })
+    installApp()
+    const editButton = await screen.findByRole('button', { name: 'Edit current document with AI' })
+    fireEvent.click(editButton)
+    const dialog = await screen.findByRole('dialog', { name: 'Edit with AI' })
+    expect(within(dialog).getByRole('tab', { name: 'Edit current', selected: true })).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Editing instructions' }), { target: { value: 'Make the explanation clearer.' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Edit document' }))
+    await waitFor(() => expect(document.querySelector('textarea.editor-textarea').value).toBe('# A clearer title\n\nA tighter explanation.\n'), { timeout: 4000 })
   })
 
   it('has settings to hide AI, turn on lite mode, and an About section', async () => {

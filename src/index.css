@@ -2245,6 +2245,12 @@ button[data-tooltip]:not(:focus-visible)::after {
 .ai-body { flex: 1; min-height: 160px; overflow: auto; display: grid; gap: 14px; align-content: start; padding: 16px 20px; }
 .ai-options { display: grid; gap: 12px; }
 .ai-options-row { grid-template-columns: 1fr 1fr; }
+.ai-summary-options { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+.ai-summary-options > label,.ai-summary-prompt { display: grid; gap: 5px; min-width: 0; color: var(--text-3); font-size: 11px; font-weight: 600; }
+.ai-summary-picker { width: 100%; }
+.ai-summary-prompt textarea { box-sizing: border-box; width: 100%; min-height: 58px; resize: vertical; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; outline: 0; background: var(--bg-editor); color: var(--text-1); font: 12px/1.5 var(--font-sans); }
+.ai-summary-prompt textarea:focus { border-color: var(--accent-border); box-shadow: 0 0 0 2px var(--accent-soft); }
+@media (max-width: 540px) { .ai-summary-options { grid-template-columns: minmax(0, 1fr); } }
 .ai-detected { display: flex; align-items: center; height: 32px; font-size: 12.5px; color: var(--text-2); }
 .ai-select { height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-editor); color: var(--text-1); font-size: 12.5px; }
 .ai-result { max-height: 42vh; overflow: auto; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-light); background: var(--bg-editor); }
@@ -2299,15 +2305,26 @@ button[data-tooltip]:not(:focus-visible)::after {
 .summary-card-stale { margin: 10px 0 0; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 12px; color: var(--text-3); }
 .summary-card-stale button { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
 
-/* ── Write a README ───────────────────────────────────────── */
-.write-readme-dialog { width: min(560px, 100%); }
-.write-readme-dialog textarea { min-height: 96px; font: 500 13px/1.5 var(--font-sans); resize: vertical; }
-.write-readme-examples { display: flex; flex-wrap: wrap; gap: 6px; }
-.write-readme-example {
-  max-width: 100%; padding: 5px 10px; border-radius: 999px; text-align: left; cursor: pointer;
-  border: 1px dashed var(--border-strong); background: transparent; color: var(--text-3); font-size: 11.5px;
+/* ── AI document writer and editor ────────────────────────── */
+.write-readme-dialog { width: min(640px, 100%); max-height: min(760px, calc(100vh - 32px)); overflow: auto; }
+.write-readme-dialog form { display: flex; flex-direction: column; min-height: 0; }
+.write-readme-dialog .pdf-dialog-header { flex: 0 0 auto; }
+.write-readme-body { overflow: auto; }
+.write-readme-dialog textarea { min-height: 88px; font: 500 13px/1.5 var(--font-sans); resize: vertical; }
+.write-readme-mode { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-editor); }
+.write-readme-mode button { flex: 1; min-height: 32px; border: 0; border-radius: 7px; background: transparent; color: var(--text-3); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.write-readme-mode button.is-active { background: var(--bg-preview); color: var(--accent); box-shadow: var(--shadow-sm); }
+.write-readme-mode button:disabled { opacity: .48; cursor: not-allowed; }
+.write-readme-location { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.write-readme-folder { display: grid; align-content: start; gap: 4px; color: var(--text-3); font-size: 11px; font-weight: 600; }
+.write-readme-picker { width: 100%; }
+.write-readme-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin: 0; padding: 10px; border: 1px solid var(--border-light); border-radius: 10px; }
+.write-readme-options legend { padding: 0 5px; color: var(--text-3); font-size: 10.5px; font-weight: 700; }
+.write-readme-options > label { display: grid; gap: 5px; min-width: 0; color: var(--text-3); font-size: 10.5px; font-weight: 600; }
+.write-readme-dialog .pdf-dialog-footer { flex: 0 0 auto; }
+@media (max-width: 540px) {
+  .write-readme-location,.write-readme-options { grid-template-columns: minmax(0, 1fr); }
 }
-.write-readme-example:hover { color: var(--accent); border-color: var(--accent-border); border-style: solid; background: var(--accent-soft); }
 .write-readme-engine { display: flex; align-items: center; gap: 7px; margin: 0; padding: 8px 10px; border-radius: 9px; font-size: 11.5px; color: var(--text-3); background: var(--bg-editor); border: 1px solid var(--border-light); }
 .write-readme-engine.is-ai { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-border); }
 .template-menu-icon.is-write { color: var(--accent); background: var(--accent-soft); }
